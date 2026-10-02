@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: deploy_scripts
-title: WSL2 本地部署初始化脚本
-scope:
-    - deploy-wsl2.sh
-source_files: []
-depends_on: []
-related_to:
-    - path: docs_and_skills

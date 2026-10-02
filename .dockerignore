@@ -41,7 +41,7 @@ datasets/
 # 文档
 *.md
 docs/
-!.DOCKER_DEPLOYMENT_GUIDE.md
+!README.md
 
 # Jupyter Notebook
 .ipynb_checkpoints/

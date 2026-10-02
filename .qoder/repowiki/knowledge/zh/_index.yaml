@@ -2,11 +2,11 @@
 schema_version: 1
 locale: zh-CN
 branch: main
-exported_at: "2026-10-02T07:37:42Z"
+exported_at: "2026-10-02T09:08:11Z"
 modules:
     "":
-        dir_name: Kev 决策模型训练-评估-服务管线
-        title: Kev 决策模型训练-评估-服务管线
+        dir_name: Kev 决策模型项目根
+        title: Kev 决策模型项目根
         scope:
             - README.md
             - PLAN.md
@@ -3014,6 +3014,24 @@ modules:
         children: []
         depends_on: []
         related_to: []
+    deploy:
+        dir_name: Kev-4B 决策模型服务部署与容器化
+        title: Kev-4B 决策模型服务部署与容器化
+        scope:
+            - Dockerfile
+            - docker-compose.yml
+            - .dockerignore
+            - DEPLOYMENT_README.md
+            - DOCKER_DEPLOYMENT_GUIDE.md
+            - LOCAL_DEPLOYMENT_GUIDE.md
+            - QUICK_START.md
+            - deploy.sh
+            - deploy-windows.ps1
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: deploy_scripts
     deploy_scripts:
         dir_name: WSL2 本地部署初始化脚本
         title: WSL2 本地部署初始化脚本
@@ -3023,7 +3041,7 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: docs_and_skills
+            - path: deploy
     docs_and_skills:
         dir_name: Kev 文档与 Agent Skills
         title: Kev 文档与 Agent Skills
@@ -3034,10 +3052,10 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: deploy_scripts
+            - path: kev_library
     evals_and_scripts:
-        dir_name: 评估数据集与评测脚本集
-        title: 评估数据集与评测脚本集
+        dir_name: 评测数据集与构建_发布脚本集
+        title: 评测数据集与构建/发布脚本集
         scope:
             - evals/
             - scripts/
@@ -3045,8 +3063,7 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: kev_library
-            - path: tests_and_tools
+            - path: experiments
     experiments:
         dir_name: 训练实验配置与审计协议
         title: 训练实验配置与审计协议
@@ -3056,7 +3073,7 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: kev_library
+            - path: evals_and_scripts
     kev_library:
         dir_name: KEV 决策模型训练_推理框架
         title: KEV 决策模型训练/推理框架
@@ -3067,9 +3084,8 @@ modules:
         depends_on: []
         related_to:
             - path: playground
-            - path: experiments
-            - path: evals_and_scripts
             - path: tests_and_tools
+            - path: docs_and_skills
     playground:
         dir_name: KEV 决策模型交互式演示站
         title: KEV 决策模型交互式演示站
@@ -3091,4 +3107,3 @@ modules:
         depends_on: []
         related_to:
             - path: kev_library
-            - path: evals_and_scripts

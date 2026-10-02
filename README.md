@@ -119,6 +119,8 @@ Example response from Kev-4B, running in bf16 on an Apple M5:
 
 The ticket mentions a return, a late delivery and a billing problem, and the department probabilities say so. That's why Kev returns probabilities instead of a single label: your code can route the confident cases and send the rest to a person.
 
+> 想看**中文**请求/响应范例（含 422 超长 state、不同等级数的 `score` 等边界情况），见 [docs/examples.md](docs/examples.md)。
+
 ### Use It From Python
 
 If you already call Jev, point your client at Kev and keep the rest of your code. The TypeSafe SDK is included in `uv sync --extra serve`:
@@ -263,7 +265,7 @@ There's a [chess demo](http://localhost:3001/chess), too. The board is the input
 
 For Choice with `K > 1` options, confidence is `(p_max − 1/K) / (1 − 1/K)`. A single option has confidence 1. Score confidence is `max(0, 1 − E|level − mode| / D)`: `mode` is the most likely level and `D` is the mean distance of a uniform distribution over the levels from its middle (2/3 for three levels), so all probability on one level gives 1 and a uniform or wider spread gives 0. Both formulas are the ones in TypeSafe's reference adapter ([`system-one-adapter`](https://github.com/typesafe-ai/system-one-adapter-python) 0.2.1). Neither field is a measured accuracy rate.
 
-Objects and arrays are converted to labeled text. Delimiter-like strings in user input are escaped before tokenization. Invalid requests return `422`, and so does a state longer than 65,536 tokens: the server never drops part of a document silently, and the error gives the state's token count and the limit. `usage.output_tokens` counts tokens in the serialized answers, not generated tokens.
+Objects and arrays are converted to labeled text. Delimiter-like strings in user input are escaped before tokenization. Invalid requests return `422`, and so does a state longer than 65,536 tokens: the server never drops part of a document silently, and the error gives the state's token count and the limit. `usage.output_tokens` counts tokens in the serialized answers, not generated tokens. Worked Chinese examples and boundary cases (oversized-state 422, `score` with 2 or 5 levels) are in [docs/examples.md](docs/examples.md).
 
 | Method | Path | Purpose |
 |---|---|---|

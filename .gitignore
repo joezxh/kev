@@ -657,3 +657,6 @@ runs/r18-9b/*-trial-*/transfer/*
 !runs/r11-docs/*-trial-*/provenance.json
 !runs/r16-9b/*-trial-*/provenance.json
 !runs/r18-9b/*-trial-*/provenance.json
+
+# 本地部署权重（大文件，勿入库）：deploy/runs/ 由 docker-compose 挂载，权重仅留本地
+deploy/runs/

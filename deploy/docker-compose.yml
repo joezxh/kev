@@ -1,0 +1,77 @@
+# ============================================================================
+# Kev-4B serving — single compose file for Windows Docker Desktop and Linux.
+# (The old docker-compose.windows.yml / docker-compose.linux.yml were
+# byte-identical and pointed at a nonexistent root Dockerfile.)
+#
+# Model selection: KEV_RUN is passed to `kev.serve --run` and accepts
+#   - a Hub id:            jaredpalmer/kev-4b            (downloaded to the HF cache volume)
+#   - a Hub id + revision: jaredpalmer/kev-4b@<sha|tag>
+#   - a local run dir:     /kev/runs/<name>              (./runs is mounted here)
+#
+# Usage:  docker compose -f deploy/docker-compose.yml up -d --build
+# ============================================================================
+
+services:
+  kev-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: kev-4b-server:latest
+    container_name: kev-server
+
+    ports:
+      - "8008:8008"
+
+    environment:
+      # ===== checkpoint (local run by default; set KEV_RUN to a Hub id to fetch) =====
+      - KEV_RUN=${KEV_RUN:-/kev/runs/kev-4b-local}
+
+      # ===== serving knobs (all read by kev.serve) =====
+      - KEV_DTYPE=${KEV_DTYPE:-bf16}            # bf16 (serving default) / fp32
+      - KEV_PREFIX_CACHE=${KEV_PREFIX_CACHE:-4} # state-prefix cache entries; 0 disables
+      # - KEV_PREFIX_MIN_TOKENS=               # default: model's prefix_min_tokens
+      # - KEV_PREFIX_MAX_TOKENS=65536
+      # - KEV_BACKEND=torch                    # auto (MLX on Apple Silicon, torch elsewhere)
+      # - KEV_CUDA_GRAPHS=0                    # default on for cuda
+      # - KEV_FUSED=0                          # fused Qwen3.5 kernels (needs fla)
+      # ===== behaviour =====
+      - KEV_DATE_FACTS=${KEV_DATE_FACTS:-0}         # 1 = date preprocessing
+      - KEV_TRUNCATE_STATES=${KEV_TRUNCATE_STATES:-0} # 1 = truncate over-length states instead of 422
+      - KEV_API_KEY=${KEV_API_KEY:-}                # unset/empty = open server
+      # - HF_HUB_OFFLINE=1                     # run from an already-populated cache
+
+    volumes:
+      - kev-hf-cache:/root/.cache/huggingface   # persist Hub checkpoint downloads
+      - ./runs:/kev/runs                        # local checkpoints, e.g. KEV_RUN=/kev/runs/kev-4b-typesafe-v1
+
+    # GPU via the NVIDIA container toolkit (works on Docker Desktop WSL2 and Linux).
+    # A container without a GPU still starts — kev.serve falls back to CPU.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    healthcheck:
+      # slim image has no curl; kev.serve listens on 8008 inside the container.
+      # Send the Bearer token from KEV_API_KEY so the check passes when auth is on;
+      # an empty KEV_API_KEY means an open server, which also returns 200.
+      test: ["CMD", "python", "-c", "import urllib.request,os,sys; req=urllib.request.Request('http://127.0.0.1:8008/v1/models', headers={'Authorization': 'Bearer ' + os.environ.get('KEV_API_KEY','')}); sys.exit(0 if urllib.request.urlopen(req, timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+    restart: unless-stopped
+
+    logging:
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "3"
+
+volumes:
+  kev-hf-cache:
+    name: kev-hf-cache
