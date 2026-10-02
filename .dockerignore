@@ -1,0 +1,69 @@
+# Git 和版本控制
+.git
+.gitignore
+.svn
+
+# IDE 配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 测试文件
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# 模型数据和权重（避免重复下载）
+runs/
+checkpoints/
+data/
+datasets/
+
+# 文档
+*.md
+docs/
+!.DOCKER_DEPLOYMENT_GUIDE.md
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# 临时文件
+*.log
+tmp/
+temp/
+
+# Node 模块（前端无关）
+node_modules/
+package*.json
+playground/
+
+# HuggingFace 缓存
+.huggingface/
+transformers/
+torch/
+
+# 其他
+*.db
+*.sqlite
+.env.local
+.env.*
+!env.example

@@ -1,0 +1,162 @@
+# ============================================================================
+# Kev-4B Production Deployment Configuration
+# Docker Compose for GPU-powered decision model serving
+# ============================================================================
+version: "3.9"
+
+services:
+  # =========================================================================
+  # Production Server
+  # =========================================================================
+  kev-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+      args:
+        # CUDA 版本（根据宿主机调整）
+        CUDA_VERSION: "12.1.0"
+        CUDNN_VERSION: "8"
+    
+    image: kev-decision-model:latest
+    container_name: kev-server
+    hostname: kev-server
+    
+    # GPU 支持（必需）
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        limits:
+          memory: 16G
+    
+    # 端口映射（生产环境建议反向代理后暴露）
+    ports:
+      - "8008:8008"       # HTTP API
+      # - "8009:8009"     # HTTPS (如配置 TLS)
+    
+    # 环境变量配置
+    environment:
+      # ===== 模型配置 =====
+      - KEV_MODEL=jaredpalmer/kev-4b           # HuggingFace 模型 ID 或本地路径
+      - KEV_PREFIX_CACHE=4                     # 状态前缀缓存数量（减少重复文本推理成本）
+      
+      # ===== 计算精度 =====
+      - KEV_DTYPE=bf16                         # bf16(推荐)/fp16/fp32 (bf16 速度快且精度高)
+      
+      # ===== GPU 设备 =====
+      - CUDA_VISIBLE_DEVICES=0                 # 指定 GPU 设备（多卡时："0,1"）
+      
+      # ===== API 安全 =====
+      # - KEV_API_KEY=your-secret-key-here      # 启用 Bearer Token 认证（取消注释启用）
+      
+      # ===== 性能优化 =====
+      - MAX_BATCH=64                           # 最大批处理大小（提高吞吐量）
+      - KEV_CUDA_GRAPHS=1                      # 启用 CUDA Graphs（降低延迟）
+      - KEV_FUSED=1                            # 启用融合 Qwen3.5 内核
+      
+      # ===== 调试选项 =====
+      # - KEV_DATE_FACTS=1                     # 在状态中添加日期事实预处理
+      # - KEV_TRUNCATE_STATES=1               # 截断超长状态而非拒绝（默认拒绝）
+      # - KEV_BACKEND=torch                    # 强制使用 PyTorch（默认自动选择 MLX/torch）
+    
+    # 卷挂载（持久化模型权重和缓存）
+    volumes:
+      - kev-model-cache:/kev/checkpoints       # 模型权重缓存（避免重新下载）
+      - kev-prefix-cache:/kev/runs             # 前缀缓存目录
+      # - ./runs:/kev/runs:ro                  # 可选：使用本地 runs 目录作为只读挂载
+      # - ./data:/kev/data                       # 可选：本地数据目录
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/health-check.sh"]
+      interval: 30s                          # 每 30 秒检查一次
+      timeout: 10s                           # 超时时间
+      retries: 3                             # 重试次数
+      start_period: 120s                     # 启动等待期（首次加载模型可能较慢）
+    
+    # 重启策略（生产环境）
+    restart: unless-stopped
+    
+    # 日志配置
+    logging:
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "3"
+        compress: "true"
+    
+    # 容器网络设置
+    networks:
+      - kev-network
+    
+    # 优雅关闭
+    stop_grace_period: 60s
+
+  # =========================================================================
+  # Development Server (热重载)
+  # =========================================================================
+  kev-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    
+    container_name: kev-dev-server
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    
+    ports:
+      - "8008:8008"
+    
+    environment:
+      - KEV_MODEL=jaredpalmer/kev-4b
+      - KEV_DTYPE=bf16
+      - PYTHONUNBUFFERED=1
+    
+    volumes:
+      - .:/kev:rw                            # 挂载源码到容器（开发模式）
+      - kev-model-cache-dev:/kev/checkpoints
+    
+    command: >
+      sh -c "python -m kev.serve --host 0.0.0.0 --port 8008 || python -m pytest tests/ -q --cov=app"
+    
+    restart: no
+    profiles:
+      - development
+    
+    networks:
+      - kev-network
+
+
+# =========================================================================
+# Networks
+# =========================================================================
+networks:
+  kev-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+
+# =========================================================================
+# Volumes
+# =========================================================================
+volumes:
+  kev-model-cache:
+    name: kev-model-cache                  # 持久化存储模型权重
+  kev-model-cache-dev:
+    name: kev-model-cache-dev
+  kev-prefix-cache:
+    name: kev-prefix-cache
