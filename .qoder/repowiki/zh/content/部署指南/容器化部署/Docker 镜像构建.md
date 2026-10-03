@@ -1,5 +1,3 @@
-# Docker 镜像构建
-
 <cite>
 **本文引用的文件**   
 - [modal_app.py](file://modal_app.py)
@@ -67,7 +65,7 @@ A --> D["AGENTS.md<br/>Modal 工作流与镜像组成说明"]
 下图展示了镜像构建的关键阶段与运行时依赖关系。
 
 ```mermaid
-flowchart TD
+graph TD
 Start(["开始构建"]) --> Base["基础镜像<br/>Debian Slim + Python 3.13"]
 Base --> UV["uv_sync 安装锁定依赖<br/>pyproject.toml + uv.lock"]
 UV --> Torch["torch >=2.6,<2.9<br/>Linux CUDA wheel"]
@@ -193,7 +191,7 @@ class 服务依赖 {
   - 禁用分词器并行，避免在多进程环境下出现资源竞争与不稳定行为。
 
 ```mermaid
-flowchart TD
+graph TD
 EStart(["容器启动"]) --> SetHF["设置 HF_HOME=/hf"]
 SetHF --> SetTriton["设置 TRITON_CACHE_DIR=/hf/triton-cache"]
 SetTriton --> SetUnbuf["设置 PYTHONUNBUFFERED=1"]

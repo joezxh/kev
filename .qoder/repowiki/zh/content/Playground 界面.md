@@ -1,5 +1,3 @@
-# Playground 界面
-
 <cite>
 **本文引用的文件**   
 - [playground/package.json](file://playground/package.json)
@@ -149,7 +147,7 @@ AC-->>U : 展示结果
   - 用户编辑文本与参数 → 触发推理 → 流式更新 → 渲染答案卡片。
 
 ```mermaid
-flowchart TD
+graph TD
 Start(["开始"]) --> LoadPresets["加载预设列表"]
 LoadPresets --> SelectPreset{"是否选择预设?"}
 SelectPreset --> |是| ApplyPreset["应用预设到编辑器与参数"]

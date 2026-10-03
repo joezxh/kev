@@ -1,5 +1,3 @@
-# CUDA 图优化
-
 <cite>
 **本文引用的文件**   
 - [cuda_graphs.py](file://kev/cuda_graphs.py)
@@ -167,7 +165,7 @@ class CudaGraphs {
 - 输出：对 keep=True 的状态，从 bank 槽位克隆出独立的 DynamicCache，供后续请求复用。
 
 ```mermaid
-flowchart TD
+graph TD
 Start(["进入 states"]) --> BuildRows["构造 rows<br/>[ids|pos|len] 左填充"]
 BuildRows --> Views["从 bank_views 取视图<br/>attention 取尾部"]
 Views --> Mask["生成 allow 与 linear_mask"]
@@ -194,7 +192,7 @@ Skip --> End
 - 写出：按 picks 与 offset 将选定位置的隐藏向量 index_copy 到 out。
 
 ```mermaid
-flowchart TD
+graph TD
 RStart(["进入 rows"]) --> Group["按 ids 长度分组"]
 Group --> Split["按 GRAPH_ROWS/TOKENS 分片"]
 Split --> Pull["从 bank.entry 拉取状态到 rowbuf"]
@@ -238,7 +236,7 @@ Scatter --> REnd(["返回 hidden[:len(rows)]"])
   - 捕获前先 warm-up，避免在捕获期间发生 autotuning 或 lazy setup。
 
 ```mermaid
-flowchart TD
+graph TD
 A["请求到来"] --> B{"bucket 已捕获?"}
 B --> |是| C["move_to_end + replay"]
 B --> |否| D{"bucket 失败?"}

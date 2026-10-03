@@ -1,5 +1,3 @@
-# Modal 应用配置
-
 <cite>
 **本文引用的文件**   
 - [modal_app.py](file://modal_app.py)

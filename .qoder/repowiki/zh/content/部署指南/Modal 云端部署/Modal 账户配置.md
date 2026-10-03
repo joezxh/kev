@@ -1,5 +1,3 @@
-# Modal 账户配置
-
 <cite>
 **本文引用的文件**   
 - [modal_app.py](file://modal_app.py)
@@ -127,7 +125,7 @@ Note over Worker,HF : "Secret 由 Modal 注入容器，避免明文泄露"
 - 部署脚本 kev_modal.py 会在容器内检查 HF_TOKEN 是否存在，若缺失则报错，提示通过 Modal Secret 提供。
 
 ```mermaid
-flowchart TD
+graph TD
 Start(["开始"]) --> CreateSecret["在 Modal 控制台创建 Secret<br/>键: HF_TOKEN"]
 CreateSecret --> SetEnv["本地设置 KEV_HF_SECRET=<secret-name>"]
 SetEnv --> RunApp["运行 modal_app.py"]

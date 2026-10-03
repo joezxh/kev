@@ -1,5 +1,3 @@
-# LoRA 训练策略
-
 <cite>
 **本文引用的文件**   
 - [model.py](file://kev/model.py)
@@ -96,7 +94,7 @@ CK->>M : 应用/合并 LoRA 或加载全量权重
 - 训练入口将“非 head 的可训练参数”和“head 参数”分为两个组，分别传入 AdamW（或全量微调时的 MasterAdamW）。
 
 ```mermaid
-flowchart TD
+graph TD
 Start(["进入 trainable_parameters"]) --> Iterate["遍历模型所有参数"]
 Iterate --> CheckGrad{"requires_grad == True?"}
 CheckGrad --> |是| Collect["加入可训练列表"]
@@ -153,7 +151,7 @@ DecisionModel --> LoraConfig : "注入 LoRA"
 - 影响：启用后可让分隔符的语义表示随任务微调而漂移，从而改变模型对指令/选项边界/决策标记的理解与响应。
 
 ```mermaid
-flowchart TD
+graph TD
 A["special_embeddings?"] --> |是| B["设置 trainable_token_indices<br/>embed_tokens = SPECIAL ids"]
 A --> |否| C["不修改嵌入训练集"]
 B --> D["PEFT 仅更新指定 token 嵌入"]
@@ -210,7 +208,7 @@ T->>O : step() + zero_grad()
 - Warm start：可从已有 LoRA 或全量权重检查点继续训练，校验架构字段一致性后再载入。
 
 ```mermaid
-flowchart TD
+graph TD
 A["Checkpont.load()"] --> B{"full? (adapter_config.json?)"}
 B --> |是| C["加载 LoRA 适配器"]
 B --> |否| D["加载全量权重分片"]

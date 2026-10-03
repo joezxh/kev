@@ -48,6 +48,7 @@ services:
       - KEV_API_KEY=${KEV_API_KEY:-}                # unset/empty = open server
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com} # HF endpoint for weights; override with a mirror, e.g. https://hf-mirror.com
       - HF_HUB_DISABLE_XET=${HF_HUB_DISABLE_XET:-}  # 1 = skip Xet CAS transfer (mirror proxy safe)
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}          # 1 = offline: use only the cached model, never download
       # GPU selection: the nvidia runtime (count: all below) exposes every GPU; set CUDA_VISIBLE_DEVICES
       # in the host shell before `up` (e.g. CUDA_VISIBLE_DEVICES=1) to pin kev to one card. Do NOT set an
       # empty default here — an empty CUDA_VISIBLE_DEVICES hides all GPUs from torch (nvidia-smi still works).
@@ -109,6 +110,11 @@ services:
       - HOSTNAME=0.0.0.0
       - PORT=3000
       - KEV_API=http://kev-server:8008
+
+    # Mount the repo's repowiki export so the /docs viewer has content at runtime.
+    # (docsRoot resolves to <cwd>/../.qoder/repowiki; the playground cwd is /app.)
+    volumes:
+      - ../.qoder/repowiki:/.qoder/repowiki:ro
 
     depends_on:
       kev-server:

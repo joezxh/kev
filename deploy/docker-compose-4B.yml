@@ -110,6 +110,11 @@ services:
       - PORT=3000
       - KEV_API=http://kev-server:8008
 
+    # Mount the repo's repowiki export so the /docs viewer has content at runtime.
+    # (docsRoot resolves to <cwd>/../.qoder/repowiki; the playground cwd is /app.)
+    volumes:
+      - ../.qoder/repowiki:/.qoder/repowiki:ro
+
     depends_on:
       kev-server:
         condition: service_healthy   # don't start until the model server answers /v1/models

@@ -1,17 +1,30 @@
 "use client";
 
 import { useLang } from "@/lib/i18n";
+import { cn } from "cn";
 
 export function LangToggle() {
-  const { lang, setLang, t } = useLang();
+  const { lang, setLang } = useLang();
   return (
-    <button
-      type="button"
-      onClick={() => setLang(lang === "en" ? "zh" : "en")}
-      className="rounded-md border border-border px-2.5 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-      aria-label="Switch language"
+    <div
+      role="group"
+      aria-label="Language"
+      className="flex shrink-0 items-center rounded-md border border-border p-0.5 text-[12px]"
     >
-      {t("lang.toggle")}
-    </button>
+      {(["zh", "en"] as const).map((l) => (
+        <button
+          key={l}
+          type="button"
+          onClick={() => setLang(l)}
+          aria-pressed={lang === l}
+          className={cn(
+            "rounded px-2 py-0.5 font-medium transition-colors",
+            lang === l ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {l === "zh" ? "中文" : "EN"}
+        </button>
+      ))}
+    </div>
   );
 }

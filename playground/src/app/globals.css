@@ -169,3 +169,78 @@
     @apply font-sans;
   }
 }
+
+/* Rendered markdown docs */
+.doc-content {
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: var(--foreground);
+}
+.doc-content > :first-child { margin-top: 0; }
+.doc-content h1,
+.doc-content h2,
+.doc-content h3,
+.doc-content h4 {
+  font-weight: 600;
+  line-height: 1.4;
+  scroll-margin-top: 5rem;
+}
+.doc-content h1 { font-size: 1.5rem; margin: 2rem 0 1rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+.doc-content h2 { font-size: 1.25rem; margin: 1.75rem 0 0.85rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+.doc-content h3 { font-size: 1.1rem; margin: 1.5rem 0 0.6rem; }
+.doc-content h4 { font-size: 1rem; margin: 1.25rem 0 0.5rem; }
+.doc-content p { margin: 0.85rem 0; }
+.doc-content a { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+.doc-content a:hover { opacity: 0.8; }
+.doc-content strong { font-weight: 600; }
+.doc-content ul,
+.doc-content ol { margin: 0.85rem 0; padding-left: 1.5rem; }
+.doc-content ul { list-style: disc; }
+.doc-content ol { list-style: decimal; }
+.doc-content li { margin: 0.35rem 0; }
+.doc-content li > ul,
+.doc-content li > ol { margin: 0.35rem 0; }
+.doc-content blockquote {
+  margin: 1rem 0;
+  padding: 0.5rem 1rem;
+  border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
+  background: var(--muted);
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+.doc-content code {
+  font-family: var(--font-geist-mono);
+  font-size: 0.85em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  background: var(--muted);
+}
+.doc-content pre {
+  margin: 1rem 0;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  border-radius: 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.doc-content pre code { padding: 0; background: transparent; font-size: inherit; }
+.doc-content table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 1rem 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.doc-content th,
+.doc-content td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.doc-content th { background: var(--muted); font-weight: 600; }
+.doc-content hr { margin: 1.5rem 0; border: 0; border-top: 1px solid var(--border); }
+.doc-content img { max-width: 100%; border-radius: 0.5rem; }

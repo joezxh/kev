@@ -1,5 +1,3 @@
-# LoRA 微调
-
 <cite>
 **本文引用的文件**   
 - [README.md](file://README.md)
@@ -114,7 +112,7 @@ Note over Model,MLX : MLX 路径在 CPU 上合并 LoRA 以规避 MPS 降精
   - 保存 LoRA 头与 meta；全量权重保存需满足 dtype 一致；支持断点续训。
 
 ```mermaid
-flowchart TD
+graph TD
 Start(["开始"]) --> LoadBase["加载基础模型/LoRA 头"]
 LoadBase --> InitAdapter["初始化 LoRA 适配器"]
 InitAdapter --> Loop{"是否达到停止条件?"}

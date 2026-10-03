@@ -38,9 +38,9 @@ checkpoints/
 data/
 datasets/
 
-# 文档
+# 文档（注意：仅排除仓库根目录的 docs/，不要写成 docs/ 否则会误伤 playground/src/app/docs 路由）
 *.md
-docs/
+/docs/
 !README.md
 
 # Jupyter Notebook

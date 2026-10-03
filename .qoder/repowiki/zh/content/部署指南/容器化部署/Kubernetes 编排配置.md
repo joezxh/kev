@@ -1,5 +1,3 @@
-# Kubernetes 编排配置
-
 <cite>
 **本文引用的文件**   
 - [README.md](file://README.md)
@@ -99,7 +97,7 @@ DEP --> HF
   - 配合 Ingress/Service 权重切换实现蓝绿/金丝雀。
 
 ```mermaid
-flowchart TD
+graph TD
 Start(["创建 Deployment"]) --> SetImage["设置镜像与标签"]
 SetImage --> Replicas["设置副本数"]
 Replicas --> Resources["配置 GPU/CPU/内存 requests/limits"]
@@ -148,7 +146,7 @@ S-->>C : 返回响应
 - 日志级别设置：通过 LOG_LEVEL 控制应用日志输出粒度。
 
 ```mermaid
-flowchart TD
+graph TD
 A["编写 ConfigMap"] --> B["在 Deployment 中引用"]
 B --> C["应用启动时读取配置"]
 C --> D["调整行为(模型/日志/开关)"]
@@ -167,7 +165,7 @@ C --> D["调整行为(模型/日志/开关)"]
 - 安全建议：启用 etcd 加密、RBAC 最小权限、审计日志。
 
 ```mermaid
-flowchart TD
+graph TD
 S["Secret(敏感信息)"] --> M["Deployment 引用 Secret"]
 M --> R["应用进程读取密钥"]
 R --> U["调用外部 API/HF Hub"]
@@ -207,7 +205,7 @@ stateDiagram-v2
 - 控制参数：maxUnavailable、maxSurge、revisionHistoryLimit。
 
 ```mermaid
-flowchart TD
+graph TD
 A["新版本构建完成"] --> B["创建 v2 Deployment(小流量)"]
 B --> C{"指标是否达标?"}
 C --> |是| D["逐步增加 v2 流量"]
