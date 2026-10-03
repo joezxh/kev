@@ -42,6 +42,12 @@ model-index:
           - { type: brier_score, value: 0.328 }
 ---
 
+<p align="center">
+  <a href="./kev-4b-qwen3_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+  <a href="./kev-4b-qwen3.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+</p>
+
+
 # Kev-4B (Qwen3)
 
 > **上一代（Qwen3）。** 该检查点作为 Apple Silicon 上的快速选项保留（其仅注意力的主干网络在 MPS 上以全速运行打包前向传播）。就准确率与校准而言请使用 [Kev-4B (Qwen3.5)](kev-4b.md)：在锁定测试上，对相同的样本，本模型域外得分为 0.806，而其为 0.832。权重：`jaredpalmer/kev-4b@qwen3`。

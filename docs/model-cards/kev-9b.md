@@ -56,6 +56,12 @@ model-index:
           - { type: accuracy, value: 0.900 }
 ---
 
+<p align="center">
+  <a href="./kev-9b.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+  <a href="./kev-9b_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+</p>
+
+
 # Kev-9B
 
 ## Model summary

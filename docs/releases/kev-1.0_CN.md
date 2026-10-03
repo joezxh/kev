@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./kev-1.0_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+  <a href="./kev-1.0.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+</p>
+
 # Kev 1.0
 
 Kev 1.0 是整个 Kev 家族的第一个带版本号的发布：四个决策模型，读取一份文档和一组带类型的问题，并在一次前向传播中、在 TypeSafe 的 System One API 背后，返回选项上的校准概率。这里面没有任何新训练的内容。它钉住了下一代理 Kev 所对照衡量的那些 checkpoint、model card、评估套件和服务代码，在每个 Hub repo 上都使用同一个标签（`v1.0`）。

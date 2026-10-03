@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./AGENTS.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+  <a href="./AGENTS_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+</p>
+
 # Kev — small Jev-style decision models
 
 Causal LM + LoRA run prefill-only with a block-causal mask (shared state prefix, isolated question branches) and a

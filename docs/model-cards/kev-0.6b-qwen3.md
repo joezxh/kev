@@ -42,6 +42,12 @@ model-index:
           - { type: brier_score, value: 0.536 }
 ---
 
+<p align="center">
+  <a href="./kev-0.6b-qwen3.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+  <a href="./kev-0.6b-qwen3_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+</p>
+
+
 # Kev-0.6B (Qwen3)
 
 > **Previous generation (Qwen3).** Kept as the fast small option on Apple Silicon (0.12 s per five-question request vs 0.33 s for Kev-0.8B). For accuracy use [Kev-0.8B](kev-0.8b.md): on the locked test it scores 0.668 vs 0.642 out of domain against this model on the same items. Weights: `jaredpalmer/kev-0.6b`.

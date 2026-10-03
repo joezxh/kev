@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./README_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+  <a href="./README.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+</p>
+
 # 在 Modal 上部署 Kev
 
 你自己的 Kev 端点，讲 TypeSafe 的 System One 协议，三条命令搞定。空闲时它会缩放到零，所以一个未使用的端点不花任何钱。

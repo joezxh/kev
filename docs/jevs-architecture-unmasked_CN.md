@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./jevs-architecture-unmasked_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+  <a href="./jevs-architecture-unmasked.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+</p>
+
 # Jev 架构揭秘
 
 *来源：<https://archerhume.com/posts/jevs-architecture-unmasked> —— 基于对约一万个 API 调用的逆向工程。作者：Archer Hume。*

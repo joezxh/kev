@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./PLAN.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+  <a href="./PLAN_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+</p>
+
 # Research plan
 
 This file says where Kev stands, what we have learned, the rules every experiment follows, and what comes next. It is

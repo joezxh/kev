@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./PLAN_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+  <a href="./PLAN.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+</p>
+
 # 研究计划
 
 本文件说明了 Kev 目前的进展、我们学到的东西、每个实验都要遵循的规则，以及接下来的工作。它刻意保持简短。完整的研究记录（从 Qwen3 原型到 night 3、round 4-18 的每一次注册、读取、裁定和事件）已冻结在 git 标签 `research-archive-2026-09-24`；下面以 `A:<path>` 形式给出的指针表示 `git show research-archive-2026-09-24:<path>`（例如 `A:PLAN.md`，那份 1,322 行的记录，或 `A:PLAN_27b.md`，即 Kev-27B 计划）。如何运行无人值守的研究会话见 [`docs/autoresearch.md`](docs/autoresearch.md)。

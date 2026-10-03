@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./AGENTS_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+  <a href="./AGENTS.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+</p>
+
 # Kev — 小型 Jev 式决策模型
 
 因果语言模型（Causal LM）+ LoRA 仅运行 prefill，并带有块因果掩码（block-causal mask，共享状态前缀、隔离的问题分支）以及对选项边界 token 的指针读出（pointer readout），使用基于公开数据集加生成的策略和规则记录的对数损失（log loss）进行训练。没有文本生成。已发布的家族是 Qwen3.5（0.8B / 4B / 9B）加上基于 post-trained 的 Qwen3.8-27B 的 Kev-27B；`kev-0.5b`（Qwen2.5-0.5B，本项目的原型）和 Qwen3 这一代已被取代，但仍发布。

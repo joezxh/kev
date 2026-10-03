@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./README_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+  <a href="./README.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+</p>
+
 # kev-finetune
 
 在你的自己的问题上微调一个开放的 Jev 风格决策模型，得到校准概率，并把它作为一个 TypeSafe System One 端点来服务。你的机器上不需要 GPU；一切都在 Modal 上、通过六个短脚本运行。

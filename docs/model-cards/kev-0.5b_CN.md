@@ -33,6 +33,12 @@ model-index:
           - { type: expected_calibration_error, value: 0.031, name: "ECE after temperature scaling (T=1.47)" }
 ---
 
+<p align="center">
+  <a href="./kev-0.5b_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+  <a href="./kev-0.5b.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+</p>
+
+
 # Kev-0.5B — 原型（已被取代）
 
 Kev-0.5B 是一个**决策模型**。它接收一篇文档（即 *state*，状态）和一组带类型的问题，并在一次前向传播中为每个问题返回一个概率分布。它不生成文本。

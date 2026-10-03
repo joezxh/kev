@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./autoresearch_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+  <a href="./autoresearch.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+</p>
+
 # 运行一个无人值守的研究会话
 
 这是一个在没有人类盯着看的情况下运行的研究会话的操作手册：一个通宵会话，或白天的一段长时间交接。它取代了逐夜的提示词（第 6 轮和 night-3 程序，保留在 git 标签 `research-archive-2026-09-24` 下的 `docs/prompts/` 中），并把那些夜晚出错的地方也一并纳入。它所应用的研究规则在 [`PLAN.md`](../PLAN.md) 的「Standing rules for every round（每一轮的常设规则）」中；命令在 [`AGENTS.md`](../AGENTS.md) 中。

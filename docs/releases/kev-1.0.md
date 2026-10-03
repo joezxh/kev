@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./kev-1.0.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+  <a href="./kev-1.0_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+</p>
+
 # Kev 1.0
 
 Kev 1.0 is the first versioned release of the whole Kev family: four decision models that read a document and a set of typed questions and return calibrated probabilities over the options, in one forward pass, behind TypeSafe's System One API. Nothing in it is newly trained. It pins the checkpoints, model cards, evaluation suites and serving code that the next generation of Kev is measured against, with the same tag (`v1.0`) on every Hub repo.

@@ -42,6 +42,12 @@ model-index:
           - { type: brier_score, value: 0.536 }
 ---
 
+<p align="center">
+  <a href="./kev-0.6b-qwen3_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+  <a href="./kev-0.6b-qwen3.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+</p>
+
+
 # Kev-0.6B (Qwen3)
 
 > **上一代（Qwen3）。** 作为 Apple Silicon 上的快速小模型选项保留（每个五问题请求 0.12 秒，而 Kev-0.8B 为 0.33 秒）。就准确率而言请使用 [Kev-0.8B](kev-0.8b.md)：在锁定测试（locked test）上，对相同的样本，本模型域外得分为 0.642，而其为 0.668。权重：`jaredpalmer/kev-0.6b`。

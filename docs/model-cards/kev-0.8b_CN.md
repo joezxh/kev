@@ -63,6 +63,12 @@ model-index:
           - { type: brier_score, value: 0.442 }
 ---
 
+<p align="center">
+  <a href="./kev-0.8b_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+  <a href="./kev-0.8b.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+</p>
+
+
 # Kev-0.8B
 
 ## 模型概述（Model summary）
