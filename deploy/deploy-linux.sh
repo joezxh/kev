@@ -1,17 +1,23 @@
 #!/bin/bash
 # ============================================================================
-# Kev-4B Linux Docker deploy script (bash)
-# Run from anywhere: ./deploy/deploy-linux.sh [--no-build] [--run <local-dir>] [--api-key <key>] [--hub <hub-id>]
+# Kev Linux Docker deploy script (bash) — model chooser
+# Run from anywhere:
+#   ./deploy/deploy-linux.sh                       # default: Kev-4B
+#   ./deploy/deploy-linux.sh --model 0.8B          # deploy Kev-0.8B instead
+#   ./deploy/deploy-linux.sh --model 4B --run kev-4b-local --api-key <key>
+#   ./deploy/deploy-linux.sh --model 0.8B --hub jaredpalmer/kev-0.8b --api-key <key>
 # ============================================================================
 
 set -e
 
+MODEL="4B"
 NO_BUILD=0
-RUN_NAME="kev-4b-local"
+RUN_NAME=""
 API_KEY="${KEV_API_KEY:-}"
 HUB=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        --model)    shift; MODEL="$1" ;;
         --no-build) NO_BUILD=1 ;;
         --run)      shift; RUN_NAME="$1" ;;
         --api-key)  shift; API_KEY="$1" ;;
@@ -21,9 +27,16 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+# ----- model-specific defaults -----
+case "$MODEL" in
+    4B)   COMPOSE_NAME="docker-compose-4B.yml";  DEFAULT_RUN="kev-4b-local";  DEFAULT_HUB="jaredpalmer/kev-4b";  VRAM_NOTE="Kev-4B bf16 needs ~10-12 GB VRAM" ;;
+    0.8B) COMPOSE_NAME="docker-compose-0.8B.yml"; DEFAULT_RUN="kev-0.8b-local"; DEFAULT_HUB="jaredpalmer/kev-0.8b"; VRAM_NOTE="Kev-0.8B bf16 needs only ~2-3 GB VRAM" ;;
+    *) echo "ERROR: --model must be '4B' or '0.8B' (got '$MODEL')"; exit 1 ;;
+esac
+
 # Resolve paths relative to this script so the cwd does not matter
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
+COMPOSE_FILE="$SCRIPT_DIR/$COMPOSE_NAME"
 
 # Pick the compose command
 if docker compose version > /dev/null 2>&1; then
@@ -36,7 +49,7 @@ else
 fi
 
 echo "=============================================="
-echo "Kev-4B Linux Docker deploy"
+echo "Kev-$MODEL Linux Docker deploy"
 echo "=============================================="
 
 # ===== 1. Preconditions =====
@@ -63,7 +76,7 @@ echo "OK Compose file: $COMPOSE_FILE"
 
 if command -v nvidia-smi > /dev/null 2>&1; then
     GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1)
-    echo "OK NVIDIA GPU: $GPU_NAME (Kev-4B bf16 needs ~10-12 GB VRAM)"
+    echo "OK NVIDIA GPU: $GPU_NAME ($VRAM_NOTE)"
     if command -v nvidia-ctk > /dev/null 2>&1 || [ -f /usr/bin/nvidia-container-cli ]; then
         echo "OK NVIDIA Container Toolkit present"
     else
@@ -88,6 +101,7 @@ fi
 echo ""
 echo "[3/6] Resolving model source, API key & starting service..."
 
+if [ -z "$RUN_NAME" ]; then RUN_NAME="$DEFAULT_RUN"; fi
 if [ -n "$HUB" ]; then
     export KEV_RUN="$HUB"
     echo "Mode: Hub  -> KEV_RUN=$HUB"
@@ -96,7 +110,16 @@ else
     if [ ! -d "$LOCAL_DIR" ]; then
         echo "ERROR: local run directory not found: $LOCAL_DIR"
         echo "       Place the checkpoint (base model + kev adapter, or a full checkpoint) there,"
-        echo "       or deploy from a Hub id:  ./deploy/deploy-linux.sh --hub jaredpalmer/kev-4b"
+        echo "       or deploy from a Hub id:  ./deploy/deploy-linux.sh --model $MODEL --hub $DEFAULT_HUB"
+        exit 1
+    fi
+    # The checkpoint must contain at least head.pt (the pointer head); otherwise
+    # kev.serve treats the path as a Hub id and fails obscurely at runtime.
+    if [ ! -f "$LOCAL_DIR/head.pt" ]; then
+        echo "ERROR: checkpoint 'head.pt' not found in $LOCAL_DIR"
+        echo "       Put the full Kev-$MODEL checkpoint there (head.pt + adapter_config.json"
+        echo "       + adapter_model.safetensors + tokenizer files), or deploy from a Hub id:"
+        echo "         ./deploy/deploy-linux.sh --model $MODEL --hub $DEFAULT_HUB"
         exit 1
     fi
     export KEV_RUN="/kev/runs/$RUN_NAME"
@@ -108,6 +131,14 @@ if [ -n "$API_KEY" ]; then
     echo "API key: set (clients must send 'Authorization: Bearer <key>')"
 else
     echo "API key: NONE -> server is OPEN (no auth). Set --api-key or \$KEV_API_KEY."
+fi
+
+# ----- stop the other model's stack (both share container names `kev-server`/`kev-playground`) -----
+OTHER_MODEL=$([ "$MODEL" = "4B" ] && echo "0.8B" || echo "4B")
+OTHER_COMPOSE="$SCRIPT_DIR/docker-compose-$OTHER_MODEL.yml"
+if [ -f "$OTHER_COMPOSE" ]; then
+    echo "Stopping the other Kev-$OTHER_MODEL stack (if running) to free shared container names..."
+    $COMPOSE -f "$OTHER_COMPOSE" down > /dev/null 2>&1 || true
 fi
 
 $COMPOSE -f "$COMPOSE_FILE" up -d
@@ -137,6 +168,21 @@ else
     echo "      docker logs -f kev-server"
 fi
 
+# ===== 4b. Wait for playground UI =====
+echo ""
+echo "[4b/6] Waiting for http://localhost:3000/ (playground UI)..."
+PREADY=0; PELAPSED=0
+while [ "$PELAPSED" -lt 120 ]; do
+    sleep 3
+    curl -sf http://localhost:3000/ > /dev/null 2>&1 && { PREADY=1; break; }
+    PELAPSED=$((PELAPSED + 3))
+done
+if [ "$PREADY" -eq 1 ]; then
+    echo "OK Playground UI is ready"
+else
+    echo "WARN: playground not ready after 120s — check: docker logs kev-playground"
+fi
+
 # ===== 5. Status =====
 echo ""
 echo "[5/6] Status:"
@@ -145,23 +191,29 @@ $COMPOSE -f "$COMPOSE_FILE" ps
 # ===== 6. Tips =====
 echo ""
 echo "=============================================="
-echo "Deploy done. API: http://localhost:8008  (docs: /docs)"
+echo "Deploy done."
+echo "  API:          http://localhost:8008  (docs: /docs)"
+echo "  Playground UI: http://localhost:3000  (proxies /kev to kev-server)"
 echo "=============================================="
 
 echo ""
 echo "Quick start:"
 echo "  curl http://localhost:8008/v1/models"
+echo "  open http://localhost:3000          # playground UI (kev / chess tabs)"
 echo "  python scripts/test-api.py            # from the repo root"
 echo "  docker logs -f kev-server"
-echo "  $COMPOSE -f deploy/docker-compose.yml down"
+echo "  docker logs -f kev-playground"
+echo "  $COMPOSE -f deploy/$COMPOSE_NAME down"
 
 echo ""
 echo "Local run (default): put the checkpoint in ./deploy/runs/<name>/"
-echo "  ./deploy/deploy-linux.sh --run kev-4b-local --api-key <your-key>"
+echo "  ./deploy/deploy-linux.sh --model $MODEL --run $DEFAULT_RUN --api-key <your-key>"
 echo "Hub run:"
-echo "  ./deploy/deploy-linux.sh --hub jaredpalmer/kev-4b --api-key <your-key>"
+echo "  ./deploy/deploy-linux.sh --model $MODEL --hub $DEFAULT_HUB --api-key <your-key>"
+echo "Switch models (stops the other stack first):"
+echo "  ./deploy/deploy-linux.sh --model 0.8B --api-key <your-key>"
 echo "Change API key / checkpoint on a running stack:"
-echo "  KEV_API_KEY='<key>' KEV_RUN='/kev/runs/kev-4b-local' $COMPOSE -f deploy/docker-compose.yml up -d"
+echo "  KEV_API_KEY='<key>' KEV_RUN='/kev/runs/$DEFAULT_RUN' $COMPOSE -f deploy/$COMPOSE_NAME up -d"
 
 echo ""
 echo "See deploy/README.md for the full guide."

@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { api, PRESETS, type PermuteResponse, type Question, type SystemOneRequest, type SystemOneResponse } from "@/lib/kev";
+import { useLang } from "@/lib/i18n";
 import { AnswerCard } from "@/components/answer-card";
+import { LangToggle } from "@/components/lang-toggle";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-
-const pretty = (v: unknown) => JSON.stringify(v, null, 2);
 
 function parseState(s: string) {
   const t = s.trim();
@@ -22,9 +22,10 @@ function parseState(s: string) {
 type ModelInfo = { run: string; base: string } | { error: string } | null;
 
 export function Playground() {
+  const { lang, t } = useLang();
   const [presetIdx, setPresetIdx] = useState(0);
-  const [stateText, setStateText] = useState(() => typeof PRESETS[0].state === "string" ? PRESETS[0].state : pretty(PRESETS[0].state));
-  const [questionsText, setQuestionsText] = useState(() => pretty(PRESETS[0].questions));
+  const [stateText, setStateText] = useState(() => PRESETS[0].state[lang]);
+  const [questionsText, setQuestionsText] = useState(() => PRESETS[0].questions[lang]);
   const [result, setResult] = useState<SystemOneResponse | null>(null);
   const [separate, setSeparate] = useState<SystemOneResponse | null>(null);
   const [permute, setPermute] = useState<{ question: string; data: PermuteResponse } | null>(null);
@@ -36,6 +37,10 @@ export function Playground() {
   useEffect(() => {
     api.models().then((m) => setModel(m.models[0])).catch((e: Error) => setModel({ error: e.message }));
   }, []);
+
+  // On language change, reload the current preset in the new language so the
+  // submitted state/questions also switch (option keys stay identical).
+  useEffect(() => { loadPreset(presetIdx); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [lang]);
 
   const parsed = useMemo<{ req?: SystemOneRequest; err?: string }>(() => {
     try {
@@ -52,8 +57,8 @@ export function Playground() {
   function loadPreset(i: number) {
     const p = PRESETS[i];
     setPresetIdx(i);
-    setStateText(typeof p.state === "string" ? p.state : pretty(p.state));
-    setQuestionsText(pretty(p.questions));
+    setStateText(p.state[lang]);
+    setQuestionsText(p.questions[lang]);
     setResult(null); setSeparate(null); setPermute(null); setError(null); setTab("answers");
   }
 
@@ -98,36 +103,37 @@ export function Playground() {
           <h1 className="font-medium tracking-tight">kev</h1>
           <Link href="/chess" className="text-muted-foreground hover:text-foreground">chess</Link>
         </nav>
-        <p className="text-[13px] text-muted-foreground">
-          {model === null ? "connecting" : "error" in model ? `backend unavailable: ${model.error}` : <><span className="font-mono">{model.base}</span> · <span className="font-mono">{model.run}</span></>}
-        </p>
+        <div className="flex items-center gap-4">
+          <p className="text-[13px] text-muted-foreground">
+            {model === null ? t("kev.connecting") : "error" in model ? t("kev.backendUnavailable", { error: model.error }) : <><span className="font-mono">{model.base}</span> · <span className="font-mono">{model.run}</span></>}
+          </p>
+          <LangToggle />
+        </div>
       </header>
 
       <div className="mt-10 max-w-2xl">
-        <h2 className="text-2xl font-medium tracking-tight">Typed questions in, probabilities out, one forward pass.</h2>
-        <p className="mt-2 text-[15px] leading-6 text-muted-foreground">
-          The state is read once. Every question is answered in parallel and cannot see the others. Each answer is a distribution over the options you supplied.
-        </p>
+        <h2 className="text-2xl font-medium tracking-tight">{t("kev.tagline")}</h2>
+        <p className="mt-2 text-[15px] leading-6 text-muted-foreground">{t("kev.intro")}</p>
       </div>
 
       <nav aria-label="Presets" className="mt-8 flex flex-wrap gap-x-5 gap-y-1 text-sm">
         {PRESETS.map((p, i) => (
-          <button key={p.name} type="button" onClick={() => loadPreset(i)} aria-current={i === presetIdx ? "true" : undefined}
+          <button key={i} type="button" onClick={() => loadPreset(i)} aria-current={i === presetIdx ? "true" : undefined}
             className={`border-b pb-0.5 transition-colors ${i === presetIdx ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-            {p.name}
+            {p.name[lang]}
           </button>
         ))}
       </nav>
-      <p className="mt-2 max-w-2xl text-[13px] leading-5 text-muted-foreground">{PRESETS[presetIdx].blurb}</p>
+      <p className="mt-2 max-w-2xl text-[13px] leading-5 text-muted-foreground">{PRESETS[presetIdx].blurb[lang]}</p>
 
       <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
         <div className="flex min-w-0 flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="state" className="text-[13px]">State <span className="font-normal text-muted-foreground">(text, or a JSON object or array)</span></Label>
+            <Label htmlFor="state" className="text-[13px]">{t("kev.stateLabel")} <span className="font-normal text-muted-foreground">{t("kev.stateHint")}</span></Label>
             <Textarea id="state" value={stateText} onChange={(e) => setStateText(e.target.value)} className="min-h-28 rounded-md font-mono text-[13px] leading-5 shadow-none" />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="questions" className="text-[13px]">Questions <span className="font-normal text-muted-foreground">(noul, choice, score)</span></Label>
+            <Label htmlFor="questions" className="text-[13px]">{t("kev.questionsLabel")} <span className="font-normal text-muted-foreground">{t("kev.questionsHint")}</span></Label>
             <Textarea id="questions" value={questionsText} onChange={(e) => setQuestionsText(e.target.value)} className="min-h-[28rem] rounded-md font-mono text-[13px] leading-5 shadow-none" aria-invalid={!!parsed.err} />
             {parsed.err && <p className="text-[13px] text-destructive">{parsed.err}</p>}
           </div>
@@ -137,27 +143,25 @@ export function Playground() {
           <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <TabsList variant="line" className="h-auto p-0">
-                <TabsTrigger value="answers" className="px-0 text-sm">Answers</TabsTrigger>
-                <TabsTrigger value="permute" disabled={!permute} className="px-0 text-sm">Permutation</TabsTrigger>
-                <TabsTrigger value="raw" disabled={!result} className="px-0 text-sm">JSON</TabsTrigger>
+                <TabsTrigger value="answers" className="px-0 text-sm">{t("kev.tab.answers")}</TabsTrigger>
+                <TabsTrigger value="permute" disabled={!permute} className="px-0 text-sm">{t("kev.tab.permute")}</TabsTrigger>
+                <TabsTrigger value="raw" disabled={!result} className="px-0 text-sm">{t("kev.tab.json")}</TabsTrigger>
               </TabsList>
               {result && (
                 <p className="text-[13px] tabular-nums text-muted-foreground">
-                  {result.latency_ms.toFixed(0)} ms · {result.usage.input_tokens} input tokens · {nQ} {nQ === 1 ? "question" : "questions"}
+                  {result.latency_ms.toFixed(0)} ms · {result.usage.input_tokens} {t("kev.inputTokens")} · {nQ} {nQ === 1 ? t("kev.questionWord") : t("kev.questionsWord")}
                 </p>
               )}
             </div>
 
             <TabsContent value="answers" className="mt-5">
               {!result && (
-                <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Run the request to see one distribution per question.</p>
+                <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t("kev.empty")}</p>
               )}
               {result && separate && (
                 <p className="mb-3 rounded-md border border-border bg-muted/40 px-4 py-2.5 text-[13px] leading-5">
-                  One request with {nQ} questions: <span className="tabular-nums">{result.latency_ms.toFixed(0)} ms</span>, {result.usage.input_tokens} tokens.{" "}
-                  {nQ} separate requests: <span className="tabular-nums">{separate.latency_ms.toFixed(0)} ms</span>, {separate.usage.input_tokens} tokens.
-                  Largest probability difference between the two: <span className="font-medium tabular-nums">{maxDiff?.toFixed(4)}</span>.
-                  {maxDiff !== null && maxDiff < 0.011 ? " Sibling questions did not change any answer." : " This exceeds rounding; check the request."}
+                  {t("kev.separate", { n: nQ, m1: result.latency_ms.toFixed(0), t1: result.usage.input_tokens, m2: separate.latency_ms.toFixed(0), t2: separate.usage.input_tokens, d: maxDiff != null ? maxDiff.toFixed(4) : "" })}
+                  {maxDiff !== null && maxDiff < 0.011 ? " " + t("kev.separate.ok") : " " + t("kev.separate.bad")}
                 </p>
               )}
               <div className="flex flex-col gap-2">
@@ -171,15 +175,15 @@ export function Playground() {
               {permute && (
                 <div className="rounded-lg border border-border bg-card p-5">
                   <p className="text-sm leading-6">
-                    <span className="font-mono">{permute.question}</span> under {permute.data.runs.length} option orders.{" "}
-                    {permute.data.argmax_stable ? "The top option is the same in every order." : "The top option changes between orders."}
+                    <span className="font-mono">{permute.question}</span> {t("kev.perm.underN", { n: permute.data.runs.length })}.{" "}
+                    {permute.data.argmax_stable ? t("kev.perm.same") : t("kev.perm.changes")}
                   </p>
                   <div className="mt-4 overflow-x-auto">
                     <table className="w-full text-[13px]">
-                      <caption className="sr-only">Probability of each option under different option orders</caption>
+                      <caption className="sr-only">{t("kev.perm.caption")}</caption>
                       <thead>
                         <tr className="border-b border-border text-left text-muted-foreground">
-                          <th scope="col" className="py-2 pr-4 font-normal">Order</th>
+                          <th scope="col" className="py-2 pr-4 font-normal">{t("kev.perm.order")}</th>
                           {Object.keys(permute.data.spread).map((k) => <th key={k} scope="col" className="py-2 pl-4 text-right font-mono font-normal">{k}</th>)}
                         </tr>
                       </thead>
@@ -195,13 +199,13 @@ export function Playground() {
                       </tbody>
                       <tfoot>
                         <tr>
-                          <th scope="row" className="py-2 pr-4 text-left font-normal text-muted-foreground">Spread (max − min)</th>
+                          <th scope="row" className="py-2 pr-4 text-left font-normal text-muted-foreground">{t("kev.perm.spread")}</th>
                           {Object.entries(permute.data.spread).map(([k, s]) => <td key={k} className={`py-2 pl-4 text-right tabular-nums ${s > 0.1 ? "font-medium" : "text-muted-foreground"}`}>{s.toFixed(2)}</td>)}
                         </tr>
                       </tfoot>
                     </table>
                   </div>
-                  <p className="mt-3 text-[13px] leading-5 text-muted-foreground">Each row is the same question with its options in a different order. A spread above 0.10 is shown in bold.</p>
+                  <p className="mt-3 text-[13px] leading-5 text-muted-foreground">{t("kev.perm.foot")}</p>
                 </div>
               )}
             </TabsContent>
@@ -210,12 +214,12 @@ export function Playground() {
               {result && (
                 <div className="grid gap-4 xl:grid-cols-2">
                   <div className="rounded-lg border border-border bg-card p-5">
-                    <p className="text-[13px] text-muted-foreground">Request</p>
-                    <pre className="mt-2 max-h-[36rem] overflow-auto font-mono text-[12px] leading-5">{pretty(parsed.req)}</pre>
+                    <p className="text-[13px] text-muted-foreground">{t("kev.raw.request")}</p>
+                    <pre className="mt-2 max-h-[36rem] overflow-auto font-mono text-[12px] leading-5">{JSON.stringify(parsed.req, null, 2)}</pre>
                   </div>
                   <div className="rounded-lg border border-border bg-card p-5">
-                    <p className="text-[13px] text-muted-foreground">Response</p>
-                    <pre className="mt-2 max-h-[36rem] overflow-auto font-mono text-[12px] leading-5">{pretty(result)}</pre>
+                    <p className="text-[13px] text-muted-foreground">{t("kev.raw.response")}</p>
+                    <pre className="mt-2 max-h-[36rem] overflow-auto font-mono text-[12px] leading-5">{JSON.stringify(result, null, 2)}</pre>
                   </div>
                 </div>
               )}
@@ -228,15 +232,15 @@ export function Playground() {
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <Button onClick={onRun} disabled={!parsed.req || !!busy} className="rounded-md">
-              {busy === "run" ? "Running" : "Run"}
+              {busy === "run" ? t("kev.running") : t("kev.run")}
               <kbd className="ml-1 font-mono text-[11px] font-normal opacity-70">⌘↵</kbd>
             </Button>
-            <Button variant="outline" onClick={onSeparate} disabled={!parsed.req || !!busy} className="rounded-md shadow-none" title="Answer every question in its own request, then compare with the packed answer">
-              {busy === "separate" ? "Comparing" : "Packed vs separate"}
+            <Button variant="outline" onClick={onSeparate} disabled={!parsed.req || !!busy} className="rounded-md shadow-none" title={t("kev.packed.title")}>
+              {busy === "separate" ? t("kev.comparing") : t("kev.packed")}
             </Button>
             {choiceIds.map((id) => (
-              <Button key={id} variant="ghost" onClick={() => onPermute(id)} disabled={!!busy} className="rounded-md text-muted-foreground" title={`Re-ask "${id}" under 6 option orders`}>
-                {busy === "permute" && permute?.question === id ? "Permuting" : "Permute"} <span className="font-mono">{id}</span>
+              <Button key={id} variant="ghost" onClick={() => onPermute(id)} disabled={!!busy} className="rounded-md text-muted-foreground" title={t("kev.permute.title", { id })}>
+                {busy === "permute" && permute?.question === id ? t("kev.permuting") : t("kev.permute")} <span className="font-mono">{id}</span>
               </Button>
             ))}
           </div>

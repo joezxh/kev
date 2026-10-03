@@ -1,0 +1,135 @@
+# ============================================================================
+# Kev-4B serving — Docker Compose for Windows Docker Desktop and Linux.
+#
+# Model selection:
+#   - default (local):  KEV_RUN=/kev/runs/kev-4b-local    (mount ./runs)
+#   - Hub id:           jaredpalmer/kev-4b                (downloaded to HF cache volume)
+#   - Hub id+revision: jaredpalmer/kev-4b@<sha|tag>
+#
+# Both the server and the playground come up together. The playground talks to
+# the server only through the in-network hostname http://kev-server:8008 (baked
+# into the shared deploy/Dockerfile.playground at build time), so the server
+# service keeps the name `kev-server` here — do not rename it.
+#
+# Only one of docker-compose-4B.yml / docker-compose-0.8B.yml should run at a
+# time (both use the same container names + kev-net). Use the deploy chooser
+# script to switch models; `docker compose -f <other-file> down` first if the
+# other stack is still up.
+#
+# Usage:  docker compose -f deploy/docker-compose-4B.yml up -d --build
+# ============================================================================
+
+services:
+  kev-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.4B
+    image: kev-4b-server:latest
+    container_name: kev-server
+
+    ports:
+      - "8008:8008"
+
+    environment:
+      # ===== checkpoint (local run by default; set KEV_RUN to a Hub id to fetch) =====
+      - KEV_RUN=${KEV_RUN:-/kev/runs/kev-4b-local}
+
+      # ===== serving knobs (all read by kev.serve) =====
+      - KEV_DTYPE=${KEV_DTYPE:-bf16}            # bf16 (serving default) / fp32
+      - KEV_PREFIX_CACHE=${KEV_PREFIX_CACHE:-4} # state-prefix cache entries; 0 disables
+      # - KEV_PREFIX_MIN_TOKENS=               # default: model's prefix_min_tokens
+      # - KEV_PREFIX_MAX_TOKENS=65536
+      # - KEV_BACKEND=torch                    # auto (MLX on Apple Silicon, torch elsewhere)
+      # - KEV_CUDA_GRAPHS=0                    # default on for cuda
+      # - KEV_FUSED=0                          # fused Qwen3.5 kernels (needs fla)
+      # ===== behaviour =====
+      - KEV_DATE_FACTS=${KEV_DATE_FACTS:-0}         # 1 = date preprocessing
+      - KEV_TRUNCATE_STATES=${KEV_TRUNCATE_STATES:-0} # 1 = truncate over-length states instead of 422
+      - KEV_API_KEY=${KEV_API_KEY:-}                # unset/empty = open server
+      - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com} # HF endpoint for weights; override with a mirror, e.g.https://huggingface.co  https://hf-mirror.com
+      - HF_HUB_DISABLE_XET=${HF_HUB_DISABLE_XET:-}  # 1 = skip Xet CAS transfer (mirror proxy safe)
+      # GPU selection: the nvidia runtime (count: all below) exposes every GPU; set CUDA_VISIBLE_DEVICES
+      # in the host shell before `up` (e.g. CUDA_VISIBLE_DEVICES=1) to pin kev to one card. Do NOT set an
+      # empty default here — an empty CUDA_VISIBLE_DEVICES hides all GPUs from torch (nvidia-smi still works).
+      # - HF_HUB_OFFLINE=1                     # run from an already-populated cache
+
+    volumes:
+      - kev-hf-cache:/root/.cache/huggingface   # persist Hub checkpoint downloads
+      - ./runs:/kev/runs                        # local checkpoints, e.g. KEV_RUN=/kev/runs/kev-4b-typesafe-v1
+
+    # GPU via the NVIDIA container toolkit (works on Docker Desktop WSL2 and Linux).
+    # A container without a GPU still starts — kev.serve falls back to CPU.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    healthcheck:
+      # slim image has no curl; kev.serve listens on 8008 inside the container.
+      # Send the Bearer token from KEV_API_KEY so the check passes when auth is on;
+      # an empty KEV_API_KEY means an open server, which also returns 200.
+      test: ["CMD", "python", "-c", "import urllib.request,os,sys; req=urllib.request.Request('http://127.0.0.1:8008/v1/models', headers={'Authorization': 'Bearer ' + os.environ.get('KEV_API_KEY','')}); sys.exit(0 if urllib.request.urlopen(req, timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s
+
+    restart: unless-stopped
+
+    logging:
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "3"
+
+    networks:
+      - kev-net
+
+  # ----------------------------------------------------------------------------
+  # Playground: the Next.js demo UI (kev / chess tabs). It talks to kev-server
+  # only through the in-network hostname below — no host ports or CORS needed.
+  # ----------------------------------------------------------------------------
+  playground:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.playground
+    image: kev-4b-playground:latest
+    container_name: kev-playground
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      # The Next.js server-side proxy (/kev/* -> KEV_API) targets the server by its
+      # compose service name on the shared network. Override KEV_API only if you rename kev-server.
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
+      - KEV_API=http://kev-server:8008
+
+    depends_on:
+      kev-server:
+        condition: service_healthy   # don't start until the model server answers /v1/models
+
+    restart: unless-stopped
+
+    logging:
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "3"
+
+    networks:
+      - kev-net
+
+# Shared bridge network: compose resolves `kev-server` / `playground` by service name.
+networks:
+  kev-net:
+    name: kev-net
+
+volumes:
+  kev-hf-cache:
+    name: kev-hf-cache

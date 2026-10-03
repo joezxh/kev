@@ -3,17 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
 import Link from "next/link";
-import { askModel, EVAL_LEVELS, legalMove, loadGames, replay, saveGames, resultText, type Mode, type ModelMove, type SavedGame } from "@/lib/chess";
+import { askModel, evalLevels, legalMove, loadGames, replay, saveGames, resultText, sideLabel, type Mode, type ModelMove, type SavedGame } from "@/lib/chess";
 import { api } from "@/lib/kev";
+import { useLang } from "@/lib/i18n";
+import { LangToggle } from "@/components/lang-toggle";
 import { ChessBoard } from "@/components/chess-board";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
-const MODES: { value: Mode; label: string }[] = [
-  { value: "self", label: "Model vs model" },
-  { value: "white", label: "You play White" },
-  { value: "black", label: "You play Black" },
+const MODES: { value: Mode; key: string }[] = [
+  { value: "self", key: "chess.mode.self" },
+  { value: "white", key: "chess.mode.white" },
+  { value: "black", key: "chess.mode.black" },
 ];
 
 const TOP_N = 8;
@@ -71,6 +73,7 @@ function rebuild(g: SavedGame) {
 }
 
 export function ChessGame() {
+  const { lang, t } = useLang();
   const [games, setGames] = useState<SavedGame[]>([]);
   const [game, setGame] = useState<SavedGame | null>(null);
   const [mode, setMode] = useState<Mode>("self");
@@ -85,7 +88,7 @@ export function ChessGame() {
 
   // load from localStorage (an external store) after mount; deferred so SSR and first client render match
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       const saved = loadGames();
       setGames(saved);
       const last = saved.at(-1);
@@ -94,7 +97,7 @@ export function ChessGame() {
       gameRef.current = g; setGame(g);
     }, 0);
     api.models().then((m) => setModel(m.models[0].run)).catch(() => setModel(null));
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, []);
 
   const chess = useMemo(() => (game ? rebuild(game) : new Chess()), [game]);
@@ -127,20 +130,20 @@ export function ChessGame() {
     if (!game || game.result || thinking) return;
     setThinking(true); setError(null);
     try {
-      const info = await askModel(rebuild(game), sample);
+      const info = await askModel(rebuild(game), sample, lang);
       const c = applyMove(game, info.san, "model", info);
       if (!c || c.isGameOver()) { setAuto(false); autoRef.current = false; }
     } catch (e) { setError((e as Error).message); setAuto(false); autoRef.current = false; }
     finally { setThinking(false); }
-  }, [game, sample, thinking, applyMove]);
+  }, [game, sample, thinking, lang, applyMove]);
 
   // autoplay loop: after each state change, if it's the model's turn and auto is on, move again
   useEffect(() => { autoRef.current = auto; }, [auto]);
   useEffect(() => {
     if (!auto || !game || game.result || thinking) return;
     if (humanSide !== null && humanSide === chess.turn()) return;
-    const t = setTimeout(() => { if (autoRef.current) modelMove(); }, 250);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => { if (autoRef.current) modelMove(); }, 250);
+    return () => clearTimeout(timer);
   }, [auto, game, thinking, chess, humanSide, modelMove]);
 
   // in human-vs-model modes, the model replies automatically (and opens when you play Black)
@@ -148,8 +151,8 @@ export function ChessGame() {
     if (humanSide === null || !game || game.result || thinking || chess.turn() === humanSide) return;
     const last = game.moves.at(-1);
     if (game.moves.length === 0 || last?.by === "human") {
-      const t = setTimeout(modelMove, 150);
-      return () => clearTimeout(t);
+      const timer = setTimeout(modelMove, 150);
+      return () => clearTimeout(timer);
     }
   }, [game, chess, humanSide, thinking, modelMove]);
 
@@ -194,14 +197,15 @@ export function ChessGame() {
           <Link href="/" className="text-muted-foreground hover:text-foreground">kev</Link>
           <span className="font-medium tracking-tight">chess</span>
         </nav>
-        <p className="text-[13px] text-muted-foreground">{model ? <span className="font-mono">{model}</span> : "connecting"}</p>
+        <div className="flex items-center gap-4">
+          <p className="text-[13px] text-muted-foreground">{model ? <span className="font-mono">{model}</span> : t("kev.connecting")}</p>
+          <LangToggle />
+        </div>
       </header>
 
       <div className="mt-10 max-w-2xl">
-        <h1 className="text-2xl font-medium tracking-tight">Every move is a Choice question.</h1>
-        <p className="mt-2 text-[15px] leading-6 text-muted-foreground">
-          The legal moves are the options, the board is the state. The model returns a probability for each move and a Score for who is better, in one request. The model has never seen a chess game, so expect the distributions to be more interesting than the play.
-        </p>
+        <h1 className="text-2xl font-medium tracking-tight">{t("chess.tagline")}</h1>
+        <p className="mt-2 text-[15px] leading-6 text-muted-foreground">{t("chess.intro")}</p>
       </div>
 
       <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)]">
@@ -210,7 +214,7 @@ export function ChessGame() {
             {MODES.map((m) => (
               <button key={m.value} type="button" onClick={() => start(m.value)} aria-current={mode === m.value ? "true" : undefined}
                 className={`border-b pb-0.5 ${mode === m.value ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-                {m.label}
+                {t(m.key)}
               </button>
             ))}
           </div>
@@ -220,46 +224,46 @@ export function ChessGame() {
           <div className="flex flex-wrap items-center gap-2">
             {mode === "self" ? (
               <>
-                <Button onClick={() => setAuto((a) => !a)} disabled={!!game?.result} className="rounded-md">{auto ? "Pause" : "Play"}</Button>
-                <Button variant="outline" onClick={modelMove} disabled={auto || thinking || !!game?.result} className="rounded-md shadow-none">Step</Button>
+                <Button onClick={() => setAuto((a) => !a)} disabled={!!game?.result} className="rounded-md">{auto ? t("chess.pause") : t("chess.play")}</Button>
+                <Button variant="outline" onClick={modelMove} disabled={auto || thinking || !!game?.result} className="rounded-md shadow-none">{t("chess.step")}</Button>
               </>
             ) : (
-              <Button variant="outline" onClick={modelMove} disabled={!modelToMove || thinking} className="rounded-md shadow-none">Model moves</Button>
+              <Button variant="outline" onClick={modelMove} disabled={!modelToMove || thinking} className="rounded-md shadow-none">{t("chess.modelMoves")}</Button>
             )}
-            <Button variant="ghost" onClick={undo} disabled={!game || game.moves.length === 0 || thinking} className="rounded-md text-muted-foreground">Undo</Button>
-            <Button variant="ghost" onClick={() => start(mode)} className="rounded-md text-muted-foreground">New game</Button>
+            <Button variant="ghost" onClick={undo} disabled={!game || game.moves.length === 0 || thinking} className="rounded-md text-muted-foreground">{t("chess.undo")}</Button>
+            <Button variant="ghost" onClick={() => start(mode)} className="rounded-md text-muted-foreground">{t("chess.newGame")}</Button>
             <div className="ml-auto flex items-center gap-2">
               <Switch id="sample" checked={sample} onCheckedChange={(v) => setSample(!!v)} size="sm" />
-              <Label htmlFor="sample" className="text-[13px] text-muted-foreground">Sample from distribution</Label>
+              <Label htmlFor="sample" className="text-[13px] text-muted-foreground">{t("chess.sample")}</Label>
             </div>
           </div>
 
           <p className="min-h-5 text-[13px] text-muted-foreground">
             {game?.result ? <span className="text-foreground">{game.result}</span>
-              : thinking ? "Model is choosing"
-              : humanToMove ? `Your move (${humanSide === "w" ? "White" : "Black"}). Click a piece, then a square.`
-              : `${chess.turn() === "w" ? "White" : "Black"} to move`}
-            {chess.inCheck() && !game?.result ? " · check" : ""}
+              : thinking ? t("chess.thinking")
+              : humanToMove ? t("chess.yourMove", { side: sideLabel(lang, humanSide as "w" | "b") })
+              : t("chess.toMove", { side: sideLabel(lang, chess.turn()) })}
+            {chess.inCheck() && !game?.result ? " · " + t("chess.check") : ""}
           </p>
           {error && <pre className="whitespace-pre-wrap text-[13px] text-destructive">{error}</pre>}
         </div>
 
         <div className="flex min-w-0 flex-col gap-3">
-          <DistributionPanel id="move" title={lastModel ? `Best move among ${lastModel.n_legal} legal moves` : "Best move among the legal moves"}
-            headline={lastModel?.san} detail={lastModel ? `confidence ${lastModel.confidence.toFixed(2)}` : undefined}
+          <DistributionPanel id="move" title={lastModel ? t("chess.moveTitle", { n: lastModel.n_legal }) : t("chess.moveTitlePlain")}
+            headline={lastModel?.san} detail={lastModel ? t("chess.confidence", { c: lastModel.confidence.toFixed(2) }) : undefined}
             rows={lastModel ? topRows(lastModel.probabilities, lastModel.san, TOP_N) : []} nRows={TOP_N} mono
-            footer={lastModel && lastModel.n_legal > TOP_N ? `${lastModel.n_legal - TOP_N} more moves share the remaining ${(1 - topMass(lastModel.probabilities, TOP_N)).toFixed(2)}` : " "}
+            footer={lastModel && lastModel.n_legal > TOP_N ? t("chess.moreMoves", { n: lastModel.n_legal - TOP_N, r: (1 - topMass(lastModel.probabilities, TOP_N)).toFixed(2) }) : " "}
             dim={thinking} />
-          <DistributionPanel id="evaluation" title="Who is better in this position?"
-            headline={lastModel ? `${lastModel.evaluation.toFixed(2)} of 4` : undefined} detail={lastModel?.evalConfidence !== undefined ? `confidence ${lastModel.evalConfidence.toFixed(2)}` : undefined}
-            rows={EVAL_LEVELS.map((l, i) => ({ key: `${i}  ${l}`, p: lastModel?.evalProbabilities[String(i)] ?? 0, top: !!lastModel && i === Math.round(lastModel.evaluation) }))} nRows={EVAL_LEVELS.length}
+          <DistributionPanel id="evaluation" title={t("chess.evalTitle")}
+            headline={lastModel ? `${lastModel.evaluation.toFixed(2)} of 4` : undefined} detail={lastModel?.evalConfidence !== undefined ? t("chess.confidence", { c: lastModel.evalConfidence.toFixed(2) }) : undefined}
+            rows={evalLevels(lang).map((l, i) => ({ key: `${i}  ${l}`, p: lastModel?.evalProbabilities[String(i)] ?? 0, top: !!lastModel && i === Math.round(lastModel.evaluation) }))} nRows={evalLevels(lang).length}
             dim={thinking} />
           <p className="h-5 text-[13px] tabular-nums text-muted-foreground">
-            {lastModel ? `${lastModel.latency_ms.toFixed(0)} ms · ${lastModel.input_tokens} input tokens · ${lastModel.n_legal} options` : "The model's distribution appears here after its first move."}
+            {lastModel ? `${lastModel.latency_ms.toFixed(0)} ms · ${lastModel.input_tokens} ${t("kev.inputTokens")} · ${lastModel.n_legal} ${t("chess.options")}` : t("chess.distAppears")}
           </p>
 
           <div className="rounded-md border border-border bg-card px-4 py-3">
-            <p className="text-[12px] text-muted-foreground">Moves</p>
+            <p className="text-[12px] text-muted-foreground">{t("chess.movesLabel")}</p>
             <ol ref={movesRef} className="mt-1 grid h-40 grid-cols-[2.5rem_1fr_1fr] content-start gap-y-0.5 overflow-y-auto font-mono text-[13px] tabular-nums">
               {Array.from({ length: Math.ceil((game?.moves.length ?? 0) / 2) }, (_, i) => (
                 <li key={i} className="contents">
@@ -268,22 +272,22 @@ export function ChessGame() {
                   <span>{game!.moves[2 * i + 1]?.san ?? ""}</span>
                 </li>
               ))}
-              {game && game.moves.length === 0 && <li className="col-span-3 font-sans text-muted-foreground">No moves yet.</li>}
+              {game && game.moves.length === 0 && <li className="col-span-3 font-sans text-muted-foreground">{t("chess.noMoves")}</li>}
             </ol>
           </div>
         </div>
       </div>
 
       <div className="mt-8 rounded-md border border-border bg-card px-4 py-3">
-        <p className="text-[12px] text-muted-foreground">Previous games (stored in this browser)</p>
+        <p className="text-[12px] text-muted-foreground">{t("chess.prevGames")}</p>
         {finished.length === 0 ? (
-          <p className="mt-1 text-[13px] text-muted-foreground">None yet. Finished games are listed here.</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">{t("chess.noneYet")}</p>
         ) : (
           <ul className="mt-1 grid gap-x-8 text-[13px] md:grid-cols-2">
             {[...finished].reverse().slice(0, 8).map((g) => (
               <li key={g.id} className="flex items-baseline justify-between gap-3 py-0.5">
-                <span className="text-muted-foreground">{new Date(g.startedAt).toLocaleString()} · {MODES.find((m) => m.value === g.mode)?.label}</span>
-                <span className="tabular-nums">{g.moves.length} plies · {g.result}</span>
+                <span className="text-muted-foreground">{new Date(g.startedAt).toLocaleString()} · {t(MODES.find((m) => m.value === g.mode)!.key)}</span>
+                <span className="tabular-nums">{g.moves.length} {t("chess.plies")} · {g.result}</span>
               </li>
             ))}
           </ul>

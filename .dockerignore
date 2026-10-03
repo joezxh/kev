@@ -53,8 +53,11 @@ temp/
 
 # Node 模块（前端无关）
 node_modules/
-package*.json
-playground/
+
+# Frontend (playground) — built as its own image; exclude only local build artifacts
+playground/node_modules/
+playground/.next/
+playground/.env*.local
 
 # HuggingFace 缓存
 .huggingface/
