@@ -2,12 +2,16 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
+import { CONSOLE_STRINGS } from "@/components/console/strings";
+
 export type Lang = "en" | "zh";
 
 type Dict = Record<string, { en: string; zh: string }>;
 
 // UI strings. Placeholders use {name}; pass them via t(key, params).
+// 控制台的文案合并进同一张表，保持 t() 单一入口 —— 不引入第二套 i18n。
 const dict: Dict = {
+  ...CONSOLE_STRINGS,
   // ---- kev tab ----
   "kev.tagline": { en: "Typed questions in, probabilities out, one forward pass.", zh: "类型化问题进，概率分布出，一次前向传播。" },
   "kev.intro": {

@@ -26,7 +26,10 @@ export type PermuteResponse = {
   spread: Record<string, number>;
 };
 
-const KEV_API_KEY = process.env.NEXT_PUBLIC_KEV_API_KEY ?? "nv2NVak2oaTx5fk6BjKBrmu8EC9wCA4D";
+// 凭据只从编排服务的进程环境变量读，浏览器这一侧**不持有任何 key**。
+// 之前这里有一个硬编码的真实 key 作为 NEXT_PUBLIC_ 的兜底 —— 它随构建产物下发到
+// 客户端，等于公开。编排层的 /console/api/config 只回「是否已配置」的布尔态。
+const KEV_API_KEY = process.env.NEXT_PUBLIC_KEV_API_KEY ?? "";
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const headers: Record<string, string> = { "content-type": "application/json" };
