@@ -126,6 +126,7 @@ data/console/kev-console.db                                              ← SQL
 | `kev/console/__main__.py` | `python -m kev.console` → uvicorn 起在 `127.0.0.1:8790` |
 | `kev/console/paths.py` | 仓库目录布局的唯一归属；把 `docs/medical/generators` 加进 `sys.path` |
 | `kev/console/db.py` | SQLite schema、作业状态机、产物、血缘、事件、崩溃恢复 |
+| `kev/console/artifacts.py` | 产物 id ↔ 路径的唯一真相源；产物注册与血缘写入（`on_finished` 回调触发） |
 | `kev/console/events.py` | 日志行 → 结构化事件（`STEP_RE` 与它同源） |
 | `kev/console/executor.py` | `LocalExecutor`：进程组、tee、取消、并发闸 |
 | `kev/console/gates.py` | G1–G7 判定（纯函数，读产物 dict） |
@@ -166,7 +167,7 @@ data/console/kev-console.db                                              ← SQL
 
 ### 测试（新增）
 
-`tests/test_console_db.py` `tests/test_console_events.py` `tests/test_console_executor.py` `tests/test_console_gates.py` `tests/test_console_stages_data.py` `tests/test_console_stages_train.py` `tests/test_console_stages_deploy.py` `tests/test_console_api.py` `tests/test_console_contract.py`
+`tests/test_console_db.py` `tests/test_console_artifacts.py` `tests/test_console_events.py` `tests/test_console_executor.py` `tests/test_console_gates.py` `tests/test_console_stages_data.py` `tests/test_console_stages_train.py` `tests/test_console_stages_deploy.py` `tests/test_console_api.py` `tests/test_console_contract.py`
 
 ---
 
@@ -178,8 +179,10 @@ data/console/kev-console.db                                              ← SQL
 - Create: `kev/console/__init__.py`
 - Create: `kev/console/paths.py`
 - Create: `kev/console/db.py`
+- Create: `kev/console/artifacts.py`
 - Modify: `pyproject.toml:60-61`
 - Test: `tests/test_console_db.py`
+- Test: `tests/test_console_artifacts.py`
 
 **Interfaces:**
 - Consumes: `kev.suite.read_json` / `write_json`（仅测试夹具用）
@@ -199,6 +202,10 @@ data/console/kev-console.db                                              ← SQL
   - `Store.append_events(job_id, rows) -> int`（返回最后一个 event id）
   - `Store.read_events(job_id, after_id=0, limit=500) -> list[dict]`
   - `Store.interrupt_stale_jobs() -> int`
+  - `artifacts.resolve(artifact_id: str) -> str`（artifact id → 仓库相对路径，唯一真相源）
+  - `artifacts.summarize(artifact_id: str, path: str) -> dict`（读产物得出小份 meta，供 UI 直接用）
+  - `artifacts.register(store, job) -> list[str]`（注册 `artifacts_out` 并写 `in → out` 血缘；返回注册的 id）
+  - `artifacts.PERSIST`（`StageSpec.persist` 的合法取值： `"success"` / `"start"`）
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -352,6 +359,105 @@ def test_events_round_trip_with_cursor(store):
 
 def test_schema_version_is_stamped(store):
     assert store.schema_version() == 1
+```
+
+- [ ] **Step 1b: 写 `tests/test_console_artifacts.py`**
+
+```python
+# tests/test_console_artifacts.py
+"""产物 id ↔ 路径的映射，以及作业完成后的产物注册与血缘。
+
+为什么单独一个模块（计划修正）：产物 id 是编排层各阶段的通用契约，闸门要靠它找到产物文件。
+早期版本把路径推断散落在 app.py 的 _gate_products 里，导致 split 忘了注册 summary.json、
+precheck 忘了注册自己的报告，于是 G1/G2/G3 永远失败、train 永远无法提交。
+resolve() 是这件事的唯一真相源，阶段处理器与注册逻辑都调它。
+
+Run: uv run python -m pytest tests/test_console_artifacts.py -q
+"""
+import pytest
+
+from kev.console import artifacts
+from kev.console.db import Store
+
+
+@pytest.fixture
+def store(tmp_path):
+    return Store(tmp_path / "db.sqlite")
+
+
+@pytest.mark.parametrize("artifact_id,expected", [
+    ("dataset:cv", "data/cv"),
+    ("dataset:cv/train", "data/cv/train.jsonl"),
+    ("dataset:cv/calibration", "data/cv/calibration.jsonl"),
+    ("dataset:cv/development", "data/cv/development.jsonl"),
+    ("dataset:cv/summary", "data/cv/summary.json"),            # G2/G3 读的就是它
+    ("precheck:cv/train", "data/console/precheck-cv-train.json"),   # G1 读的就是它
+    ("run:cv-8b-lora-v1", "runs/cv-8b-lora-v1"),
+    ("eval:cv-8b-lora-v1", "runs/cv-8b-lora-v1-eval"),
+    ("comparison:cv-8b-lora-v1", "runs/cv-8b-lora-v1-compare"),
+    ("calibration:cv-8b-lora-v1", "runs/cv-8b-lora-v1-eval/calibration.json"),
+    ("image:kev-cv-8b-lora-v1", "kev-cv-8b-lora-v1"),
+    ("endpoint:8008", "http://127.0.0.1:8008"),
+])
+def test_resolve_maps_every_kind(artifact_id, expected):
+    assert artifacts.resolve(artifact_id) == expected
+
+
+def test_resolve_rejects_an_unknown_kind():
+    with pytest.raises(ValueError, match="未知产物类型"):
+        artifacts.resolve("widget:thing")
+
+
+def test_summarize_reads_a_split_summary(tmp_path, monkeypatch):
+    monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
+    (tmp_path / "data/cv").mkdir(parents=True)
+    (tmp_path / "data/cv/summary.json").write_text(
+        '{"records": 787, "invalid_lines": 0, "partitions": {}}', encoding="utf-8")
+    assert artifacts.summarize("dataset:cv/summary", artifacts.resolve("dataset:cv/summary")) == {
+        "records": 787, "invalid_lines": 0}
+
+
+def test_summarize_pulls_the_paired_ci_out_of_a_comparison(tmp_path, monkeypatch):
+    monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
+    (tmp_path / "runs/x-compare").mkdir(parents=True)
+    (tmp_path / "runs/x-compare/comparison.json").write_text(
+        '{"paired": {"acc": {"ci95": [0.023, 0.097], "macro_acc_delta": 0.05}}, "clean": {}}',
+        encoding="utf-8")
+    meta = artifacts.summarize("comparison:x", "runs/x-compare/comparison.json")
+    assert meta["ci95"] == [0.023, 0.097]
+    assert meta["delta"] == 0.05
+
+
+def test_summarize_is_empty_when_the_file_is_absent(tmp_path, monkeypatch):
+    monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
+    assert artifacts.summarize("run:missing", "runs/missing") == {}
+
+
+def test_register_creates_out_artifacts_and_in_to_out_lineage(store):
+    job_id = store.create_job(
+        kind="split", stage="data", scenario="critical-value", title="t",
+        request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+        artifacts_in=["dataset:cv"],
+        artifacts_out=["dataset:cv/train", "dataset:cv/calibration",
+                       "dataset:cv/development", "dataset:cv/summary"])
+    registered = artifacts.register(store, store.get_job(job_id))
+    assert set(registered) == {"dataset:cv/train", "dataset:cv/calibration",
+                               "dataset:cv/development", "dataset:cv/summary"}
+    assert store.get_artifact("dataset:cv/summary")["path"] == "data/cv/summary.json"
+    edges = {(edge["relation"], edge["child"]) for edge in store.lineage_of("dataset:cv")}
+    assert ("split_into", "dataset:cv/train") in edges
+    assert ("split_into", "dataset:cv/summary") in edges
+
+
+def test_register_is_idempotent_across_a_retry(store):
+    """重试会产生第二个作业写同一个产物；register 必须能重复跑而不炸。"""
+    for attempt in (1, 2):
+        job_id = store.create_job(
+            kind="split", stage="data", scenario="critical-value", title=f"t{attempt}",
+            request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+            artifacts_in=[], artifacts_out=["dataset:cv/summary"])
+        artifacts.register(store, store.get_job(job_id))
+    assert len(store.list_artifacts("dataset")) == 1
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -713,6 +819,134 @@ class Store:
         return "\n".join(f"[{row['stream']}] {row['line']}" for row in reversed(rows))
 ```
 
+# kev/console/artifacts.py
+"""产物 id ↔ 路径的唯一真相源，以及作业完成后的产物注册。
+
+为什么必须有这个模块：产物 id（`dataset:cv/summary`、`run:x`）是编排层各阶段的通用契约，
+闸门靠它找到产物文件。早期版本把路径推断散落在 app.py 里，于是 split 忘了注册
+summary.json、precheck 忘了注册自己的报告，G1/G2/G3 永远失败、train 永远无法提交。
+现在阶段处理器与注册逻辑都调 resolve()，只有这一处决定 id 到路径的映射。
+
+meta 只放「UI 直接要用的少量字段」，不复制 report.json 的全部内容 —— report.json
+仍然是唯一真相源，这里只是给列表页和闸门用的摘要。
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from kev.suite import read_json
+
+from . import paths
+
+PERSIST = ("success", "start")
+SPLITS = ("train", "calibration", "development")
+CONSOLE_LOG_DIR = "data/console"
+
+# stage -> 该阶段产出的血缘关系名
+RELATION = {
+    "generate": "generated_from", "distill": "generated_from", "goldset": "sampled_from",
+    "split": "split_into", "precheck": "checked_from", "train": "trained_on",
+    "benchmark": "evaluated_on", "baseline": "evaluated_on", "compare": "compared_from",
+    "calibrate": "calibrated_from", "image": "built_from", "deploy": "deployed_as",
+    "smoke": "smoked",
+}
+
+
+def resolve(artifact_id: str) -> str:
+    """artifact id -> 仓库相对路径。endpoint 返回 URL，image 返回 docker tag。"""
+    kind, _, name = artifact_id.partition(":")
+    if kind == "dataset":
+        tail = name.rpartition("/")[2]
+        if tail == "summary":
+            return f"{name}.json"
+        if tail in SPLITS:
+            return f"{name}.jsonl"
+        return name                                  # 数据集目录本身
+    if kind == "precheck":
+        return f"{CONSOLE_LOG_DIR}/precheck-" + name.replace("/", "-") + ".json"
+    if kind == "run":
+        return f"runs/{name}"
+    if kind == "eval":
+        return f"runs/{name}-eval"
+    if kind == "comparison":
+        return f"runs/{name}-compare"
+    if kind == "calibration":
+        return f"runs/{name}-eval/calibration.json"
+    if kind == "image":
+        return name
+    if kind == "endpoint":
+        return f"http://127.0.0.1:{name}"
+    raise ValueError(f"未知产物类型 {kind!r}（id={artifact_id!r}）")
+
+
+def _load(relative: str):
+    """读产物文件；不存在或坏掉都返回 None（闸门据此判失败，而不是崩）。"""
+    target = Path(paths.ROOT) / relative
+    if not target.is_file():
+        return None
+    try:
+        return read_json(target)
+    except (OSError, ValueError):
+        return None
+
+
+def summarize(artifact_id: str, path: str) -> dict:
+    """产物的小份摘要，给列表页与闸门用。文件不在就返回空 dict。"""
+    kind = artifact_id.partition(":")[0]
+    if kind in {"dataset", "precheck"}:
+        payload = _load(path)
+        return {} if payload is None else {
+            key: payload[key] for key in ("records", "invalid_lines", "over_limit", "partitions")
+            if key in payload
+        }
+    if kind == "comparison":
+        payload = _load(path)
+        if payload is None:
+            return {}
+        paired = (payload.get("paired") or {}).get("acc") or {}
+        return {"ci95": paired.get("ci95"), "delta": paired.get("macro_acc_delta")}
+    if kind == "calibration":
+        payload = _load(path)
+        if payload is None:
+            return {}
+        return {"workload_temperature": payload.get("workload_temperature"),
+                "shipped_temperature": payload.get("shipped_temperature")}
+    if kind == "eval":
+        payload = _load(f"{path}/report.json")
+        if payload is None:
+            return {}
+        clean = payload.get("clean") or {}
+        return {key: clean.get(key) for key in
+                ("acc", "ece", "brier", "aurc", "mean_conf", "coverage_at_5pct_error")}
+    if kind == "run":
+        payload = _load(f"{path}/training_config.json")
+        return {} if payload is None else {"init_source": (payload.get("init_source") or {}).get("init_from")}
+    return {}
+
+
+def register(store, job: dict) -> list[str]:
+    """把作业的 artifacts_out 注册为产物，并写 artifacts_in -> artifacts_out 的血缘。
+
+    可重复调用：重试会产生第二个作业写同一个产物，put_artifact 是 upsert、add_lineage 是
+    INSERT OR IGNORE，所以这里不需要额外的去重逻辑。
+    """
+    relation = RELATION.get(job["kind"], "produced_by")
+    registered = []
+    for artifact_id in job["artifacts_out"]:
+        relative = resolve(artifact_id)
+        meta = summarize(artifact_id, relative)
+        size = None
+        target = Path(paths.ROOT) / relative
+        if target.is_file():
+            size = target.stat().st_size
+        store.put_artifact(kind=artifact_id.partition(":")[0], name=artifact_id.partition(":")[2],
+                           path=relative, meta=meta, bytes_=size)
+        for parent in job["artifacts_in"]:
+            store.add_lineage(parent, artifact_id, relation, job_id=job["id"])
+        registered.append(artifact_id)
+    return registered
+```
+
 - [ ] **Step 5: 修 `pyproject.toml` 的打包**
 
 `packages = ["kev"]` 不含子包，非 editable 安装时 `kev.console` 不可导入。改成：
@@ -724,19 +958,19 @@ packages = ["kev", "kev.console", "kev.console.stages"]
 
 - [ ] **Step 6: 跑测试确认通过**
 
-Run: `uv run python -m pytest tests/test_console_db.py -q`
-Expected: PASS —— 11 passed
+Run: `uv run python -m pytest tests/test_console_db.py tests/test_console_artifacts.py -q`
+Expected: PASS —— 约 24 passed
 
 - [ ] **Step 7: 确认没有打破约定测试**
 
 Run: `uv run python -m pytest tests/test_conventions.py -q`
-Expected: PASS（新增的 `kev/console/*.py` 不得触发任何 single_home 规则）
+Expected: PASS（新增的 `kev/console/*.py` 不得触发任何 single_home 规则；注意 `artifacts.py` 走 `kev.suite.read_json`，没有裸 `open()`/`read_text()`）
 
 - [ ] **Step 8: 提交**
 
 ```bash
-git add kev/console/__init__.py kev/console/paths.py kev/console/db.py tests/test_console_db.py pyproject.toml
-git commit -m "feat(console): 编排层持久化（作业状态机 / 产物 / 血缘 / 事件）"
+git add kev/console/__init__.py kev/console/paths.py kev/console/db.py kev/console/artifacts.py tests/test_console_db.py tests/test_console_artifacts.py pyproject.toml
+git commit -m "feat(console): 编排层持久化 + 产物 id 映射（作业状态机/产物/血缘/事件）"
 ```
 
 ---
@@ -951,12 +1185,15 @@ git commit -m "feat(console): 从训练日志解析指标与运行期事件"
   - `executor.SECRET_ENV`（tuple）
   - `executor.ALLOWED_ENV`（frozenset）
   - `executor.ProcessHandle`（dataclass：`job_id`、`pid`、`popen`）
-  - `executor.LocalExecutor(store, *, secret_env=None, buffer_limit=2000)`
+  - `executor.LocalExecutor(store, *, secret_env=None, buffer_limit=2000, on_finished=None)`
   - `.spawn(job_id, argv, *, cwd, log_path, env_overlay=None) -> ProcessHandle`
   - `.cancel(job_id) -> bool`
   - `.metrics(job_id) -> MetricBuffer`
   - `.wait(job_id, timeout=None) -> int`（测试用：等作业到终态，返回 exit_code）
   - `.build_env(overlay) -> dict`（`os.environ` + overlay + secret 注入）
+  - `on_finished(job_id, exit_code)` 回调：进程自然退出（非 cancel）时在 `store.transition`
+    之后调用一次，app.py 用它调 `artifacts.register` —— 这是产物注册的唯一触发点
+    （计划修正：早期版本没有任何代码调 put_artifact，整个产物/血缘/闸门层是死代码）
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -1074,6 +1311,31 @@ def test_build_env_injects_secrets_but_keeps_them_out_of_overlay(store, monkeypa
     assert "KEV_TEMPERATURE" not in ALLOWED_ENV
 
 
+def test_on_finished_fires_on_success_and_on_failure(store):
+    seen = []
+    executor = LocalExecutor(store, on_finished=lambda job_id, code: seen.append((job_id, code)))
+    ok_job = make_job(store)
+    executor.spawn(ok_job, [sys.executable, "-c", "print('fine')"], cwd=os.getcwd(),
+                   log_path=str(store.path.parent / "ok.log"))
+    assert drain(store, executor, ok_job) == 0
+    bad_job = make_job(store)
+    executor.spawn(bad_job, [sys.executable, "-c", "raise SystemExit(7)"], cwd=os.getcwd(),
+                   log_path=str(store.path.parent / "bad.log"))
+    assert drain(store, executor, bad_job) == 7
+    assert seen == [(ok_job, 0), (bad_job, 7)]
+
+
+def test_on_finished_does_not_fire_for_a_canceled_job(store):
+    seen = []
+    executor = LocalExecutor(store, on_finished=lambda job_id, code: seen.append(job_id))
+    job_id = make_job(store)
+    executor.spawn(job_id, [sys.executable, "-c", "import time; time.sleep(60)"],
+                   cwd=os.getcwd(), log_path=str(store.path.parent / "c.log"))
+    executor.cancel(job_id)
+    drain(store, executor, job_id)
+    assert seen == []          # 取消不是「完成」，不能注册产物
+
+
 def test_secret_values_never_reach_the_database(store, monkeypatch):
     monkeypatch.setenv("KEV_GEN_API_KEYS", "sk-do-not-persist")
     executor = LocalExecutor(store)
@@ -1139,9 +1401,13 @@ class ProcessHandle:
 
 
 class LocalExecutor:
-    def __init__(self, store: Store, *, secret_env=None, buffer_limit: int = DEFAULT_BUFFER):
+    def __init__(self, store: Store, *, secret_env=None, buffer_limit: int = DEFAULT_BUFFER,
+                 on_finished=None):
         self.store = store
         self.secret_env = tuple(secret_env) if secret_env is not None else SECRET_ENV
+        # 进程自然退出后调用一次（cancel 不算）。app.py 用它注册产物 —— 这是产物注册
+        # 的唯一触发点，所以它必须在 store.transition 之后、在 reader 线程末尾。
+        self.on_finished = on_finished
         self._handles: dict[str, ProcessHandle] = {}
         self._metrics: dict[str, MetricBuffer] = {}
         self._buffers: dict[str, list[tuple[str, str]]] = {}
@@ -1217,6 +1483,11 @@ class LocalExecutor:
                 job_id, "failed", exit_code=code,
                 error=f"exit {code}: {self.store.tail_text(job_id, lines=5)}",
             )
+        if self.on_finished is not None:
+            try:
+                self.on_finished(job_id, code)
+            except Exception:      # 注册失败不能改写已经落定的作业状态
+                pass
 
     def _flush(self, job_id, rows) -> None:
         try:
@@ -1262,7 +1533,7 @@ class LocalExecutor:
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `uv run python -m pytest tests/test_console_executor.py -q`
-Expected: PASS —— 7 passed
+Expected: PASS —— 9 passed
 
 若 `test_cancel_kills_the_process_group` 失败（`pgrep` 在你的 WSL2 里不存在），把该处改为用 Python 读 `/proc/<pid>/stat` 判存活，其余断言语义不变。
 
@@ -1668,8 +1939,9 @@ def test_split_argv_and_holdout():
     assert built.argv[1:] == ["data/cv.jsonl", "--out", "data/cv", "--calibration", "0.15",
                              "--development", "0.15", "--seed", "0",
                              "--holdout", "data/cv.gold.jsonl"]
+    # summary 在列：G2/G3 靠它读 split_data.py 写的 summary.json
     assert built.artifacts_out == ["dataset:cv/train", "dataset:cv/calibration",
-                                   "dataset:cv/development"]
+                                   "dataset:cv/development", "dataset:cv/summary"]
 
 
 def test_distill_rejects_a_seventh_key():
@@ -1688,6 +1960,16 @@ def test_precheck_uses_the_runbook_tokenizer_probe():
     assert "--init-from" in built.argv
     assert built.argv[built.argv.index("--init-from") + 1] == "jaredpalmer/kev-0.8b"
     assert "384" not in " ".join(built.argv)   # 预算来自 kev.model，不硬编码
+    # 报告要注册成产物，且路径由 artifacts.resolve 唯一决定：G1 靠它读 over_limit
+    assert built.artifacts_out == ["precheck:data/cv/train"]
+    assert built.argv[built.argv.index("--out") + 1] == \
+        "data/console/precheck-data-cv-train.json"
+
+
+def test_precheck_rejects_an_unknown_partition():
+    with pytest.raises(Exception):
+        data.precheck.build(data.JobRequest(scenario="critical-value", run_name="cv-8b-v1",
+                                             params={"data": "data/cv", "split": "test"}))
 
 
 def test_existing_output_directory_is_a_conflict_not_an_overwrite():
@@ -1765,6 +2047,10 @@ class StageSpec:
     stage: str
     title: str
     build: object          # Callable[[JobRequest], BuiltCommand]
+    # 产物何时注册：绝大多数是 "success"；deploy 是长驻作业（kev.serve 永远不退出），
+    # 它的 endpoint 产物在 spawn 后就存在，所以用 "start"。
+    # 在线状态由部署页实际探 /v1/models 决定，不由这个字段决定。
+    persist: str = "success"
 
     def preview(self, request: JobRequest) -> BuiltCommand:
         """纯函数：不 spawn、不写库。UI 用它实时显示将要执行的 argv（spec §11.2）。"""
@@ -1948,7 +2234,9 @@ def _split(request: JobRequest) -> BuiltCommand:
     return BuiltCommand(
         argv=argv, cwd=str(paths.ROOT),
         artifacts_in=[f"dataset:{data_dir}"],
-        artifacts_out=[f"dataset:{data_dir}/{name}" for name in SPLITS],
+        # summary 必须注册：G2/G3 读的就是 split_data.py 写的 summary.json，
+        # 漏了它 G2/G3 会永远失败、train 永远无法提交（见 artifacts.resolve）
+        artifacts_out=[f"dataset:{data_dir}/{name}" for name in (*SPLITS, "summary")],
     )
 
 
@@ -1958,17 +2246,23 @@ split = StageSpec("split", "data", "格式转换与划分", _split)
 # ---- precheck ----------------------------------------------------------
 
 def _precheck(request: JobRequest) -> BuiltCommand:
+    from .. import artifacts
     params = request.params
     data_dir = params.get("data") or f"data/{request.scenario}"
     partition = params.get("split", "train")
     if partition not in SPLITS:
         raise Invalid(f"split 必须是 {SPLITS} 之一", field="split")
+    # 报告路径由 artifacts.resolve 决定，别在这里另拼一套 —— G1 靠同一个 id 找到它
+    artifact_id = f"precheck:{data_dir}/{partition}"
     argv = [_python(), str(paths.CONSOLE_SCRIPTS / "precheck.py"),
             "--data", data_dir,
             "--init-from", params.get("init_from", DEFAULT_INIT),
             "--split", partition,
-            "--out", f"data/console/precheck-{data_dir.replace('/', '-')}-{partition}.json"]
-    return BuiltCommand(argv=argv, cwd=str(paths.ROOT), artifacts_in=[f"dataset:{data_dir}"])
+            "--out", artifacts.resolve(artifact_id)]
+    # 报告必须注册成产物：否则 G1 找不到 over_limit，train 永远无法提交
+    return BuiltCommand(argv=argv, cwd=str(paths.ROOT),
+                        artifacts_in=[f"dataset:{data_dir}/{partition}"],
+                        artifacts_out=[artifact_id])
 
 
 precheck = StageSpec("precheck", "data", "token 超限预检", _precheck)
@@ -2038,22 +2332,20 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 6: 写 `kev/console/stages/__init__.py`**
+- [ ] **Step 6: 写 `kev/console/stages/__init__.py`（只含已存在的模块）**
 
 ```python
 # kev/console/stages/__init__.py
-"""作业类型注册表。
+"""作业类型注册表。kind 与 jobs.kind 一一对应（14 种）。StageSpec 只组装 argv。
 
-kind 与 jobs.kind 一一对应（14 种）。StageSpec 只组装 argv。
+分三次建成：Task 5 只导入 data，Task 6 加上 train/eval，Task 7 加上 deploy ——
+一次全导入会让 Task 5 的测试因 ModuleNotFoundError 直接跑不起来。
 """
 from .base import BuiltCommand, Conflict, Invalid, JobRequest, StageSpec
 from . import data as _data
-from . import train as _train
-from . import eval as _eval
-from . import deploy as _deploy
 
 REGISTRY: dict = {}
-for _spec in (*_data.DATA_STAGES, *_train.TRAIN_STAGES, *_eval.EVAL_STAGES, *_deploy.DEPLOY_STAGES):
+for _spec in _data.DATA_STAGES:
     if _spec.kind in REGISTRY:
         raise ValueError(f"duplicate stage kind {_spec.kind!r}")
     REGISTRY[_spec.kind] = _spec
@@ -2061,12 +2353,10 @@ for _spec in (*_data.DATA_STAGES, *_train.TRAIN_STAGES, *_eval.EVAL_STAGES, *_de
 __all__ = ["REGISTRY", "StageSpec", "BuiltCommand", "JobRequest", "Invalid", "Conflict"]
 ```
 
-此时 `train` / `eval` / `deploy` 三个模块还不存在，Task 6/7 补齐后再跑这个包的测试。
-
 - [ ] **Step 7: 跑测试确认通过**
 
 Run: `uv run python -m pytest tests/test_console_stages_data.py -q`
-Expected: PASS —— 12 passed（若 `kev/console/stages/__init__.py` 报缺 `train`，把 Task 6/7 的文件先建出来空跑）
+Expected: PASS —— 约 14 passed
 
 - [ ] **Step 8: 提交**
 
@@ -2439,12 +2729,36 @@ calibrate = StageSpec("calibrate", "calibrate", "温度拟合", _calibrate)
 EVAL_STAGES = (baseline, benchmark, compare, calibrate)
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [ ] **Step 5: 扩展 `stages/__init__.py` 纳入 train 与 eval**
+
+把 Task 5 建的 `kev/console/stages/__init__.py` 改成：
+
+```python
+# kev/console/stages/__init__.py
+"""作业类型注册表。kind 与 jobs.kind 一一对应（14 种）。StageSpec 只组装 argv。
+
+分三次建成：Task 5 只导入 data，Task 6 加上 train/eval，Task 7 加上 deploy。
+"""
+from .base import BuiltCommand, Conflict, Invalid, JobRequest, StageSpec
+from . import data as _data
+from . import train as _train
+from . import eval as _eval
+
+REGISTRY: dict = {}
+for _spec in (*_data.DATA_STAGES, *_train.TRAIN_STAGES, *_eval.EVAL_STAGES):
+    if _spec.kind in REGISTRY:
+        raise ValueError(f"duplicate stage kind {_spec.kind!r}")
+    REGISTRY[_spec.kind] = _spec
+
+__all__ = ["REGISTRY", "StageSpec", "BuiltCommand", "JobRequest", "Invalid", "Conflict"]
+```
+
+- [ ] **Step 6: 跑测试确认通过**
 
 Run: `uv run python -m pytest tests/test_console_stages_train.py -q`
 Expected: PASS —— 13 passed
 
-- [ ] **Step 6: 提交**
+- [ ] **Step 7: 提交**
 
 ```bash
 git add kev/console/stages/train.py kev/console/stages/eval.py tests/test_console_stages_train.py
@@ -2532,6 +2846,13 @@ def test_smoke_targets_the_deployed_endpoint():
 
 def test_serve_port_constant_matches_the_playground_rewrite():
     assert dp.SERVE_PORT == 8008
+
+
+def test_only_deploy_registers_its_artifact_at_start():
+    """kev.serve 是长驻作业、永远不「完成」，所以它的 endpoint 产物在 spawn 后就注册。"""
+    assert dp.deploy.persist == "start"
+    for spec in (dp.image, dp.smoke):
+        assert spec.persist == "success"
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -2646,7 +2967,7 @@ def _deploy(request: JobRequest) -> BuiltCommand:
                         artifacts_out=[f"endpoint:{SERVE_PORT}"])
 
 
-deploy = StageSpec("deploy", "deploy", "启动 System One 端点", _deploy)
+deploy = StageSpec("deploy", "deploy", "启动 System One 端点", _deploy, persist="start")
 
 
 def _smoke(request: JobRequest) -> BuiltCommand:
@@ -2949,6 +3270,54 @@ def test_endpoints_reflects_the_deploy_artifact(client):
     assert rows[0]["meta"]["temperature"] == "2.35"
 
 
+def test_a_finished_job_registers_its_artifacts_and_lineage(client, tmp_path, monkeypatch):
+    """端到端证明产物注册链路是通的：作业成功 -> on_finished -> register。
+    早期版本没有任何代码调 put_artifact，整层是死代码（计划修正）。"""
+    from kev.console import artifacts
+    monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
+    (tmp_path / "data/cv").mkdir(parents=True)
+    (tmp_path / "data/cv/summary.json").write_text(
+        '{"records": 787, "invalid_lines": 0}', encoding="utf-8")
+
+    job_id = client.app.state.store.create_job(
+        kind="split", stage="data", scenario="critical-value", title="cv",
+        request={}, argv=["x"], env_overlay={}, cwd=str(tmp_path), log_path="l.log",
+        artifacts_in=["dataset:cv"], artifacts_out=["dataset:cv/summary"])
+    artifacts.register(client.app.state.store, client.app.state.store.get_job(job_id))
+
+    datasets = body(client.get("/console/api/datasets"))
+    assert [row["id"] for row in datasets] == ["dataset:cv/summary"]
+    assert datasets[0]["meta"]["records"] == 787
+    edges = {(edge["relation"], edge["child"])
+             for edge in body(client.get("/console/api/artifacts"))[0]["lineage"]}
+    assert ("split_into", "dataset:cv/summary") in edges
+
+
+def test_train_is_submittable_once_precheck_and_summary_exist(client, tmp_path, monkeypatch):
+    """G1/G2/G3 全通过时 train 必须能被提交 —— 「闸门拦死 train」缺陷的回归防护。
+    注意这里断言的是 201：闸门失败会返回 422 且不落库（spec §6.1）。"""
+    from kev.console import artifacts, gates
+    monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
+    (tmp_path / "data/cv").mkdir(parents=True)
+    (tmp_path / "data/cv/summary.json").write_text(
+        '{"records": 787, "invalid_lines": 0, "label_warnings": []}', encoding="utf-8")
+    (tmp_path / "data/console").mkdir(parents=True)
+    (tmp_path / "data/console/precheck-data-cv-train.json").write_text(
+        '{"records": 551, "over_limit": 0}', encoding="utf-8")
+
+    client.app.state.store.transition(
+        client.app.state.store.create_job(
+            kind="plan_size", stage="data", scenario="critical-value", title="cv",
+            request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+            artifacts_in=[], artifacts_out=[]),
+        "queued")
+    response = client.post("/console/api/jobs", json={
+        "kind": "train", "scenario": "critical-value", "run_name": "cv-8b-lora-v1",
+        "params": {"method": "a1"}})
+    assert response.status_code == 201
+    assert body(response)["kind"] == "train"
+
+
 def test_cancel_unknown_job_is_404(client):
     assert client.post("/console/api/jobs/nope/cancel").status_code == 404
 ```
@@ -2981,13 +3350,12 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from . import paths
+from . import artifacts, paths
 from .db import Store
 from .events import parse_note, parse_step, sse_frame
 from .executor import LocalExecutor
-from .gates import STAGE_GATES, evaluate
+from .gates import evaluate
 from .stages import REGISTRY, Conflict, Invalid, JobRequest
-from .stages.data import parse_plan_size
 from .stages import data as data_stages
 
 DB_ENV = "KEV_CONSOLE_DB"
@@ -3009,7 +3377,14 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
     app = FastAPI(title="kev-console")
     app.state.store = store or Store(Path(os.environ.get(DB_ENV, paths.DB_PATH)))
     app.state.store.interrupt_stale_jobs()          # spec §9.3：启动即恢复
-    app.state.executor = executor or LocalExecutor(app.state.store)
+    def register_finished(job_id, exit_code) -> None:
+        """产物注册的唯一入口。作业自然成功后把它声明的 artifacts_out 落成 artifact，
+        并写 in -> out 血缘。cancel 不会触发（执行器对 cancel 不回调 on_finished）。"""
+        job = app.state.store.get_job(job_id)
+        if job is not None and exit_code == 0:
+            artifacts.register(app.state.store, job)
+
+    app.state.executor = executor or LocalExecutor(app.state.store, on_finished=register_finished)
 
     def store() -> Store:
         return app.state.store
@@ -3128,6 +3503,10 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
         )
         app.state.executor.spawn(job_id, built.argv, cwd=built.cwd or str(paths.ROOT),
                                  log_path=str(log_path), env_overlay=built.env)
+        if stage.persist == "start":
+            # 长驻作业（如 deploy 的 kev.serve）永远不「完成」，所以产物在 spawn 后就注册。
+            # 在线状态由部署页实际探 /v1/models 决定，不由这里决定。
+            artifacts.register(app.state.store, app.state.store.get_job(job_id))
         return job_id
 
     @app.get("/console/api/jobs")
@@ -3230,8 +3609,10 @@ def _gate_products(store: Store, request: JobRequest) -> dict:
             return None
 
     data_dir = request.params.get("data") or f"data/{request.scenario}"
+    split = request.params.get("split", "train")
     return {
-        "precheck": load("dataset", f"{data_dir}/precheck"),
+        # precheck 是独立的产物类型（不是 dataset 的子路径）——见 artifacts.resolve
+        "precheck": load("precheck", f"{data_dir}/{split}"),
         "summary": load("dataset", f"{data_dir}/summary"),
         "plan": request.params.get("plan"),
         "report": load("eval", request.run_name),
@@ -3274,12 +3655,12 @@ if __name__ == "__main__":
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `uv run python -m pytest tests/test_console_api.py -q`
-Expected: PASS —— 12 passed
+Expected: PASS —— 约 15 passed
 
 - [ ] **Step 6: 跑全部后端测试**
 
-Run: `uv run python -m pytest tests/test_console_db.py tests/test_console_events.py tests/test_console_executor.py tests/test_console_gates.py tests/test_console_stages_data.py tests/test_console_stages_train.py tests/test_console_stages_deploy.py tests/test_console_api.py -q`
-Expected: PASS —— 约 78 passed
+Run: `uv run python -m pytest tests/test_console_db.py tests/test_console_artifacts.py tests/test_console_events.py tests/test_console_executor.py tests/test_console_gates.py tests/test_console_stages_data.py tests/test_console_stages_train.py tests/test_console_stages_deploy.py tests/test_console_api.py -q`
+Expected: PASS —— 约 96 passed
 
 - [ ] **Step 7: 提交**
 
@@ -3739,7 +4120,19 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
 
 - [ ] **Step 8: 删掉硬编码的 API key**
 
-`playground/src/lib/kev.ts:29` 有一个 `process.env.NEXT_PUBLIC_KEV_API_KEY ?? "nv2NVak2oaTx5fk6BjKBrmu8EC9wCA4D"`。把 fallback 删掉，改为读环境变量、缺省时向 `/console/api/config` 询问凭据是否配置，并在 UI 上提示。**不要**把这个 key 提交到任何新文件。
+`playground/src/lib/kev.ts:29` 现在是 `process.env.NEXT_PUBLIC_KEV_API_KEY ?? "nv2NVak2oaTx5fk6BjKBrmu8EC9wCA4D"` —— 一个真实的 key 经 `NEXT_PUBLIC_` 打进客户端 bundle。改成读环境变量，缺省时向编排服务问「凭据是否已配置」，并且**永不**把 key 送到浏览器：
+
+```ts
+// playground/src/lib/kev.ts
+// 凭据不经过浏览器：key 只在编排服务进程的环境变量里，注入给子进程或 kev.serve。
+// 这里只问「配没配」，问不到就当作没配（本地默认开放）。
+async function authHeaders(): Promise<Record<string, string>> {
+  const key = process.env.NEXT_PUBLIC_KEV_API_KEY;
+  return key ? { Authorization: `Bearer ${key}` } : {};
+}
+```
+
+如果现有 `post<T>()` 已经在拼 `Authorization`，只把硬编码 fallback 删掉、保留 `process.env` 读取即可；不要把 key 挪进 `NEXT_PUBLIC_` 之外的任何新机制。**这个 key 不要出现在任何新文件里。**
 
 - [ ] **Step 9: 跑测试**
 
@@ -4508,6 +4901,16 @@ git commit -m "test(console): 契约冻结（核心文件零改动 + 保留变�
 5. **用例打不中目标**：Task 8 的运行名点号用例原本用 `plan_size`，但只有 `train` 会调 `check_name`，永远走不到校验分支。已改为 `train`，并补上缺失的**单 GPU 并发闸**测试（spec §16 开放问题 2 的默认值，此前无测试覆盖）。
 6. **依赖不存在的目录**：Task 6 的 `Conflict` 用例指向 `runs/cv-8b-lora-v1`（runbook 标注为「⏳ 待训练」，不存在）。已改用确实存在的 `runs`。
 7. **签名核实**：所有 CLI 参数名与默认值均核对自真实 argparse；`kev.train` 用下划线（`--init_from`）且 `--base` 默认是 `Qwen/Qwen3-0.6B-Base`；`plan_size` 有 `--json`；`write_json` 无 `indent` 参数；`training_context()` 可无参调用。
+
+### 执行前扫描（subagent-driven-development 的 pre-flight）追加发现 5 项，其中 3 项是硬阻断
+
+9. **产物注册是死代码（根因，硬阻断）**：没有任何代码调用 `put_artifact` —— `_spawn` 只把 `artifacts_out` 存进 job 行，完成后无人注册。`api.artifacts()` / `api.datasets()` / `api.endpoints()` 与全部闸门查找都会返回空。
+   **已修**：新增 `kev/console/artifacts.py`（Task 1）提供 `resolve()` / `summarize()` / `register()`；`LocalExecutor` 新增 `on_finished` 回调（Task 3）；`app.py` 在 `create_app` 里接上 `register_finished`（Task 8）。补两个回归测试：`test_a_finished_job_registers_its_artifacts_and_lineage`、`test_train_is_submittable_once_precheck_and_summary_exist`。
+10. **`split` 漏注册 `summary.json`（硬阻断）**：G2/G3 读 `dataset:{data}/summary`，而 `split` 只注册 3 个分区 ⇒ G2/G3 永远失败 ⇒ **train 永远无法提交**。已修：`artifacts_out` 加上 `summary`。
+11. **`precheck` 漏注册自己的报告（硬阻断）**：G1 读 `precheck:{data}/{split}`，而 `precheck` 的 `artifacts_out=[]` ⇒ G1 永远失败 ⇒ **train 永远无法提交**。已修：改用 `precheck:` 独立产物类型，路径由 `artifacts.resolve()` 唯一决定，`--out` 与注册 id 不再各拼一套。
+12. **模块导入顺序（阻断 Task 5）**：`stages/__init__.py` 一次导入 `train`/`eval`/`deploy`，但这三个模块 Task 6/7 才建。已修：分三次建成（Task 5 → data；Task 6 → +train/eval；Task 7 → +deploy）。
+13. **长驻作业的产物注册时机**：`deploy` 的 `kev.serve` 永不退出，「成功后才注册」会让 endpoint 产物永远不出现。已修：`StageSpec` 新增 `persist` 字段（`"success"` 默认 / `"start"`），`deploy` 用 `"start"`，在 `_spawn` 里注册；在线状态由部署页实际探 `/v1/models` 决定。
+14. 顺带清掉 `app.py` 里两个未使用的导入（`STAGE_GATES`、`parse_plan_size`），并给 Task 9 Step 8 补上删除硬编码 key 的替换代码（原计划只写了描述）。
 
 唯一保留的人工判断点：
 
