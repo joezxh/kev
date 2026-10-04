@@ -13,6 +13,8 @@
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
+    // Node 的 --experimental-strip-types 要求 import 带 .ts 扩展名，与 bundler 模式默认禁止该写法冲突。
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",

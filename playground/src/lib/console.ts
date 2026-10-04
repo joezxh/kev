@@ -136,16 +136,23 @@ export function subscribeStream(
     onStatus?: (status: { status: JobStatus; exit_code: number | null }) => void;
   },
 ): () => void {
-  const bind = (name: string, handler?: (data: unknown) => void) => {
-    if (!handler) return;
-    source.addEventListener(name, ((event: MessageEvent<string>) =>
-      handler(JSON.parse(event.data))) as EventListener);
-  };
-  bind("log", handlers.onLog && ((d) => handlers.onLog!(d as { id: number })));
-  bind("metric", handlers.onMetric && ((d) => handlers.onMetric!(d as Metric)));
-  bind("status", handlers.onStatus && ((d) => {
-    handlers.onStatus!(d as { status: JobStatus });
-    source.close();
-  }));
+  // 每个事件单独绑一次：JSON.parse 的结果需要断言到各自的具体形状，
+  // 走同一个泛型 bind 会让 TS 只推导出 { id: number } 然后在调用点报错。
+  if (handlers.onLog) {
+    source.addEventListener("log", ((event: MessageEvent<string>) =>
+      handlers.onLog!(JSON.parse(event.data) as { id: number; line: string; stream: string })
+    ) as EventListener);
+  }
+  if (handlers.onMetric) {
+    source.addEventListener("metric", ((event: MessageEvent<string>) =>
+      handlers.onMetric!(JSON.parse(event.data) as Metric)
+    ) as EventListener);
+  }
+  if (handlers.onStatus) {
+    source.addEventListener("status", ((event: MessageEvent<string>) => {
+      handlers.onStatus!(JSON.parse(event.data) as { status: JobStatus; exit_code: number | null });
+      source.close();
+    }) as EventListener);
+  }
   return () => source.close();
 }
