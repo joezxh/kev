@@ -74,15 +74,46 @@
 
 | 方案 | 描述 | 结论 |
 | --- | --- | --- |
-| A 薄壳步骤驱动器 | 后端只做「SQLite 作业表 + `run_matrix.steps()` 展开 + SSE」 | **采纳为主体** |
+| A 薄壳步骤驱动器 | 后端只做「SQLite 作业表 + 阶段处理器组装 argv + SSE」 | **采纳为主体** |
 | B Artifact 血缘图 | 一切皆产物与 transition | **采纳为数据模型**（`artifacts` + `lineage` 两表） |
 | C Pipeline 定义驱动 + 向导 | 前端定义 pipeline，后端解释执行 | **采纳为首次引导入口** |
 
-选 A 为主体的理由：`run_matrix.steps()` 已经是验证过的步骤驱动器，返回 `(name, argv, env)` 三元组并支持 `--dry-run` / `--start-from`，重造轮子会引入第二套参数语义。
+选 A 为主体的理由：把「跑哪个命令」与「命令跑出来什么」彻底分开，后端只做编排，不碰阈值表与指标算法。
 
-补 B 的理由：医疗场景必须可追溯，而 `run_matrix` 只覆盖编排，不记录「这份数据来自哪次作业」。
+补 B 的理由：医疗场景必须可追溯，而单靠作业表记不住「这份数据来自哪次作业」。
 
 补 C 的理由：新用户面对 14 种作业需要引导，但向导不能成为唯一入口（无法中途改参、无法回看历史）。
+
+### 3.2.1 `run_matrix.steps()` 的复用边界（实测核对后的修正）
+
+初稿打算直接用 `docs/medical/generators/run_matrix.py::steps()` 展开作业 DAG。**实测后发现它只对纯本地前三步有效**：
+
+`steps(scenario, sizes, data, version, python, secret)`（`run_matrix.py:51-79`）返回的 `(name, argv, env)` 里：
+
+| 步骤 | 它发的命令 | 本地路径能否复用 |
+| --- | --- | --- |
+| `plan_size` | `plan_size.py <spec> --baseline-acc 0.75` | **能**，原样复用 |
+| `generate` | `gen_<scenario>.py --n 787 --out <data>.jsonl --seed 0` | **能**，原样复用 |
+| `split` | `split_data.py <data>.jsonl --out <data>` | **能**，原样复用 |
+| `validate_{size}` | `modal run kev_modal.py::validate` | **不能** —— 是 Modal 路径 |
+| `train_{size}` | `modal run kev_modal.py::train` | **不能** —— 是 Modal 路径 |
+| `compare` | `modal run kev_modal.py::compare` | **不能** —— 是 Modal 路径 |
+| `deploy_{size}` | `modal deploy kev_modal.py` | **不能** —— 是 Modal 路径 |
+
+本设计走**本地路径**（§3.3），所以后四类必须自建 `kev.train` / `kev.benchmark` / `kev.compare` / `kev.serve` 的 argv。
+
+**真正要复用的**是 `run_matrix` 的常量与校验器，它们是「运行名规范」的唯一归属：
+
+```python
+from run_matrix import NAME_RE, SIZES, SCENARIOS, FOUR_B_ONLY, check_name
+```
+
+- `NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}")`，`check_name()` 用 **`fullmatch`**（`run_matrix.py:45`，注释明确说明用 `match` 会错误放行 `critical-value-0.8b-v1`）
+- `SIZES`：`{"8b": ("jaredpalmer/kev-0.8b", "kev-{scenario}-8b", 8, "4e-5…"), "4b": (...)}`
+- `SCENARIOS`：从 `docs/medical/specs/*.json` 的 stem 动态得出
+- `FOUR_B_ONLY = {"icd-coding"}`：`icd-coding` 传 8b 会被拒
+
+另可直接复用前三个步骤的 argv **形状**（`--n` / `--out` / `--seed` 的确切拼写与位置），避免第二套参数语义。
 
 ### 3.3 编排服务整体跑在 WSL2 内
 
