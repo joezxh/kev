@@ -666,3 +666,12 @@ deploy/runs/
 # 说明见 docs/medical/README.md 与 docs/medical/distill/README.md。
 data/
 medical-data/
+
+# ---- kev console（医疗微调控制台）----
+# 编排层的 SQLite 与作业日志。日志是真相源但体积大且含训练输出，不入库；
+# database 会记录本机绝对路径与凭据的「是否已配置」状态，更不该入库。
+data/console/
+*.db
+*.db-wal
+*.db-shm
+playground/.next/
