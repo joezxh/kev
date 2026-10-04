@@ -5026,3 +5026,47 @@ brief 里的实现代码有 5 处缺陷，被 TDD 的红灯逼出来。已由 im
 唯一保留的人工判断点：
 
 - **Task 3 的 `test_cancel_kills_the_process_group`** 用了 `pgrep`，某些 WSL2 发行版未装。失败时改用读 `/proc/<pid>/stat` 判存活，断言语义不变。
+
+### 附录 B：慢测试、超时与 Windows 既有失败（回归执行须知）
+
+回归时**不要一次性 `pytest tests/`**：两个重放型文件会把整轮拖到十几分钟且中途看似卡死。按下表单独跑并各自设超时。
+
+| 文件 | 实测 | 建议超时 | 说明 |
+| --- | --- | --- | --- |
+| `tests/test_console_*.py`（8 个） | 27.8s / 167 passed | 120s | **本次新增**，快，可整组跑 |
+| `tests/test_conventions.py` | 秒级 | 120s | 本次修过 Windows allowlist（附录 A #21） |
+| `tests/test_research.py` | 25.6s（13 failed / 66 passed） | 180s | 失败全部是既有 Windows 问题（见下） |
+| `tests/test_rounds.py` | **>10 min**，需单独跑 | **900s** | 27B 研究轮次重放，最慢 |
+
+单独跑并带超时的姿势（Windows 原生没有 `timeout` 语义的 pytest 插件，用进程等待 + 强杀）：
+
+```powershell
+$p = Start-Process -PassThru -NoNewWindow -FilePath ".venv\Scripts\python.exe" `
+     -ArgumentList "-m","pytest","tests/test_rounds.py","-q","-p","no:cacheprovider"
+if (-not $p.WaitForExit(900000)) { $p.Kill() }   # 单位毫秒
+```
+
+**两个文件不要并发跑**，也不要和 `npm run build` 并发 —— 实测并发会让两者互相饿死（`test_rounds` 10 分钟只推进 3%，构建 CPU 占用掉到 4%）。
+
+#### 既有 Windows 失败（与本次无关，已核实）
+
+本次对 `kev/` 的改动**只有 `kev/console/**` 的新增文件**，未改任何既有模块（`git diff 6bd9a68 HEAD -- kev/` 可复核）；唯一改动的既有文件是 `tests/test_conventions.py`。所以下面两类失败都是历史遗留：
+
+1. **`kev/experiment.py:14` 的 `import fcntl`** —— `fcntl` 是 POSIX-only，Windows 上 `ModuleNotFoundError`。这正是 §3.3 决定**不复用 `kev.experiment` 做编排层**、改走 `kev_modal.py` / 直调 `kev.train` 子进程的直接原因。`test_research.py` 的 13 个失败多为由此传导。
+2. **路径分隔符** —— `test_rounds.py` 断言用正斜杠，Windows 上 `rounds.trial_training()` 返回反斜杠：
+   `assert 'evals/round6/b1v2' in frozenset({'evals\\round6\\b1v2', ...})`。
+
+两者在 WSL2 / Linux 上都不会出现。**这批失败不属于本次交付范围**，修它们要动既有模块，属于独立工作。
+
+#### 构建坑：别中途强杀 `next build`
+
+`next build` 被强杀会在 `.next/lock` 留下空锁，此后所有构建都以 `Another next build process is already running` 静默挂起（CPU 掉到 ~4%，日志停在 `Running next.config.ts took 50ms`）。
+
+恢复方式按侵入性从小到大：
+
+1. 删 `.next/lock`（单文件）并确认无 `next` 残留进程；
+2. 仍挂起则整目录重命名（**不要用 `Remove-Item -Recurse`**，会触发批量删除守卫）：
+   `Rename-Item .next .next-corrupt-<日期>`，构建会重建全新缓存；
+3. 被重命名的目录**不会被 `.gitignore` 匹配**（忽略规则写的是 `.next`），会变成未跟踪目录 —— 处理完记得移出工作区或删除。
+
+实测：全新 `.next` 下 `Compiled successfully in 29.2s`，11/11 静态页生成，7 个 `/console/*` 路由全部产出。

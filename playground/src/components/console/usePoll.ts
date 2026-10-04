@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * 轻量轮询。**不引 swr / react-query** —— 本仓库没有，YAGNI（spec §11.5）：

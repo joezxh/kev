@@ -24,6 +24,7 @@ export function ArgvPreview({ kind, scenario, runName, params, className }: {
   const [outcome, setOutcome] = useState("");
   const [error, setError] = useState<string | null>(null);
   const { t } = useLang();
+  const paramsKey = JSON.stringify(params);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,7 +47,10 @@ export function ArgvPreview({ kind, scenario, runName, params, className }: {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [kind, scenario, runName, JSON.stringify(params)]);
+    // params 是个对象字面量，引用每次渲染都变；用序列化后的字符串当依赖键，
+    // 语义是「内容变了才重取」—— 这正是想要的。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, scenario, runName, paramsKey]);
 
   const text = argv ? renderArgv(argv) : "";
 
