@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: playground
+title: KEV 决策模型交互式 Playground
+scope:
+    - playground/
+source_files: []
+depends_on: []
+related_to:
+    - path: deploy

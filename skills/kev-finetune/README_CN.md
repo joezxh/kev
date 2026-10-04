@@ -24,15 +24,26 @@ npx skills add jaredpalmer/kev@kev-finetune
 
 1. **描述决策**，写在 `workload.json` 中：输入，以及 System One 形状的问题（`noul` 是非/否、`choice` 是具名选项、`score` 是有序等级）。从 `assets/workload.example.json` 开始。如果你的代码已经在调用 Jev / TypeSafe，用 `python3 scripts/extract_workload.py path/to/repo --out workload.json` 从调用点起草它。
 2. **确定数据集大小**：`python3 scripts/plan_size.py workload.json` 会告诉你要多少条记录才能让相对于已发布模型的可测量 +5 点提升（大约每记录三个问题需要 1000 条）。
-3. **获取带标签的记录**（见 `references/data-generation.md`）：
+3. **获取带标签的记录**（见 [数据获取（中文）](references/data-generation_CN.md)）：
    - 从你已有的数据：`python3 scripts/convert_data.py workload.json tickets.csv --state body --label team=dept --out data/x.real.jsonl`
    - 从 LLM：`KEV_GEN_API_KEY=... python3 scripts/generate_data.py workload.json --n 1000 --out data/x.jsonl --examples data/x.real.jsonl`
 4. **划分**：`python3 scripts/split_data.py data/x.jsonl --out data/x [--holdout data/x.real.jsonl]`。
 5. **训练 + 校准 + 打分**：`modal run scripts/kev_modal.py::train --data data/x --name x-v1 --init-from jaredpalmer/kev-4b`。打印 baseline 对比 fine-tuned、原始对比校准；写入 `runs/x-v1/result.json` 和 `errors.jsonl`。
-6. **部署**：`KEV_SERVE_SECRET=kev-serve-key KEV_SERVE_RUN=x-v1 modal deploy scripts/kev_modal.py`，然后把你的 TypeSafe 客户端的 `base_url` 指向打印出来的 URL（`references/deploy.md`）。
+6. **部署**：`KEV_SERVE_SECRET=kev-serve-key KEV_SERVE_RUN=x-v1 modal deploy scripts/kev_modal.py`，然后把你的 TypeSafe 客户端的 `base_url` 指向打印出来的 URL（[部署（中文）](references/deploy_CN.md)）。
 7. **拆除（Tear down）**：`modal run scripts/kev_modal.py::teardown --everything --yes`。
 
-在 3 和 5 之间迭代：读 `errors.jsonl`，收紧 spec 中的标注规则，加记录，作为 `x-v2` 重新训练，`modal run scripts/kev_modal.py::compare --a x-v2 --b x-v1`。`references/hill-climbing.md` 解释了每一个数字。
+在 3 和 5 之间迭代：读 `errors.jsonl`，收紧 spec 中的标注规则，加记录，作为 `x-v2` 重新训练，`modal run scripts/kev_modal.py::compare --a x-v2 --b x-v1`。[读数与迭代（中文）](references/hill-climbing_CN.md) 解释了每一个数字。
+
+## 参考文档（中文）
+
+`references/` 下的四篇文档都有简体中文译本（`*_CN.md`），顶部可在中英文之间切换：
+
+| 中文文档 | 内容 | 英文原文 |
+| --- | --- | --- |
+| [数据格式](references/data-format_CN.md) | 带标签记录的 JSONL 结构、字段规则、规模、已有标签的转换 | [data-format.md](references/data-format.md) |
+| [数据获取](references/data-generation_CN.md) | 四个带标签数据来源、标注规则、软标签、需要多少数据 | [data-generation.md](references/data-generation.md) |
+| [读数与迭代](references/hill-climbing_CN.md) | 指标表含义、如何判断增益是否真实、按收益排序的旋钮 | [hill-climbing.md](references/hill-climbing.md) |
+| [部署](references/deploy_CN.md) | Modal 端点、接入客户端、阈值、本地运行、发布与拆除 | [deploy.md](references/deploy.md) |
 
 ## Why fine-tune at all（到底为什么要微调）
 
@@ -49,6 +60,7 @@ scripts/plan_size.py          一次显著比较需要多少记录；从 result.
 scripts/split_data.py         验证 + 按状态划分（可选的真实留出）
 scripts/kev_modal.py          Modal app：validate、train、evaluate、compare、pull、publish、teardown、Serve
 references/                   data-format、data-generation、hill-climbing、deploy
+references/*_CN.md            上面四篇的简体中文译本（索引见上文「参考文档（中文）」）
 assets/workload.example.json  一份可复制的完整 spec
 ```
 

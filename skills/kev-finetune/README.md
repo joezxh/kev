@@ -66,6 +66,7 @@ scripts/plan_size.py          how many records for a significant comparison; pos
 scripts/split_data.py         validate + split by state (optional real holdout)
 scripts/kev_modal.py          Modal app: validate, train, evaluate, compare, pull, publish, teardown, Serve
 references/                   data-format, data-generation, hill-climbing, deploy
+references/*_CN.md            Simplified Chinese translations of those four (index in README_CN.md)
 assets/workload.example.json  a complete spec to copy
 ```
 

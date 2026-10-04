@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: docs_and_skills
+title: Kev 文档、医疗微调方案与 Modal Skill
+scope:
+    - docs/
+    - skills/
+source_files: []
+depends_on: []
+related_to:
+    - path: kev_library

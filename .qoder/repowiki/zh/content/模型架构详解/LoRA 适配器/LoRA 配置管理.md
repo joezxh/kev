@@ -1,3 +1,5 @@
+# LoRA 配置管理
+
 <cite>
 **本文引用的文件**   
 - [model.py](file://kev/model.py)
@@ -100,7 +102,7 @@ lora_targets 控制 LoRA 的目标模块集合，直接影响可训练参数规�
 在混合模型（Gated DeltaNet）场景下，若 lora_targets 为 all 或 attn，系统会自动追加 DeltaNet 投影层的适配：in_proj_qkv、in_proj_z、in_proj_a、in_proj_b，以及 out_proj。这样确保混合注意力的关键路径也能被 LoRA 微调。
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["开始"]) --> CheckHybrid{"是否混合模型?"}
 CheckHybrid --> |否| SelectTargets["根据 lora_targets 选择目标模块"]
 CheckHybrid --> |是| SelectTargets
@@ -150,7 +152,7 @@ ID 映射过程：
 - 最终由 get_peft_model 应用 LoRA 时，仅对这些嵌入行进行低秩更新。
 
 ```mermaid
-graph TD
+flowchart TD
 S["SPECIAL 列表:<br/><state>, <q>, <opt>, </opt>, <decide>"] --> Map["tokenizer.convert_tokens_to_ids()"]
 Map --> IDs["生成 token id 列表"]
 IDs --> Config["LoraConfig.trainable_token_indices = {embed_tokens: ids}"]

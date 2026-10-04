@@ -10,10 +10,14 @@ whole backbone instead (kev.full_ft: bf16 weights, fp32 masters; several GPUs th
 Batch size is small (variable-length records with custom masks) and gradients are accumulated over --accum micro-batches
 (per rank: a step sees accum x batch x world size records).
 """
-import argparse, contextlib, dataclasses, json, math, os, random, resource, shutil, sys, time
+import argparse, contextlib, dataclasses, json, math, os, random, shutil, sys, time
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+try:
+    import resource  # Unix only; reports peak RSS in training_metrics.json
+except ModuleNotFoundError:
+    resource = None  # Windows (e.g. native Win / smoke tests): RSS not collected
 import torch
 import torch.nn.functional as F
 from . import full_ft
@@ -671,7 +675,7 @@ def main():
                "backbone_save_seconds": round(backbone_seconds, 1), "snapshots": snapshots.written if snapshots else [],   # snapshots: this attempt's (each snapshot.json has its own)
                "grad_norm": grad_norm_summary(grad_norms),
                "weights": meta.weights, "peak_device_bytes": peak_mem, "device": dev, "dtype": a.dtype, "batch": a.batch,
-               "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == "darwin" else 1024)})
+               "peak_rss_bytes": (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == "darwin" else 1024)) if resource else None})
     print("saved", a.out, flush=True)
 
 

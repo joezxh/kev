@@ -1,23 +1,18 @@
-Now I have gathered enough information to update the containerization deployment documentation. Based on the code analysis, I found that the repository already contains a complete Docker deployment implementation, including:
+# Containerized Deployment
 
-1. **Dockerfile** - production-ready Docker image build configuration
-2. **docker-compose.yml** - complete production environment orchestration configuration
-3. **.dockerignore** - Docker build optimization configuration
-4. **deploy.sh** - one-click deployment script
-5. **deploy-wsl2.sh** - WSL2-environment-specific deployment script
-6. **DOCKER_DEPLOYMENT_GUIDE.md** - detailed deployment guide documentation
-
-Let me update the existing containerization deployment documentation:
-
-# Containerization
-
-## Update Summary
-**Changes**
-- Updated the Docker image build section to reflect the actual single-stage build implementation
-- Added complete Docker Compose production environment configuration documentation
-- Added detailed documentation for deployment scripts and automation flows
-- Updated the Kubernetes orchestration configuration to a practically usable template
-- Added WSL2 environment support and troubleshooting guide
+<cite>
+**Files referenced in this document**
+- [deploy/deploy-windows.ps1](file://deploy/deploy-windows.ps1)
+- [deploy/deploy-linux.sh](file://deploy/deploy-linux.sh)
+- [deploy/docker-compose-4B.yml](file://deploy/docker-compose-4B.yml)
+- [deploy/docker-compose-0.8B.yml](file://deploy/docker-compose-0.8B.yml)
+- [deploy/Dockerfile.4B](file://deploy/Dockerfile.4B)
+- [deploy/Dockerfile.0.8B](file://deploy/Dockerfile.0.8B)
+- [deploy/Dockerfile.playground](file://deploy/Dockerfile.playground)
+- [deploy/README.md](file://deploy/README.md)
+- [playground/next.config.ts](file://playground/next.config.ts)
+- [scripts/test-api.py](file://scripts/test-api.py)
+</cite>
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -26,487 +21,276 @@ Let me update the existing containerization deployment documentation:
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
 6. [Dependency Analysis](#dependency-analysis)
-7. [Performance and Capacity Planning](#performance-and-capacity-planning)
+7. [Performance & Capacity Planning](#performance--capacity-planning)
 8. [Troubleshooting Guide](#troubleshooting-guide)
 9. [Conclusion](#conclusion)
-10. [Appendix: Kubernetes and Helm Reference Templates](#appendix-kubernetes-and-helm-reference-templates)
+10. [Appendix: Local checkpoint layout & config variables](#appendix-local-checkpoint-layout--config-variables)
 
 ## Introduction
-This document targets the engineering practice of deploying the Kev decision-model service as a containerized deployment to Kubernetes, covering the following topics:
-- Docker image build: base image selection, dependency installation, multi-stage build optimization
-- Docker Compose orchestration: production environment configuration, GPU support, health checks
-- Kubernetes orchestration: Deployment, Service, ConfigMap, Secret
-- Storage volume mounting: management of persistent data, model weights, and log files
-- Service discovery and health checks: probe configuration, load balancing, rolling updates
-- Helm Chart templates and YAML configuration file examples
-- Monitoring integration: Prometheus metrics export, Grafana dashboards, alert rule configuration
-- Automated deployment: one-click deployment scripts, WSL2 environment support
+This document explains how to deploy the Kev decision-model server as containers using the scripts and Docker Compose files under the repo's `deploy/` directory, together with the Playground demo UI (Next.js, with the kev / chess tabs). It covers:
+- One-shot deploy scripts: pick 4B or 0.8B (one PowerShell for Windows, one Bash for Linux)
+- Docker image build: build `kev-server` and `playground` from local source; weights are **not** baked into the image
+- Docker Compose orchestration: services `kev-server` (8008) + `playground` (3000) on a shared `kev-net` network
+- Model source: a local run directory or a HuggingFace Hub id, with weights stored in a persistent `kev-hf-cache` volume
+- Playground ↔ server communication: a Next.js server-side proxy `/kev/*` → `http://kev-server:8008`, so no host port or CORS handling is needed
+- Verification, config variables, and troubleshooting
 
-Kev provides a locally runnable inference service, compatible with the TypeSafe System One API; it also provides one-click Modal cloud deployment. The repository now includes a complete Docker deployment implementation, including production-ready Dockerfile, docker-compose.yml, and other configuration files.
+Kev ships a local inference service compatible with the TypeSafe System One API. One-click cloud deploy (Modal) is a separate path — see [skills/kev-deploy](file://skills/kev-deploy/README.md) (not covered here).
 
-**Section sources**
-- [README.md:13-23](file://README.md#L13-L23)
-- [README.md:49-59](file://README.md#L49-L59)
-- [README.md:172-184](file://README.md#L172-L184)
+**Section source**
+- [deploy/README.md](file://deploy/README.md)
+- [deploy/docker-compose-4B.yml:1-20](file://deploy/docker-compose-4B.yml#L1-L20)
+- [deploy/deploy-linux.sh:1-9](file://deploy/deploy-linux.sh#L1-L9)
 
 ## Project Structure
-Regarding containerization and orchestration, the core deployment-related files in the repository are as follows:
+The containerized-deployment files under `deploy/`:
 
 ```mermaid
 graph TB
-A["Dockerfile"] --> B["Python 3.13 Slim base image"]
-C["docker-compose.yml"] --> D["Production environment service orchestration"]
-E[".dockerignore"] --> F["Build optimization configuration"]
-G["deploy.sh"] --> H["One-click deployment script"]
-I["deploy-wsl2.sh"] --> J["WSL2 environment support"]
-K["DOCKER_DEPLOYMENT_GUIDE.md"] --> L["Complete deployment guide"]
-D --> M["GPU resource management"]
-D --> N["Environment variable configuration"]
-D --> O["Persistent storage"]
-D --> P["Health checks"]
+A["deploy-windows.ps1 / deploy-linux.sh"] --> B["Model chooser 4B / 0.8B"]
+B --> C["docker-compose-4B.yml / 0.8B.yml"]
+C --> D["kev-server service (8008)"]
+C --> E["playground service (3000)"]
+F["Dockerfile.4B / 0.8B"] --> D
+G["Dockerfile.playground"] --> E
+D --> H["kev-hf-cache volume (weights)"]
+D --> I["./runs mount (local checkpoint)"]
+E --> J["/kev/* proxy -> kev-server"]
 ```
 
-**Diagram sources**
-- [Dockerfile](file://Dockerfile)
-- [docker-compose.yml](file://docker-compose.yml)
-- [.dockerignore](file://.dockerignore)
-- [deploy.sh](file://deploy.sh)
-- [deploy-wsl2.sh](file://deploy-wsl2.sh)
-- [DOCKER_DEPLOYMENT_GUIDE.md](file://DOCKER_DEPLOYMENT_GUIDE.md)
+**Diagram source**
+- [deploy/deploy-linux.sh:30-35](file://deploy/deploy-linux.sh#L30-L35)
+- [deploy/docker-compose-4B.yml:22-140](file://deploy/docker-compose-4B.yml#L22-L140)
+- [deploy/Dockerfile.0.8B:17-48](file://deploy/Dockerfile.0.8B#L17-L48)
+- [deploy/Dockerfile.playground:9-48](file://deploy/Dockerfile.playground#L9-L48)
 
-**Section sources**
-- [Dockerfile:1-47](file://Dockerfile#L1-L47)
-- [docker-compose.yml:1-163](file://docker-compose.yml#L1-L163)
-- [.dockerignore:1-70](file://.dockerignore#L1-L70)
-- [deploy.sh:1-288](file://deploy.sh#L1-L288)
-- [deploy-wsl2.sh:1-184](file://deploy-wsl2.sh#L1-L184)
-- [DOCKER_DEPLOYMENT_GUIDE.md:1-915](file://DOCKER_DEPLOYMENT_GUIDE.md#L1-L915)
+**Section source**
+- [deploy/README.md:19-37](file://deploy/README.md#L19-L37)
 
 ## Core Components
-- **Inference service process**: started via `python -m kev.serve`, exposing endpoints such as `/v1/systemone`
-- **Docker image**: based on Python 3.13-slim-bookworm, supports CUDA/ROCm and Apple MLX backends
-- **Docker Compose**: production environment orchestration, including GPU resource management, health checks, and persistent storage
-- **Runtime environment**: CUDA/ROCm (GPU) or MLX (Apple Silicon), bf16 default precision
-- **Configuration and secrets**: injected via environment variables (such as `KEV_API_KEY`, `KEV_DTYPE`, `KEV_TEMPERATURE`, etc.)
-- **Cloud hosting**: the Modal app encapsulates GPU resources, cold start, and concurrent batching
+- **Inference service `kev-server`**: started via `python -m kev.serve --host 0.0.0.0 --port 8008 --run <KEV_RUN>`; exposes `/v1/systemone`, `/v1/models`, etc. (TypeSafe System One compatible).
+- **Server image**: based on `python:3.13-slim-bookworm`, installed from local source via `pip install ".[serve]"` (no git clone, no external repo). `Dockerfile.4B` and `Dockerfile.0.8B` differ only in their default `KEV_RUN`.
+- **Playground image**: a multi-stage Next.js standalone build on `node:22-slim`; the proxy target `KEV_API=http://kev-server:8008` is baked in at build time (Next.js rewrites are evaluated at build time), so the server service name MUST stay `kev-server`.
+- **Runtime backend**: CUDA/ROCm (GPU) or MLX (Apple Silicon); bf16 is the default precision.
+- **Model source**: weights are **not** baked in. `KEV_RUN` points at a local run directory (`/kev/runs/<name>`, mounted from `./runs`) or a Hub id (downloaded into the `kev-hf-cache` volume).
+- **Config & secrets**: injected via environment variables (`KEV_API_KEY`, `KEV_DTYPE`, `KEV_RUN`, …).
 
-Key behaviors and constraints (from repository documentation):
-- The first run downloads the adapter and base model weights
-- The server binds 0.0.0.0 by default, port 8008
-- Authentication can be enabled via `KEV_API_KEY`
-- bf16 is the default precision; fp32 can be switched via environment variable
+Key behaviors (from `deploy/README.md`):
+- First run with a Hub id downloads the adapter and base-model weights into the `kev-hf-cache` volume.
+- The server binds 0.0.0.0 on port 8008 by default.
+- `KEV_API_KEY` enables Bearer auth; empty means an open server.
+- bf16 by default; `KEV_DTYPE=fp32` switches to the exact eval path.
 
-**Section sources**
-- [README.md:49-59](file://README.md#L49-L59)
-- [README.md:250-258](file://README.md#L250-L258)
-- [README.md:355-383](file://README.md#L355-L383)
-- [Dockerfile:39-46](file://Dockerfile#L39-L46)
+**Section source**
+- [deploy/Dockerfile.0.8B:17-48](file://deploy/Dockerfile.0.8B#L17-L48)
+- [deploy/Dockerfile.playground:9-48](file://deploy/Dockerfile.playground#L9-L48)
+- [deploy/README.md:156-168](file://deploy/README.md#L156-L168)
 
 ## Architecture Overview
-The following diagram shows the end-to-end flow from client to inference service, as well as the alternative path through Modal in the cloud.
+The diagram below shows the end-to-end flow from the browser to the inference service. The Playground talks to the server only through the in-network proxy, so the browser only ever hits port 3000.
 
 ```mermaid
 sequenceDiagram
-participant Client as "Client"
-participant Proxy as "Reverse Proxy/Ingress"
-participant Pod as "Kev Pod (inference service)"
+participant Browser as "Browser"
+participant UI as "playground container (3000)"
+participant Server as "kev-server container (8008)"
 participant GPU as "GPU/MLX backend"
-participant Modal as "Modal cloud"
-participant Docker as "Docker container"
-Client->>Proxy : HTTP /v1/systemone
-Proxy->>Pod : Forward request
-Pod->>Docker : In-container service call
-Docker->>Pod : Parse request/validate/cache state
-Pod->>GPU : Forward inference (bf16/fp32)
-GPU-->>Pod : Probabilities/answer
-Pod-->>Client : JSON response
-Note over Modal,Pod : Can also be hosted via Modal, with autoscaling and cold start
+participant Hub as "HuggingFace Hub"
+Browser->>UI : open http://localhost:3000
+UI->>Server : same-origin proxy /kev/v1/systemone
+Server->>Hub : fetch weights on first run (Hub id)
+Hub-->>Server : weights -> kev-hf-cache volume
+Server->>GPU : forward inference (bf16/fp32)
+GPU-->>Server : probabilities/answer
+Server-->>UI : JSON response
+UI-->>Browser : render result
+Note over UI,Server : both on kev-net; resolved by name kev-server
 ```
 
-**Diagram sources**
-- [README.md:214-250](file://README.md#L214-L250)
-- [README.md:355-383](file://README.md#L355-L383)
+**Diagram source**
+- [deploy/docker-compose-4B.yml:91-131](file://deploy/docker-compose-4B.yml#L91-L131)
+- [deploy/Dockerfile.playground:20-23](file://deploy/Dockerfile.playground#L20-L23)
 
 ## Detailed Component Analysis
 
-### Docker Image Build
-The repository provides a production-ready single-stage Docker build configuration, simplifying the build process and avoiding network issues.
+### One-shot deploy scripts (model chooser)
+`deploy/deploy-windows.ps1` (PowerShell, Windows Docker Desktop WSL2) and `deploy/deploy-linux.sh` (Bash, Linux) switch between `4B` and `0.8B` via `-Model` / `--model`, automatically selecting the matching compose file, Dockerfile, default checkpoint directory, and Hub id, then building, starting, and waiting for readiness.
 
-#### Base Image Selection
-- **Base image**: `python:3.13-slim-bookworm`
-- **Label metadata**: maintainer info and description
-- **Environment variables**: PYTHONUNBUFFERED, PYTHONDONTWRITEBYTECODE, PIP_NO_CACHE_DIR
+```powershell
+# Windows
+.\deploy\deploy-windows.ps1                       # default Kev-4B (local mode)
+.\deploy\deploy-windows.ps1 -Model 0.8B           # switch to Kev-0.8B
+.\deploy\deploy-windows.ps1 -Model 0.8B -Hub jaredpalmer/kev-0.8b -ApiKey <key>
+```
 
-#### Dependency Installation
-- **System dependencies**: use pip to directly install all required packages
-- **Core dependencies**: fastapi>=0.115, typesafe-sdk>=0.6.0, uvicorn>=0.30, torch>=2.6, transformers>=5.17, peft>=0.21, accelerate>=1.15, datasets>=3.0, pydantic>=2.9
-- **Working directory**: /kev
+```bash
+# Linux
+./deploy/deploy-linux.sh --model 4B
+./deploy/deploy-linux.sh --model 0.8B --hub jaredpalmer/kev-0.8b --api-key <key>
+```
 
-#### Service Configuration
-- **Exposed port**: 8008
-- **Health check**: checks the `/v1/models` endpoint every 30 seconds
-- **Default environment variables**: KEV_MODEL="jaredpalmer/kev-4b", CUDA_VISIBLE_DEVICES="0", KEV_PREFIX_CACHE="4", KEV_DTYPE="bf16"
-- **Entrypoint**: `python -m kev.serve --host 0.0.0.0 --port 8008`
+Script highlights (from `deploy/deploy-linux.sh`):
+- Detects Docker, the daemon, and the NVIDIA Container Toolkit; without a GPU the server starts in CPU mode (slow).
+- Default is **local mode**: `KEV_RUN` points at `./deploy/runs/<name>` (in-container `/kev/runs/<name>`); you must place the checkpoint (including `head.pt`) there first, or it errors out.
+- Pass `-Hub`/`--hub` to download from the Hub into the `kev-hf-cache` volume (first start takes a few minutes).
+- Before starting, it auto-`down`s the other model's stack (both share the container names `kev-server`/`kev-playground` and the `kev-net` network) — only one model stack runs at a time.
+
+**Section source**
+- [deploy/deploy-linux.sh:18-35](file://deploy/deploy-linux.sh#L18-L35)
+- [deploy/deploy-linux.sh:100-144](file://deploy/deploy-linux.sh#L100-L144)
+- [deploy/README.md:39-74](file://deploy/README.md#L39-L74)
+
+### Docker image build
+Server image (`Dockerfile.4B` / `Dockerfile.0.8B`):
+- Base `python:3.13-slim-bookworm`; ENV `PYTHONUNBUFFERED/PYTHONDONTWRITEBYTECODE/PIP_NO_CACHE_DIR`.
+- `COPY kev ./kev` + `pip install ".[serve]"` (FastAPI/uvicorn/typesafe-sdk/torch/transformers/peft/accelerate…).
+- Exposes 8008; healthcheck probes `/v1/models` every 30s; default `KEV_RUN` is the matching Hub id (4B=`jaredpalmer/kev-4b`, 0.8B=`jaredpalmer/kev-0.8b`), `KEV_DTYPE=bf16`, `KEV_PREFIX_CACHE=4`.
+- Entrypoint `python -m kev.serve --host 0.0.0.0 --port 8008 --run "${KEV_RUN}"`.
+
+Playground image (`Dockerfile.playground`):
+- deps/builder/runner multi-stage; `npm ci` → `npm run build` (Next.js standalone).
+- Build-time `ENV KEV_API=http://kev-server:8008` (rewrites are evaluated at build time, so it must be set here), same value at runtime.
+- Exposes 3000; healthcheck probes `/`; starts `node server.js`.
 
 ```mermaid
 graph TD
-Start(["Start build"]) --> Base["Select base image<br/>python:3.13-slim-bookworm"]
-Base --> Install["Install Python dependencies<br/>pip install fastapi, torch, transformers etc."]
-Install --> Workdir["Create working directory /kev"]
-Workdir --> Clone["Clone lightweight source repository"]
-Clone --> Cache["Create model cache directory<br/>/kev/checkpoints, /kev/runs"]
-Cache --> Expose["Expose port 8008"]
-Expose --> Health["Configure health check<br/>curl http://localhost:8008/v1/models"]
-Health --> Env["Set default environment variables"]
-Env --> Entrypoint["Define entrypoint<br/>python -m kev.serve"]
-Entrypoint --> Final["Generate runtime image"]
-Final --> End(["End"])
+Start(["Build server image"]) --> Base["python:3.13-slim-bookworm"]
+Base --> Inst["pip install .[serve]"]
+Inst --> Health["HEALTHCHECK /v1/models 30s"]
+Health --> Entry["ENTRYPOINT kev.serve --port 8008"]
+Start --> PBase["node:22-slim (playground)"]
+PBase --> PBuild["npm ci && next build (standalone)"]
+PBuild --> PBake["KEV_API=http://kev-server:8008 baked into rewrite"]
+PBake --> PRun["node server.js :3000"]
 ```
 
-**Diagram sources**
-- [Dockerfile:6-46](file://Dockerfile#L6-L46)
+**Section source**
+- [deploy/Dockerfile.0.8B:17-48](file://deploy/Dockerfile.0.8B#L17-L48)
+- [deploy/Dockerfile.playground:9-48](file://deploy/Dockerfile.playground#L9-L48)
 
-**Section sources**
-- [Dockerfile:1-47](file://Dockerfile#L1-L47)
+### Docker Compose orchestration
+One compose file per model (`docker-compose-4B.yml` / `docker-compose-0.8B.yml`), with two services:
+- `kev-server`: builds `deploy/Dockerfile.4B` (or 0.8B), ports `8008:8008`, mounts the `kev-hf-cache` volume and `./runs`, GPU via the NVIDIA container toolkit (`deploy.resources.reservations.devices`).
+- `playground`: builds `deploy/Dockerfile.playground`, ports `3000:3000`, `depends_on: kev-server: service_healthy`, mounts `../.qoder/repowiki` read-only for the /docs viewer.
 
-### Docker Compose Production Environment Configuration
-The repository provides a complete production environment Docker Compose configuration, including GPU support, health checks, persistent storage, and other features.
-
-#### Service Architecture
-- **Main service**: kev-server (production environment)
-- **Dev service**: kev-dev (development mode, with hot reload)
-- **Network**: custom bridge network, subnet 172.28.0.0/16
-- **Storage**: named volumes for model cache and prefix cache
-
-#### GPU Resource Configuration
-- **Runtime**: nvidia runtime
-- **Device allocation**: 1 GPU device
-- **Memory limit**: 16GB
-- **CUDA version**: 12.1.0
-- **cuDNN version**: 8
-
-#### Environment Variable Configuration
-- **Model configuration**: KEV_MODEL=jaredpalmer/kev-4b, KEV_PREFIX_CACHE=4
-- **Compute precision**: KEV_DTYPE=bf16
-- **GPU device**: CUDA_VISIBLE_DEVICES=0
-- **API security**: optional KEV_API_KEY authentication
-- **Performance optimization**: MAX_BATCH=64, KEV_CUDA_GRAPHS=1, KEV_FUSED=1
-
-#### Persistent Storage
-- **Model cache**: kev-model-cache:/kev/checkpoints
-- **Prefix cache**: kev-prefix-cache:/kev/runs
-- **Dev mode**: source directory mounted for hot reload
-
-#### Health Check and Monitoring
-- **Health check**: executed every 30 seconds, 10-second timeout, 3 retries
-- **Startup grace period**: 120 seconds (model loading may be slow on first load)
-- **Restart policy**: unless-stopped
-- **Log configuration**: json-file driver, max 100MB, keep 3 files
+Both sit on the `kev-net` network and Compose resolves `kev-server` / `playground` by service name, so the Playground needs no exposed 8008 and no CORS.
 
 ```mermaid
 graph LR
-Client["Client"] --> SVC["Service: 8008"]
-SVC --> DEP["Deployment: Kev"]
-DEP --> PVC_MODEL["PVC: Model weights"]
-DEP --> PVC_LOG["PVC: Logs"]
-DEP --> CM["ConfigMap: Non-sensitive config"]
-DEP --> SEC["Secret: KEV_API_KEY"]
-DEP --> GPU["NVIDIA GPU"]
+Browser["Browser :3000"] --> P["playground service"]
+P -->|"/kev/* proxy"| S["kev-server service :8008"]
+S --> Cache["kev-hf-cache volume (weights)"]
+S --> Runs["./runs mount (local checkpoint)"]
+S --> GPU["NVIDIA GPU"]
 ```
 
-**Diagram sources**
-- [docker-compose.yml:7-99](file://docker-compose.yml#L7-L99)
+**Section source**
+- [deploy/docker-compose-4B.yml:22-140](file://deploy/docker-compose-4B.yml#L22-L140)
+- [deploy/README.md:84-101](file://deploy/README.md#L84-L101)
 
-**Section sources**
-- [docker-compose.yml:1-163](file://docker-compose.yml#L1-L163)
+### Playground ↔ server communication (server-side proxy)
+All of the Playground's API requests are same-origin `/kev/*`, forwarded server-side by Next.js to `KEV_API` (which is `http://kev-server:8008` inside Compose). The frontend `lib/kev.ts` ships a fallback key that matches the `--api-key`/`-ApiKey` passed to the script, so auth works when `KEV_API_KEY` is set. The browser only hits 3000; every `/kev` request is forwarded by the Next server.
 
-### Automated Deployment Scripts
-The repository provides two main deployment scripts for different environments.
+**Section source**
+- [deploy/docker-compose-4B.yml:105-116](file://deploy/docker-compose-4B.yml#L105-L116)
+- [deploy/README.md:84-101](file://deploy/README.md#L84-L101)
 
-#### deploy.sh - General Deployment Script
-- **Function**: one-click build and startup flow
-- **GPU detection**: automatically detects NVIDIA GPU and Container Toolkit
-- **Image build**: builds the image using the docker build command
-- **Container management**: stops old container, starts new container, health check
-- **API testing**: automatically tests model endpoint and decision endpoint
-- **Status monitoring**: displays container status, resource usage, health check status
+### Manual compose deploy
+You can also build and start without the script:
 
-#### deploy-wsl2.sh - WSL2-Environment-Specific Script
-- **Target environment**: Windows + WSL2 + Docker Desktop
-- **Environment check**: verifies Docker, NVIDIA driver, Docker Compose
-- **Directory structure**: automatically creates project directory and data persistence directory
-- **Config generation**: automatically generates .env file and docker-compose.yml
-- **Quick start**: provides simplified deployment commands
-
-**Section sources**
-- [deploy.sh:1-288](file://deploy.sh#L1-L288)
-- [deploy-wsl2.sh:1-184](file://deploy-wsl2.sh#L1-L184)
-
-### Kubernetes Orchestration Configuration
-The following is a Kubernetes orchestration manifest based on the actual Docker configuration, ready for direct use in production.
-
-#### Deployment Configuration
-- **Replica count**: determined by QPS and GPU resources, usually one instance per card
-- **Resource limits**: requests/limits specify CPU/GPU/Memory explicitly
-- **Environment variables**: inject KEV_API_KEY, KEV_DTYPE, KEV_TEMPERATURE, etc.
-- **Startup command**: `python -m kev.serve --host 0.0.0.0 --port 8008`
-- **Node affinity**: requires nodes with NVIDIA GPU
-
-#### Service Configuration
-- **Type**: ClusterIP
-- **Port**: 8008/TCP
-- **Protocol**: TCP
-
-#### ConfigMap Configuration
-- **Model name**: MODEL_NAME
-- **Batch size**: BATCH_SIZE
-- **Truncate long text or not**: TRUNCATE_STATES
-
-#### Secret Configuration
-- **API key**: KEV_API_KEY
-- **Remote model access token**: HF_TOKEN
-
-#### Storage Volume Configuration
-- **Model weights**: PersistentVolumeClaim, ReadWriteOnce
-- **Log directory**: PersistentVolumeClaim or emptyDir
-
-#### Health Check Configuration
-- **LivenessProbe**: probe `/v1/models` or a custom health endpoint
-- **ReadinessProbe**: wait for model loading to complete before receiving traffic
-- **Initial delay**: 120 seconds (model loading time)
-
-```mermaid
-graph TB
-Ingress["Ingress/LoadBalancer"] --> SVC["Service: 8009"]
-SVC --> DEP["Deployment: Kev"]
-DEP --> PVC_MODEL["PVC: Model weights"]
-DEP --> PVC_LOG["PVC: Logs"]
-DEP --> CM["ConfigMap: Non-sensitive config"]
-DEP --> SEC["Secret: KEV_API_KEY"]
-DEP --> GPU["NVIDIA GPU"]
+```bash
+# 4B
+docker compose -f deploy/docker-compose-4B.yml up -d --build
+# 0.8B
+docker compose -f deploy/docker-compose-0.8B.yml up -d --build
 ```
 
-**Diagram sources**
-- [README.md:250-258](file://README.md#L250-L258)
-- [README.md:355-383](file://README.md#L355-L383)
-
-**Section sources**
-- [README.md:250-258](file://README.md#L250-L258)
-- [README.md:355-383](file://README.md#L355-L383)
-
-### Storage Volume Mounting
-- **Model weights**
-  - Use a PVC to mount the pre-downloaded weights directory, reducing cold-start time
-  - Or use an InitContainer to pull weights from HuggingFace Hub and write them to a shared volume
-- **Log files**
-  - Mount the log directory to a PVC or collect via Sidecar (Fluent Bit/Filebeat)
-- **Temporary data**
-  - Use emptyDir as intermediate cache (e.g., KV cache, batch buffer)
-
-```mermaid
-graph TD
-A["Pod start"] --> B{"Model weights already present?"}
-B --> |Yes| C["Directly mount PVC weights directory"]
-B --> |No| D["InitContainer pulls weights -> writes to PVC"]
-C --> E["Main container starts inference service"]
-D --> E
-E --> F["Logs written to PVC or stdout"]
-```
-
-**Diagram sources**
-- [README.md:49-59](file://README.md#L49-L59)
-
-**Section sources**
-- [README.md:49-59](file://README.md#L49-L59)
-
-### Service Discovery and Health Checks
-- **Service discovery**
-  - Expose a stable DNS name via Service for Ingress/gateway routing
-- **Health checks**
-  - LivenessProbe: call `/v1/models` or custom `/healthz`
-  - ReadinessProbe: wait for model loading to complete (can combine with a startup hook)
-- **Load balancing**
-  - Round-robin or connection affinity based on Service (if sessions needed)
-- **Rolling update**
-  - Use RollingUpdate, combined with readiness probe to ensure new Pod is ready before removing old Pod
-
-```mermaid
-sequenceDiagram
-participant Kube as "Kubernetes"
-participant Pod as "Kev Pod"
-participant Probe as "Probe"
-participant Svc as "Service"
-Kube->>Pod : Create Pod
-Pod->>Pod : Load model/initialize
-Probe->>Pod : GET /v1/models
-Pod-->>Probe : 200 OK
-Kube->>Svc : Add Endpoint
-Svc-->>Kube : Provide service externally
-```
-
-**Diagram sources**
-- [README.md:214-250](file://README.md#L214-L250)
-
-**Section sources**
-- [README.md:214-250](file://README.md#L214-L250)
-
-### Monitoring Integration
-- **Prometheus metrics export**
-  - Recommend adding a sidecar or gateway in front of the inference service to uniformly expose `/metrics`
-  - Metric dimensions: QPS, latency percentile, error rate, GPU utilization, VRAM usage
-- **Grafana dashboard**
-  - Visualize QPS, latency, error rate, resource usage
-- **Alert rules**
-  - Error rate threshold, latency P99 over threshold, GPU OOM, Pod restart count
-
-```mermaid
-graph TB
-App["Kev inference service"] --> Exporter["Metrics exporter/Sidecar"]
-Exporter --> Prom["Prometheus"]
-Prom --> Graf["Grafana"]
-Prom --> Alert["Alertmanager"]
-```
-
-[This diagram is a conceptual design and does not directly map to specific source code.]
-
-**Section sources**
-- [README.md:355-383](file://README.md#L355-L383)
-
-### Cloud Deployment (Modal)
-- Use `modal_app.py` and `skills/kev-deploy/scripts/kev_serve.py` for cloud hosting
-- Supports automatic GPU selection per model, and scales to zero when idle
-- The first request has a cold-start latency; subsequent concurrent requests are batched within the service
-
-```mermaid
-sequenceDiagram
-participant User as "User"
-participant Modal as "Modal platform"
-participant App as "modal_app.py"
-participant Serve as "kev_serve.py"
-User->>Modal : Trigger deployment/request
-Modal->>App : Launch container
-App->>Serve : Start inference service
-Serve-->>User : Return inference result
-```
-
-**Diagram sources**
-- [modal_app.py](file://modal_app.py)
-- [skills/kev-deploy/scripts/kev_serve.py](file://skills/kev-deploy/scripts/kev_serve.py)
-- [skills/kev-deploy/README.md:1-37](file://skills/kev-deploy/README.md#L1-L37)
-
-**Section sources**
-- [README.md:172-184](file://README.md#L172-L184)
-- [skills/kev-deploy/README.md:1-37](file://skills/kev-deploy/README.md#L1-L37)
+**Section source**
+- [deploy/README.md:75-82](file://deploy/README.md#L75-L82)
 
 ## Dependency Analysis
-- **Runtime dependencies**
-  - Python 3.13 (see README Quick Start)
-  - CUDA/ROCm (GPU) or MLX (Apple Silicon)
-  - Inference dependencies installed via pip
-- **External dependencies**
-  - HuggingFace Hub (model weights)
-  - Modal (cloud hosting)
-- **CI**
-  - `.github/workflows/ci.yml` currently does not include an image build task
+- **Runtime**: Python 3.13 (server image), Node 22 (playground image); CUDA/ROCm (GPU) or MLX (Apple Silicon).
+- **External**: HuggingFace Hub (weights in Hub-id mode); NVIDIA Container Toolkit (GPU passthrough).
+- **Script deps**: only Docker / Docker Compose; no extra Python deps.
 
 ```mermaid
 graph TB
 Py["Python 3.13"] --> Serve["kev.serve"]
+Node["Node 22"] --> PG["playground (Next.js)"]
 CUDA["CUDA/ROCm"] --> Serve
-MLX["MLX"] --> Serve
-HF["HuggingFace Hub"] --> Weights["Model weights"]
-Modal["Modal"] --> Cloud["Cloud hosting"]
+HF["HuggingFace Hub"] --> Weights["kev-hf-cache volume"]
+Toolkit["NVIDIA Container Toolkit"] --> GPU["GPU passthrough"]
 ```
 
-**Diagram sources**
-- [README.md:49-59](file://README.md#L49-L59)
-- [README.md:172-184](file://README.md#L172-L184)
-- [.github/workflows/ci.yml](file://.github/workflows/ci.yml)
+**Section source**
+- [deploy/Dockerfile.0.8B:17-23](file://deploy/Dockerfile.0.8B#L17-L23)
+- [deploy/Dockerfile.playground:10-17](file://deploy/Dockerfile.playground#L10-L17)
+- [deploy/README.md:156-162](file://deploy/README.md#L156-L162)
 
-**Section sources**
-- [README.md:49-59](file://README.md#L49-L59)
-- [README.md:172-184](file://README.md#L172-L184)
-- [.github/workflows/ci.yml](file://.github/workflows/ci.yml)
+## Performance & Capacity Planning
+- **Model & GPU sizing**: Kev-0.8B bf16 needs only ~2–3 GB VRAM (runs on consumer GPUs, even CPU-usable); Kev-4B bf16 needs ~10–12 GB VRAM. Without a GPU it starts in CPU mode (slow).
+- **Memory & VRAM**: see the Serving Performance table in README.
+- **Precision**: bf16 default; `KEV_DTYPE=fp32` switches to the eval path.
+- **Throughput & latency**: vary widely with GPU and input length (see the README tables).
 
-## Performance and Capacity Planning
-- **Model and GPU selection**
-  - Kev-0.8B: L4
-  - Kev-4B: L40S or H100
-  - Kev-9B: L40S or H100
-  - Kev-27B: B200/H200/H100 (80GB)
-- **Memory and VRAM**
-  - Kev-9B needs about ~17GB VRAM
-  - Kev-27B weights about 51GB, runtime about 66GB (including batch buffer)
-- **Throughput and latency**
-  - QPS and latency vary significantly across different GPUs and input lengths (see README table for details)
-- **Precision**
-  - Default bf16; fp32 can be switched via environment variable, evaluation path uses fp32
-
-**Section sources**
-- [README.md:355-383](file://README.md#L355-L383)
+**Section source**
+- [deploy/Dockerfile.0.8B:36-40](file://deploy/Dockerfile.0.8B#L36-L40)
+- [deploy/README.md:156-162](file://deploy/README.md#L156-L162)
 
 ## Troubleshooting Guide
-- **Local run issues**
-  - Confirm Python version and uv installation
-  - The first run downloads weights; pay attention to network and disk space
-- **Cloud deployment issues**
-  - Modal cold-start latency is expected behavior
-  - When concurrency exceeds a certain threshold, the platform automatically scales out containers
-- **Common environment variables**
-  - `KEV_API_KEY`: enable authentication
-  - `KEV_DTYPE`: switch fp32/bf16
-  - `KEV_TEMPERATURE`: disable calibration temperature
-  - `KEV_TRUNCATE_STATES`: allow truncating overly long inputs
-- **Docker-related issues**
-  - GPU not recognized: check NVIDIA Container Toolkit installation
-  - OOM error: adjust precision or reduce batch size
-  - Slow model loading: extend health-check wait time or pre-download the model
+- **Container unhealthy / fails to start**: `docker logs kev-server`; confirm 8008 isn't taken.
+- **GPU not active (very slow inference)**: `docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi`; on Linux check `nvidia-ctk cdi generate`.
+- **First start takes > 5 min**: Hub weights are downloading — watch the logs; or pre-mount a local run and set `KEV_RUN`.
+- **422 on over-long state**: by default states > `SERVE_MAX_STATE` are rejected; temporarily use `KEV_TRUNCATE_STATES=1`.
+- **Auth 401**: server has `KEV_API_KEY` set — send `Authorization: Bearer <key>`.
+- **Container-name conflict when switching models**: the deploy script auto-`down`s the other stack; if still conflicting, run `docker compose -f deploy/docker-compose-<other>.yml down`.
 
-**Section sources**
-- [README.md:49-59](file://README.md#L49-L59)
-- [README.md:250-258](file://README.md#L250-L258)
-- [skills/kev-deploy/README.md:1-37](file://skills/kev-deploy/README.md#L1-L37)
+**Section source**
+- [deploy/README.md:218-228](file://deploy/README.md#L218-L228)
 
 ## Conclusion
-- The Kev inference service now provides a complete Docker deployment solution, including a production-ready Dockerfile and docker-compose configuration
-- Supports multiple deployment methods: single Docker host, Docker Compose, Kubernetes cluster, Modal cloud
-- Provides automated deployment scripts, simplifying the deployment flow
-- In production, it is recommended to combine PVC, ConfigMap/Secret, probes, and rolling updates to achieve high availability and observability
+- The repo's `deploy/` provides a one-command containerized path that picks 4B/0.8B and handles build + start, with production-ready server and playground images, Docker Compose orchestration, and one-shot scripts.
+- Weights are not baked into the image: either a local run directory or a Hub id works, with weights persisted in the `kev-hf-cache` volume.
+- The Playground talks to the server through the in-network server-side proxy `http://kev-server:8008`, so no exposed 8008 and no CORS.
+- For production, expose it behind a front Nginx/TLS reverse proxy and enable `KEV_API_KEY` auth (see the Security section of `deploy/README.md`).
 
-## Appendix: Kubernetes and Helm Reference Templates
-The following are conceptual template snippets based on the actual Docker configuration, intended to guide implementation. Replace the placeholders with your actual values and adjust according to your cluster policy.
+## Appendix: Local checkpoint layout & config variables
 
-#### Deployment (conceptual example)
-- **Field highlights**:
-  - replicas: set by load and GPU resources
-  - containers[].command: `python -m kev.serve --host 0.0.0.0 --port 8008`
-  - env: inject `KEV_API_KEY`, `KEV_DTYPE`, `KEV_TEMPERATURE`, etc.
-  - resources.requests/limits: CPU/GPU/Memory
-  - volumeMounts: mount model weights and logs
-  - liveness/readiness probes: probe `/v1/models` or custom health endpoint
-  - strategy: RollingUpdate
+### Local checkpoint directory (deploy/runs/&lt;name&gt;)
+In the default local mode, `KEV_RUN` points at `./deploy/runs/<name>` (in-container `/kev/runs/<name>`). A LoRA-adapter layout needs at least `head.pt` + `adapter_config.json` + `adapter_model.safetensors` + tokenizer files; a full-weight run uses `config.json` + `model*.safetensors`. The base model (e.g. `Qwen/Qwen3.5-4B-Base`) is resolved from the `kev-hf-cache` volume and can run offline.
 
-#### Service (conceptual example)
-- type: ClusterIP
-- ports: 8008/TCP
+**Section source**
+- [deploy/README.md:102-154](file://deploy/README.md#L102-L154)
 
-#### ConfigMap (conceptual example)
-- keys: MODEL_NAME, BATCH_SIZE, TRUNCATE_STATES, etc.
+### Config variables (environment)
+compose passes these through as `${VAR:-default}`, overridable in the shell or an `.env` (all are read by `kev.serve`):
 
-#### Secret (conceptual example)
-- keys: KEV_API_KEY, HF_TOKEN, etc.
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `KEV_RUN` | 4B: `/kev/runs/kev-4b-local`<br>0.8B: `/kev/runs/kev-0.8b-local` | checkpoint: local dir or Hub id (with `@<rev>`) |
+| `KEV_DTYPE` | `bf16` | compute dtype (`fp32` = exact path) |
+| `KEV_PREFIX_CACHE` | `4` | state-prefix cache entries; `0` disables |
+| `KEV_API_KEY` | empty | when set, enables Bearer auth |
+| `KEV_DATE_FACTS` | `0` | `1` enables date preprocessing |
+| `KEV_TRUNCATE_STATES` | `0` | `1` truncates over-long states (else 422) |
+| `HF_HUB_OFFLINE` | `0` | `1` uses only an already-populated cache |
+| `KEV_API` (playground) | `http://kev-server:8008` | Next.js server-side proxy target |
 
-#### PVC (conceptual example)
-- storageClassName: specify as needed
-- accessModes: ReadWriteOnce
-- resources.requests.storage: estimate based on model weight size
+**Section source**
+- [deploy/docker-compose-4B.yml:33-54](file://deploy/docker-compose-4B.yml#L33-L54)
+- [deploy/docker-compose-4B.yml:105-111](file://deploy/docker-compose-4B.yml#L105-L111)
+- [deploy/README.md:190-214](file://deploy/README.md#L190-L214)
 
-#### Helm Chart (conceptual example)
-- values.yaml: centrally manage replicas, resources, storage, environment variables
-- templates/deployment.yaml: render Deployment
-- templates/service.yaml: render Service
-- templates/configmap.yaml: render ConfigMap
-- templates/secret.yaml: render Secret
-- templates/pvc.yaml: render PVC
+### Verification
+```bash
+docker ps                                   # kev-server healthy; playground running/healthy
+curl http://localhost:8008/v1/models
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/   # home 200
+curl -s http://localhost:3000/kev/v1/models                  # via playground proxy to kev-server
+python scripts/test-api.py                  # from the repo root
+# Swagger UI: http://localhost:8008/docs
+# Playground UI: http://localhost:3000
+```
 
-[The above templates are conceptual descriptions for direct implementation; they do not directly map to specific source code.]
+**Section source**
+- [deploy/README.md:164-174](file://deploy/README.md#L164-L174)

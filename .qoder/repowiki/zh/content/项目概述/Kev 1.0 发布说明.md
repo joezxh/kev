@@ -1,3 +1,5 @@
+# Kev 1.0 发布说明
+
 <cite>
 **本文引用的文件**   
 - [README.md](file://README.md)
@@ -194,7 +196,7 @@ Model --> DataPipeline : "消费预处理后的数据"
 - 检查点管理支持断点续训、权重导出与多版本归档
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["开始训练"]) --> LoadData["加载数据批次"]
 LoadData --> Forward["前向计算"]
 Forward --> Loss["计算损失"]
@@ -221,7 +223,7 @@ NextBatch --> End(["结束或继续"])
 - 指标模块计算准确率、F1、延迟、吞吐等关键指标，并生成报告
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["启动评测"]) --> LoadEval["加载评测集"]
 LoadEval --> RunInference["执行推理"]
 RunInference --> ComputeMetrics["计算指标"]
@@ -242,7 +244,7 @@ Report --> End(["完成"])
 - 资产清单以 JSON 形式描述版本、哈希、大小与依赖关系，便于分发与验证
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["开始发布"]) --> Collect["收集模型与配置"]
 Collect --> GenerateAssets["生成发布资产"]
 GenerateAssets --> Sign["签名与校验"]

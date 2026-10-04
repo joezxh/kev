@@ -1,3 +1,5 @@
+# 编码机制与Token序列构建
+
 <cite>
 **本文引用的文件**   
 - [model.py](file://kev/model.py)
@@ -143,7 +145,7 @@ encode() 负责将“状态 + 多问题”打包为一个连续 token 序列，�
    - 更新 ids/seg/pos/opt，并记录 decide_idx 与 opt_idx
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["进入 encode()"]) --> TokenizeState["对用户状态文本分词<br/>得到 state_tokens"]
 TokenizeState --> CheckStrict{"strict 且 state 超长?"}
 CheckStrict --> |是| RaiseSOV["抛出 ContextOverflow"]
@@ -235,7 +237,7 @@ Model --> Encoder : "调用 encode(option_isolation)"
   - 编码结果中包含该标志，指示状态被截断
 
 ```mermaid
-graph TD
+flowchart TD
 A["调用 encode() / admit()"] --> B{"state 超长?"}
 B --> |是 & strict| C["抛出 ContextOverflow(state_tokens, max_state)"]
 B --> |是 & truncate=True| D["读取前 SERVE_MAX_STATE 个 token<br/>设置 state_truncated=True"]
@@ -264,7 +266,7 @@ E --> |否| G["正常返回编码"]
   - 对于 hybrid backbones（如 Qwen3.5），总是以行形式运行（无法尊重打包掩码）
 
 ```mermaid
-graph TD
+flowchart TD
 Train["训练模式"] --> TC["training_context(max_state)"]
 TC --> FIT["fits(rec, *tokenizers)"]
 FitOK{"fits?"} --> |是| EncodeTrain["encode(strict=True)"]

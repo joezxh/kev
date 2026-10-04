@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: deploy
-title: Kev-4B 决策模型服务部署与容器化
+title: Kev Docker 部署与编排
 scope:
     - Dockerfile
     - docker-compose.yml
@@ -14,4 +14,4 @@ scope:
 source_files: []
 depends_on: []
 related_to:
-    - path: deploy_scripts
+    - path: playground

@@ -1,3 +1,5 @@
+# LoRA 适配器
+
 <cite>
 **本文引用的文件**   
 - [train.py](file://kev/train.py)
@@ -103,7 +105,7 @@ CKPT-->>User : 返回可推理的 DecisionModel
   - task_type：FEATURE_EXTRACTION（用于下游分类/指针头）。
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["开始"]) --> CheckHybrid{"是否混合注意力?"}
 CheckHybrid --> |是| TargetsAll["all/dense: 添加 DeltaNet 投影<br/>in_proj_qkv/z/a/b/out_proj"]
 CheckHybrid --> |否| TargetsBase["all/dense/attn/qv: 标准投影集"]
@@ -143,7 +145,7 @@ InitParams --> End(["完成"])
   - 当 weights_dtype=bf16 时，Torch 路径按 bf16 加载主干；若要求 fused 服务路径，则合并适配器；否则保持未合并以保持精确路径一致。
 
 ```mermaid
-graph TD
+flowchart TD
 Load(["加载检查点"]) --> Detect{"适配器 or 全量权重?"}
 Detect --> |适配器| Adapted["DecisionModel(无 LoRA) + PeftModel.from_pretrained"]
 Detect --> |全量权重| Full["DecisionModel(weights=checkpoint_dir)"]

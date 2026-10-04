@@ -1,0 +1,67 @@
+{
+  "name": "record-summary",
+  "domain": "住院病历的现病史与病程记录摘要核对。摘要由结构化要素组成：主诉、现病史要点、体格检查、诊断、用药、诊疗计划。上游医师已写下部分要素，摘要助手需要判断要素是否完整、是否需要编码员复核、以及缺陷的严重程度。不直接生成 ICD 编码，只判断完整性与是否需人工。",
+  "state": "一份住院病历的结构化摘录，字段短且跨记录固定：人口学、主诉、现病史要点、查体记录、诊断列表、用药记录、诊疗计划、缺失标记。要点已由上游抽取或规则截断，不含病历全文。",
+  "state_example": {
+    "patient": "female 64",
+    "chief_complaint": "反复右上腹疼痛 3 个月",
+    "presenting_history": "3 个月前无明显诱因出现右上腹隐痛，餐后加重，伴嗳气，无反酸",
+    "examination": "右上腹轻压痛，无反跳痛，肝区叩击痛阴性",
+    "diagnosis": ["慢性胃炎", "幽门螺杆菌感染待排"],
+    "medications": ["雷贝拉唑 20 mg qd", "阿莫西林 1000 mg tid"],
+    "plan": "胃镜检查 + 幽门螺杆菌呼气试验，评估根除治疗指征",
+    "missing_element": "无"
+  },
+  "questions": {
+    "missing_element": {
+      "type": "choice",
+      "instructions": "摘要中缺失的是哪个要素？",
+      "criteria": {
+        "none": "六个要素齐全，无缺失",
+        "chief_complaint": "缺主诉",
+        "presenting_history": "缺现病史要点",
+        "examination": "缺体格检查记录",
+        "diagnosis": "缺诊断",
+        "medication": "缺用药记录",
+        "plan": "缺诊疗计划"
+      }
+    },
+    "needs_coder_review": {
+      "type": "noul",
+      "instructions": "这份摘要是否需要编码员复核后才能用于编码？",
+      "criteria": {
+        "true": "需要复核：要素缺失影响诊断编码，或诊断列表与记录内容不一致",
+        "false": "无需复核：要素齐全且诊断与记录一致"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "摘要缺陷的严重程度如何？",
+      "criteria": [
+        "0：要素齐全，无缺陷",
+        "1：轻度缺陷：缺主诉或现病史要点，不影响诊断判断",
+        "2：中度缺陷：缺查体、诊断或用药记录，诊断可信度下降",
+        "3：重度缺陷：缺诊疗计划，无法判断后续处理"
+      ]
+    },
+    "coding_confidence": {
+      "type": "score",
+      "instructions": "依据这份摘要做诊断编码的置信档位如何？",
+      "criteria": [
+        "0：低置信 —— 关键要素缺失，编码需要额外临床信息",
+        "1：中置信 —— 诊断可初步判断，但需补充要素确认",
+        "2：高置信 —— 要素齐全且诊断与记录一致"
+      ]
+    }
+  },
+  "guidance": "missing_element 为 none 当且仅当六个要素全部存在；此时 severity 必为 0、needs_coder_review 必为 false、coding_confidence 必为 2。severity 由缺失要素的类型决定而非随机：缺主诉或现病史要点为 1，缺查体、诊断或用药记录为 2，缺诊疗计划为 3。needs_coder_review 为 true 当且仅当 severity >= 2。coding_confidence 由 severity 派生：severity 0 对应 2，severity 1 与 2 对应 1，severity 3 对应 0。诊断列表存在但与用药记录明显不符（用药为完全不相关类别）时，即使无要素缺失也需要编码员复核，此时 severity 取 2、coding_confidence 取 1。",
+  "variety": [
+    "科室来源：内科、外科、肿瘤科、妇产科、儿科",
+    "病程阶段：入院记录、首次病程、阶段小结、出院小结",
+    "缺失程度：完全无缺失、缺一项、缺两项（低频但存在）",
+    "诊断数量：单一诊断、并列多个诊断、待排诊断",
+    "用药复杂度：无用药、单药、联合用药、特殊人群用药",
+    "主诉风格：口语化、书面化、极简、冗长",
+    "计划完整性：明确检查计划、仅笼统记录、缺失"
+  ]
+}

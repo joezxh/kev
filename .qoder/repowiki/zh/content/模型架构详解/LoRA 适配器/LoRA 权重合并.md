@@ -1,3 +1,5 @@
+# LoRA 权重合并
+
 <cite>
 **本文引用的文件**   
 - [merge_lora_checkpoint.py](file://scripts/merge_lora_checkpoint.py)
@@ -97,7 +99,7 @@ CKPT-->>Out : 保存合并后的检查点
 - 该操作是逐元素加法，保持维度一致；通常以 fp32 计算以保证数值稳定性。
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["开始"]) --> LoadW["读取原始权重 W"]
 LoadW --> ComputeDelta["计算 ΔW = B × A"]
 ComputeDelta --> Scale{"是否应用 scale？"}
@@ -159,7 +161,7 @@ LoRAAdapter <.. Merger : "提供ΔW"
   5. 保存合并后的检查点到指定路径。
 
 ```mermaid
-graph TD
+flowchart TD
 P1["解析参数"] --> P2["加载基础模型"]
 P2 --> P3["加载 LoRA 适配器"]
 P3 --> P4["调用 merge_lora 合并"]

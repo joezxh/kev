@@ -1,3 +1,5 @@
+# API 端点
+
 <cite>
 **本文引用的文件**   
 - [README.md](file://README.md)
@@ -110,7 +112,7 @@ end
   - 500 内部错误（推理异常）
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["收到 POST /v1/systemone"]) --> Validate["校验 SystemOneRequest"]
 Validate --> Valid{"校验通过？"}
 Valid --> |否| Err422["返回 422 校验错误"]
@@ -168,7 +170,7 @@ R-->>C : 200 OK + 模型卡片与服务详情
   - 500 内部错误（重排或多次推理失败）
 
 ```mermaid
-graph TD
+flowchart TD
 StartP(["收到 POST /v1/systemone/permute"]) --> ValidateP["校验请求体"]
 ValidateP --> ValidP{"校验通过？"}
 ValidP --> |否| Err422P["返回 422 校验错误"]
@@ -197,7 +199,7 @@ Collect --> ReturnP["返回 200 + 各顺序结果"]
   - 500 内部错误（单个或多个问题推理失败）
 
 ```mermaid
-graph TD
+flowchart TD
 StartS(["收到 POST /v1/systemone/separate"]) --> ValidateS["校验请求体"]
 ValidateS --> ValidS{"校验通过？"}
 ValidS --> |否| Err422S["返回 422 校验错误"]

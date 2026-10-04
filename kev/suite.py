@@ -1,6 +1,9 @@
 import argparse
 import copy
-import fcntl
+try:
+    import fcntl
+except ModuleNotFoundError:
+    fcntl = None  # Windows: advisory file locks unavailable; file_lock becomes a no-op
 import hashlib
 import json
 import os
@@ -156,7 +159,8 @@ def file_lock(path):
     orchestration only: one pull of a study (modal_app.pull_lock), one launch of an arm's reads (kev.rounds)."""
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with Path(path).open("a", encoding=ENCODING) as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        if fcntl is not None:
+            fcntl.flock(lock, fcntl.LOCK_EX)
         yield
 
 

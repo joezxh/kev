@@ -1,3 +1,5 @@
+# CUDA 图优化
+
 <cite>
 **本文引用的文件**   
 - [cuda_graphs.py](file://kev/cuda_graphs.py)
@@ -126,7 +128,7 @@ class CudaGraphs {
 - 复杂度与收益：将多个短状态合并为一次图化前向，减少内核启动与调度开销。
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["进入 states"]) --> Prep["准备批次 ids/pos/长度<br/>构造掩码"]
 Prep --> Replay["_replay 执行图化前向"]
 Replay --> WriteBank["写入状态银行条目"]
@@ -153,7 +155,7 @@ Skip --> End
 - 复杂度与收益：将多行合并为一次图化前向，避免逐行内核启动。
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["进入 rows"]) --> Group["按行长度分组并分片"]
 Group --> LoadState["从状态银行拷贝状态到行缓冲"]
 LoadState --> Forward["_row_pass 执行图化前向"]
@@ -196,7 +198,7 @@ Scatter --> End(["完成"])
   - 保持服务器可用性，不因个别形状失败而中断服务。
 
 ```mermaid
-graph TD
+flowchart TD
 Detect["检测 pending 桶热度"] --> Decide{"是否满足捕获条件?"}
 Decide --> |否| Wait["等待下一次检查"]
 Decide --> |是| Warmup["warm-up 体执行"]

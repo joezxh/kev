@@ -1,0 +1,64 @@
+{
+  "name": "medication-review",
+  "domain": "门诊与住院处方审核。药品覆盖抗感染药、降压药、降糖药、抗凝药、NSAIDs、质子泵抑制剂、镇痛药等常见类别；患者为成人、孕产妇、哺乳期妇女、儿童、老年、肝肾功能不全者。审核依据为药品说明书禁忌与剂量上限、重复用药、特殊人群禁忌、给药途径与适应症。",
+  "state": "一份待审核处方的结构化摘要：患者年龄性别与生理状态（妊娠周数、哺乳、肾功能 eGFR 数值、肝功能）、过敏史、既往用药、当前处方药品与剂量频次、疗程天数（已由生成器算好，不要求模型做日期运算）、适应症诊断。字段值为中文叙述夹英文药名缩写。",
+  "state_example": {
+    "patient": "female 34, gestation 28 weeks",
+    "state_flags": "pregnant, eGFR 88 mL/min/1.73m2",
+    "allergies": "青霉素（皮疹）",
+    "current_meds": ["头孢曲松 1g qd"],
+    "current_rx": "甲硝唑 0.4g tid x 7天",
+    "days_on_drug": 3,
+    "indication": "细菌性阴道炎"
+  },
+  "questions": {
+    "verdict": {
+      "type": "choice",
+      "instructions": "该处方的审核结论是什么？",
+      "criteria": {
+        "pass": "无问题，可直接执行",
+        "conditional": "有可纠正的偏差（如剂量偏小、疗程偏短、缺少辅助用药），放行但需提示",
+        "reject": "存在必须拦截的严重问题（禁忌、重复用药、超剂量、明确适应症不符）"
+      }
+    },
+    "needs_pharmacist": {
+      "type": "noul",
+      "instructions": "该处方是否必须由药师复核后才能执行？",
+      "criteria": {
+        "true": "含高风险信号（妊娠/哺乳/儿童/老年、肝肾功能异常、多药联用、注射剂、管制类）",
+        "false": "低风险，可按常规执行"
+      }
+    },
+    "issue_type": {
+      "type": "choice",
+      "instructions": "该处方最突出的问题是哪一类？",
+      "criteria": {
+        "none": "未发现问题",
+        "contraindication": "禁忌：患者对该药存在绝对禁忌（如孕妇用四环素、青霉素过敏用头孢）",
+        "dose_over": "剂量超限：单次或日剂量超过说明书上限",
+        "duplicate": "重复用药：与既往用药或同处方内其他药物成分重复或同类叠加",
+        "special_population": "特殊人群：妊娠、哺乳、儿童、老年、肝肾功能不全中的人群限制被忽略",
+        "indication_mismatch": "适应症不符：药品与所列诊断不匹配"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "该处方问题的严重程度如何？",
+      "criteria": [
+        "0 = 无需处理",
+        "1 = 提示即可（轻微偏差，不影响疗效与安全）",
+        "2 = 需干预（影响疗效或有潜在风险，须修改后执行）",
+        "3 = 必须拦截（禁忌或超剂量，存在严重不良事件风险）"
+      ]
+    }
+  },
+  "guidance": "verdict 由最严重的问题决定：出现 contraindication 或 dose_over 或 duplicate 判 reject；仅 special_population 或 indication_mismatch 且可纠正判 conditional；无问题判 pass。issue_type 取命中的最突出的一类，多类同时命中时按 contraindication > dose_over > duplicate > special_population > indication_mismatch 的优先级取。severity 与 verdict 严格对应：pass=0、conditional=2、reject=3，issue_type=none 时 severity 必须为 0。severity 1 仅用于「无规则命中但剂量偏离常规」的情形，此时 verdict 为 pass、issue_type 为 none。needs_pharmacist 为独立风险信号，与 verdict 无关：只要涉及妊娠、哺乳、儿童、老年、肝肾功能异常（eGFR<30 或转氨酶升高）、注射剂、管制类、或同时使用 3 种以上药物，即使 verdict 为 pass 也须 true。妊娠期禁忌示例：四环素类、喹诺酮类（权衡后）、华法林、ACEI/ARB（妊娠中晚期）、异维A酸；哺乳期：大剂量化疗、四环素；儿童：四环素（<8 岁）、喹诺酮（<18 岁）、阿司匹林（水痘/病毒感染期）；肝肾功能不全需减量或禁用头孢曲松、氨基糖苷类、万古霉素。dose_over 示例：甲硝唑单次 >0.6g、对乙酰氨基酚单次 >1g 或日剂量 >4g、头孢曲松单次 >2g（普通感染）。days_on_drug 与疗程天数字段已由生成器算好，模型只判断「疗程是否明显不合理」，绝不做日期加减运算。过敏史为「青霉素（皮疹）」时，任何青霉素类或头孢类均为 contraindication。",
+  "variety": [
+    "药品类别：抗感染药、降压药、降糖药、抗凝药、NSAIDs、PPI、镇痛药、质子泵抑制剂组合",
+    "问题类型：无问题、禁忌、剂量超限、重复用药、特殊人群、适应症不符",
+    "特殊人群：孕早/中/晚期、哺乳期、新生儿与儿童、老年、肝肾功能不全、透析",
+    "过敏史：有明确药物过敏、过敏史为空、曾有皮疹但非速发过敏",
+    "用药数量：单一用药、2-3 种联用、5 种以上多药联用",
+    "表述：中文药名、通用名、英文缩写、剂量写法（mg/g/ml/片）混用"
+  ]
+}

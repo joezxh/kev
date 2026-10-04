@@ -212,6 +212,20 @@ KEV_API_KEY=$(openssl rand -hex 24) modal deploy kev_serve.py
 
 你用 `kev-finetune` skill 微调过的模型，通过其自身的 Modal app 以同样方式部署（`KEV_SERVE_SECRET=kev-serve-key KEV_SERVE_RUN=<run> modal deploy scripts/kev_modal.py`；见 [其部署指南](skills/kev-finetune/references/deploy.md)）。若要在你自己的机器上托管 Kev，可在带 GPU 的机器上运行 [Run It Locally](#run-it-locally) 中的 `kev.serve`，加上 `--host 0.0.0.0` 并放在你自己的代理之后；[Serving Performance](#serving-performance) 说明了该选哪块 GPU。
 
+### 使用 Docker（容器部署）
+
+若想把 `kev.serve` 推理服务和 Playground 演示 UI（kev / chess 两个 tab）一起以容器方式运行，可使用 `deploy/` 下的部署脚本。一条命令即可选择模型（4B 或 0.8B），并在同一个 Docker 网络上拉起服务（端口 8008）与 Next.js 版 Playground（端口 3000）：
+
+```bash
+# Windows（Docker Desktop，WSL2 后端）
+.\deploy\deploy-windows.ps1 -Model 0.8B
+
+# Linux
+./deploy/deploy-linux.sh --model 0.8B
+```
+
+Playground 只通过容器内网络代理与服务通信（`/kev/*` → `http://kev-server:8008`），无需暴露端口、也无需处理 CORS。模型权重不打进镜像：服务可加载本地 run 目录，或从 Hub 拉取（如 `jaredpalmer/kev-0.8b`）并存入持久化的 HF 缓存卷。完整说明（手动 `docker compose`、配置变量、本地 checkpoint 目录结构、故障排查）见 [deploy/README.md](deploy/README.md)。
+
 ## What to Expect（预期表现）
 
 **Accuracy（准确率）。** 在下方的图表里，Kev-27B 在 11 个新来源类别中的 9 个上与 Jev 差距在三个百分点以内，或优于它。Kev-4B 和 Kev-9B 在路由、蕴含（entailment）和科学问题这类分类型来源上同样接近。知识类问题主要取决于基础模型：在 MMLU 上 Kev-9B 得分为 0.73，Kev-27B 以 0.90 与 Jev 持平，但在更难的 MMLU-Pro 上 Kev-27B 得分为 0.675，而 Jev 为 0.840。较小的模型在按天精度的日期算术上也落后。

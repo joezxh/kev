@@ -1,3 +1,5 @@
+# Modal 云端部署
+
 <cite>
 **本文引用的文件**   
 - [modal_app.py](file://modal_app.py)
@@ -130,7 +132,7 @@ M-->>U : 拉取结果/排名/报告
   - 将本地源码与评测数据打入镜像，保证远程执行一致性。
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["开始"]) --> Env["读取环境变量<br/>KEV_APP_NAME/KEV_GPU/KEV_HF_SECRET"]
 Env --> Image["构建镜像<br/>uv_sync + pip 安装 + 拷贝源码/数据"]
 Image --> Volumes["挂载 Volume<br/>runs/hf-cache/leases"]

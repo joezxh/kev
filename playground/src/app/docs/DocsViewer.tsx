@@ -173,27 +173,30 @@ export function DocsViewer({ tree, lang, initialPath }: { tree: DocNode[]; lang:
     return () => ctrl.abort();
   }, [selected, lang]);
 
-  // Upgrade ```mermaid code blocks into rendered SVG diagrams once the docs HTML
-  // is in the DOM. We scan for `code.language-mermaid` (emitted by `marked`) and
-  // replace each enclosing <pre> with the mermaid-rendered SVG.
+  // Upgrade ```mermaid code blocks into rendered SVG diagrams. We render from the
+  // authoritative `content` HTML string (parsed via DOMParser) rather than reading
+  // back the live DOM — this avoids the stale/accumulated DOM that results from
+  // mutating React-managed `dangerouslySetInnerHTML`, so navigating between docs
+  // always rebuilds the diagrams cleanly. `marked` emits `code.language-mermaid`.
   useEffect(() => {
     const root = contentRef.current;
-    if (!root) return;
-    const blocks = Array.from(root.querySelectorAll<HTMLElement>("code.language-mermaid"));
-    if (blocks.length === 0) return;
+    if (!root || !content) return;
+    // Parse a fresh copy so we never read our own previous mutations.
+    const doc = new DOMParser().parseFromString(content, "text/html");
+    const blocks = Array.from(doc.querySelectorAll<HTMLElement>("code.language-mermaid"));
     let cancelled = false;
     (async () => {
       const mermaid = await getMermaid();
-      for (let i = 0; i < blocks.length; i++) {
-        const code = blocks[i];
+      for (const code of blocks) {
+        if (cancelled) return;
         const pre = code.parentElement;
         if (!pre || !pre.parentElement) continue;
         const src = code.textContent ?? "";
-        const id = `mermaid-${Date.now()}-${i}`;
+        const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         try {
           const { svg } = await mermaid.render(id, src);
           if (cancelled) return;
-          const wrap = document.createElement("div");
+          const wrap = doc.createElement("div");
           wrap.className = "mermaid-block my-6 flex justify-center overflow-x-auto rounded-lg border border-border bg-card p-2";
           wrap.innerHTML = svg;
           pre.replaceWith(wrap);
@@ -201,6 +204,7 @@ export function DocsViewer({ tree, lang, initialPath }: { tree: DocNode[]; lang:
           console.error("mermaid render failed", err);
         }
       }
+      if (!cancelled) root.innerHTML = doc.body.innerHTML;
     })();
     return () => {
       cancelled = true;

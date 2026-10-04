@@ -214,6 +214,20 @@ That serves Kev-4B on an L40S at `https://<your-workspace>--kev-api.modal.run`, 
 
 A model you fine-tuned with the `kev-finetune` skill deploys the same way from its own Modal app (`KEV_SERVE_SECRET=kev-serve-key KEV_SERVE_RUN=<run> modal deploy scripts/kev_modal.py`; see [its deploy guide](skills/kev-finetune/references/deploy.md)). To host Kev on your own machines instead, run `kev.serve` from [Run It Locally](#run-it-locally) on a GPU box with `--host 0.0.0.0` and put it behind your own proxy; [Serving Performance](#serving-performance) says which GPU to pick.
 
+### With Docker
+
+To run both the `kev.serve` API and the Playground UI (the kev and chess tabs) as containers, use the `deploy/` setup. One script picks the model (4B or 0.8B) and brings up the server (port 8008) and the Next.js playground (port 3000) on a shared Docker network:
+
+```bash
+# Windows (Docker Desktop, WSL2)
+.\deploy\deploy-windows.ps1 -Model 0.8B
+
+# Linux
+./deploy/deploy-linux.sh --model 0.8B
+```
+
+The Playground talks to the server only through an in-network proxy (`/kev/*` → `http://kev-server:8008`), so there are no ports or CORS to manage. Weights are not baked into the image: the server loads a local run directory, or pulls a Hub id (e.g. `jaredpalmer/kev-0.8b`) into a persistent HF cache volume. Full options — manual `docker compose`, config variables, the local checkpoint layout, and troubleshooting — are in [deploy/README.md](deploy/README.md).
+
 ## What to Expect
 
 **Accuracy.** Kev-27B is within three points of Jev, or ahead of it, on 9 of the 11 new-source categories in the chart below. Kev-4B and Kev-9B are about as close on classification-shaped sources like routing, entailment and science questions. Knowledge questions depend mostly on the base model: on MMLU Kev-9B scores 0.73 and Kev-27B matches Jev at 0.90, but on the harder MMLU-Pro Kev-27B scores 0.675 against Jev's 0.840. The smaller models also trail on day-precision date arithmetic.

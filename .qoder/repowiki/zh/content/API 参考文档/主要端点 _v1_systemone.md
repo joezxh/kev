@@ -1,3 +1,5 @@
+# 主要端点 /v1/systemone
+
 <cite>
 **本文引用的文件**   
 - [serve.py](file://kev/serve.py)
@@ -114,7 +116,7 @@ F-->>C : JSON + x-typesafe-request-id
 - `questions`：键值对，键为你自定义的问题 id（模型不看到该键），值为 Question 对象。
 
 ```mermaid
-graph TD
+flowchart TD
 Start(["请求体"]) --> State["state: string | object | array"]
 State --> ModelField["model: string (默认 kev-latest)"]
 ModelField --> Questions["questions: dict[str, Question]"]

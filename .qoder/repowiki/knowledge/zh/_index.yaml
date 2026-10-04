@@ -2,7 +2,7 @@
 schema_version: 1
 locale: zh-CN
 branch: main
-exported_at: "2026-10-02T09:08:11Z"
+exported_at: "2026-10-03T17:30:37Z"
 modules:
     "":
         dir_name: Kev 决策模型项目根
@@ -3015,8 +3015,8 @@ modules:
         depends_on: []
         related_to: []
     deploy:
-        dir_name: Kev-4B 决策模型服务部署与容器化
-        title: Kev-4B 决策模型服务部署与容器化
+        dir_name: Kev Docker 部署与编排
+        title: Kev Docker 部署与编排
         scope:
             - Dockerfile
             - docker-compose.yml
@@ -3031,7 +3031,7 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: deploy_scripts
+            - path: playground
     deploy_scripts:
         dir_name: WSL2 本地部署初始化脚本
         title: WSL2 本地部署初始化脚本
@@ -3040,11 +3040,10 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: deploy
+        related_to: []
     docs_and_skills:
-        dir_name: Kev 文档与 Agent Skills
-        title: Kev 文档与 Agent Skills
+        dir_name: Kev 文档、医疗微调方案与 Modal Skill
+        title: Kev 文档、医疗微调方案与 Modal Skill
         scope:
             - docs/
             - skills/
@@ -3083,19 +3082,18 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: playground
             - path: tests_and_tools
             - path: docs_and_skills
     playground:
-        dir_name: KEV 决策模型交互式演示站
-        title: KEV 决策模型交互式演示站
+        dir_name: KEV 决策模型交互式 Playground
+        title: KEV 决策模型交互式 Playground
         scope:
             - playground/
         source_files: []
         children: []
         depends_on: []
         related_to:
-            - path: kev_library
+            - path: deploy
     tests_and_tools:
         dir_name: 测试套件与标签审阅工具
         title: 测试套件与标签审阅工具
