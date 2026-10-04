@@ -5094,3 +5094,57 @@ Move-Item .next "$env:TEMP\kev-next-stale-$(Get-Date -Format HHmmss)"
 
 - **构建与 pytest 不要并发**。并发会互相饿死：`test_rounds` 10 分钟只推进 3%，构建 CPU 掉到 4%。
 - **别中途强杀构建**。虽然根因不是它，但强杀确实会额外留下 `.next/lock`。
+
+### 附录 C：真机验证（数据半链路）与由此暴露的 G3 契约错配
+
+spec §5.4 人工验收清单第 1 条是**本机唯一不需要 GPU 就能真跑的一段**，此前从未跑通过
+（`precheck.py` 不存在）。补齐后实测：
+
+| 环节 | 命令/产物 | 实测 |
+| --- | --- | --- |
+| 计划 | `plan_size` | 787 |
+| 划分 | `data/cv/summary.json` | `records=787`，`551 / 118 / 118` |
+| 预检 | `precheck --data data/cv --split train` | **`over_limit 0 of 551`** |
+| G1 | `precheck.over_limit == 0` | 通过 |
+| G2 | `summary.records == 787` | 通过 |
+| G3 | `invalid_lines == 0` 且无标签告警 | 通过（**修复后才通过**，见下） |
+
+重新生成 `summary.json` 时先存了三个分区文件的 MD5，重跑后**逐个比对完全一致**
+—— 说明 `split_data` 在 seed=0 下是确定性的，重跑不会动已有数据。
+
+#### 22. G3 的契约错配（硬阻断，与 #10/#11 同类）：`label_warnings` 从不落盘
+
+`split_data.py` 的 `warnings_for(records)`（`<5%` 稀有标签、「从未作为正确答案」的选项）
+**只 print 到 stdout，从不写进 `summary.json`** —— 而 G3 判据正是读 `summary.label_warnings`。
+结果：`label_warnings` 恒为缺失 ⇒ G3 恒失败 ⇒ **`train` 永远无法提交**。
+
+对照实测（同一份真实数据，只差这个键）：
+
+```
+修复后  G1 ok=True  G2 ok=True  G3 ok=True   → train 可提交
+修复前  G1 ok=True  G2 ok=True  G3 ok=False  缺少 split 的 summary.json 的 label_warnings
+```
+
+修法是把告警**落盘**，而不是让 `gates.py` 自己重算 `<5%` 规则 —— 规则的所有权在
+`split_data.warnings_for`，控制台只消费（与 Task 4 的「不重写标签分布」一致）。
+`skills/` 不在 `test_conventions.py` 的扫描范围，也不在 `test_console_contract.py` 的
+FROZEN 列表里，改动合法；`tests/test_skill_scripts.py` 只断言 `records`/`invalid_lines`/
+`partitions`，加键不打破。已在该测试里补一条 `assert isinstance(summary.get("label_warnings"), list)` 钉住。
+
+#### 复现命令（本机前提：HF 离线）
+
+`jaredpalmer/kev-0.8b` 在本机没有缓存、联网会 `ConnectTimeout`；`Qwen/Qwen3.5-0.8B-Base`
+已缓存（A2/B 的裸基座，tokenizer 与 0.8B 同族），所以 precheck 用后者 + 离线模式：
+
+```powershell
+$env:HF_HUB_OFFLINE = 1; $env:TRANSFORMERS_OFFLINE = 1
+python docs/medical/console/precheck.py --data data/cv --split train `
+       --init-from Qwen/Qwen3.5-0.8B-Base --out data/console/precheck-cv-train.json
+python skills/kev-finetune/scripts/split_data.py data/cv.jsonl --out data/cv --seed 0
+```
+
+产出路径与 `artifacts.resolve("precheck:cv/train")` 一致（`data/console/precheck-cv-train.json`），
+闸门能按同一个 id 找到它。
+
+⚠️ 未验证的部分：G4–G7 需要 GPU 上的真实训练与 baseline 对比，本机跑不了；
+`over_limit 0` 只说明 551 条都放得下，**不代表数据质量合格**（那是 G3 与人工评审的事）。

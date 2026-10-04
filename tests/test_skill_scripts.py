@@ -70,6 +70,9 @@ def test_cli_writes_partitions_and_summary(tmp_path, monkeypatch):
     assert summary["records"] == 60 and summary["invalid_lines"] == 1
     assert set(summary["partitions"]) == {"train", "calibration", "development"}
     assert all((tmp_path / f"out/{p}.jsonl").exists() for p in summary["partitions"])
+    # 控制台的 G3 读 summary.label_warnings。它曾经只 print 到 stdout、从不落盘，
+    # 于是 G3 永远拿不到 ⇒ train 永远无法提交。这里钉住「必须落盘」。
+    assert isinstance(summary.get("label_warnings"), list)
 
 
 def test_warnings_flag_rare_and_missing_labels():

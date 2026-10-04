@@ -188,7 +188,8 @@ def main():
     print(f"questions by type: {dict(types)}; states: {len({state_key(r['state']) for r in records})} distinct")
     for qid, counts in sorted(label_table(records).items()):
         print(f"  {qid}: " + ", ".join(f"{k}={c}" for k, c in counts.most_common()))
-    for w in warnings_for(records): print(f"warning: {w}")
+    warnings = warnings_for(records)
+    for w in warnings: print(f"warning: {w}")
 
     if not a.out: return 0
     if a.holdout:
@@ -207,8 +208,10 @@ def main():
     if any(not v for v in parts.values()):
         print("a partition would be empty; you need more records (aim for 300+)", file=sys.stderr); return 1
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
+    # label_warnings 必须落盘：控制台的 G3 读它，而只 print 到 stdout 的话编排层永远看不到。
+    # 规则本身仍然只在这里（warnings_for）—— 控制台不重算标签分布。
     summary = {"source": str(a.data), "holdout": a.holdout, "seed": a.seed, "records": len(records), "invalid_lines": len(problems), "duplicates_dropped": dupes,
-               "conflicting_states_dropped": conflicts, "partitions": {}}
+               "conflicting_states_dropped": conflicts, "label_warnings": warnings, "partitions": {}}
     for name, rows in parts.items():
         with (out / f"{name}.jsonl").open("w", encoding="utf-8", newline="\n") as f:
             for r in rows: f.write(json.dumps(r, ensure_ascii=False) + "\n")
