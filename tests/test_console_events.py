@@ -7,6 +7,8 @@ kev.train 全程用 print(flush=True)，每 10 个 optimizer step 打一行
 
 Run: uv run python -m pytest tests/test_console_events.py -q
 """
+import pytest
+
 from kev.console.events import MetricBuffer, parse_note, parse_step, sse_frame
 
 
@@ -58,6 +60,16 @@ def test_sse_frame_without_metric_has_no_metric_event():
     frame = sse_frame(event, None)
     assert "event: metric" not in frame
     assert frame == 'id: 8\nevent: log\ndata: {"id": 8, "ts": "t", "stream": "stderr", "line": "boom"}\n\n'
+
+
+def test_sse_frame_refuses_to_emit_invalid_json():
+    """裸 NaN 不是合法 JSON：EventSource 会静默断流，前端表现为「曲线莫名断了」
+    而不是「训练崩了」。宁可在这里炸掉。"""
+    event = {"id": 1, "ts": "t", "stream": "stdout", "line": "ep0 step 1/1 loss nan"}
+    bad = {"ep": 0, "step": 1, "total": 1, "loss": float("nan"), "kl": 0.0,
+           "anchor": 0.0, "sec": 1.0}
+    with pytest.raises(ValueError):
+        sse_frame(event, bad)
 
 
 def test_metric_buffer_keeps_the_last_n_points():

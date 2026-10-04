@@ -57,10 +57,16 @@ def parse_note(line: str):
 
 
 def sse_frame(event: dict, metric: dict | None = None) -> str:
-    """一条 SSE 文本帧。metric 非空时附一帧 metric 事件，供前端直接画曲线而不必自己解析。"""
-    frame = f"id: {event['id']}\nevent: log\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+    """一条 SSE 文本帧。metric 非空时附一帧 metric 事件，供前端直接画曲线而不必自己解析。
+
+    两处 json.dumps 都带 allow_nan=False（与 kev.console.db 的序列化语义一致）：
+    SSE 帧是给浏览器 EventSource 吃的，而裸 `NaN` 不是合法 JSON，前端会表现为
+    「曲线莫名断了」而不是「训练崩了」—— 后者才是我们想要的失败方式。
+    """
+    frame = (f"id: {event['id']}\nevent: log\n"
+             f"data: {json.dumps(event, ensure_ascii=False, allow_nan=False)}\n\n")
     if metric is not None:
-        frame += f"event: metric\ndata: {json.dumps(metric)}\n\n"
+        frame += f"event: metric\ndata: {json.dumps(metric, allow_nan=False)}\n\n"
     return frame
 
 
