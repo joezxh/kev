@@ -209,7 +209,7 @@ data/console/kev-console.db                                              ← SQL
   - `artifacts.register(store, job) -> list[str]`（注册 `artifacts_out` 并写 `in → out` 血缘；返回注册的 id）
   - `artifacts.PERSIST`（`StageSpec.persist` 的合法取值： `"success"` / `"start"`）
 
-- [ ] **Step 1: 写失败的测试**
+- [x] **Step 1: 写失败的测试**
 
 ```python
 # tests/test_console_db.py
@@ -363,7 +363,7 @@ def test_schema_version_is_stamped(store):
     assert store.schema_version() == 1
 ```
 
-- [ ] **Step 1b: 写 `tests/test_console_artifacts.py`**
+- [x] **Step 1b: 写 `tests/test_console_artifacts.py`**
 
 ```python
 # tests/test_console_artifacts.py
@@ -461,12 +461,12 @@ def test_register_is_idempotent_across_a_retry(store):
     assert len(store.list_artifacts("dataset")) == 1
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run python -m pytest tests/test_console_db.py -q`
 Expected: FAIL —— `ModuleNotFoundError: No module named 'kev.console'`
 
-- [ ] **Step 3: 写 `kev/console/paths.py` 与 `__init__.py`**
+- [x] **Step 3: 写 `kev/console/paths.py` 与 `__init__.py`**
 
 ```python
 # kev/console/__init__.py
@@ -513,7 +513,7 @@ def ensure_medical_on_path() -> None:
             sys.path.insert(0, text)
 ```
 
-- [ ] **Step 4: 写 `kev/console/db.py`**
+- [x] **Step 4: 写 `kev/console/db.py`**
 
 ```python
 # kev/console/db.py
@@ -948,7 +948,7 @@ def register(store, job: dict) -> list[str]:
     return registered
 ```
 
-- [ ] **Step 5: 修 `pyproject.toml` 的打包**
+- [x] **Step 5: 修 `pyproject.toml` 的打包**
 
 `packages = ["kev"]` 不含子包，非 editable 安装时 `kev.console` 不可导入。改成：
 
@@ -957,17 +957,17 @@ def register(store, job: dict) -> list[str]:
 packages = ["kev", "kev.console", "kev.console.stages"]
 ```
 
-- [ ] **Step 6: 跑测试确认通过**
+- [x] **Step 6: 跑测试确认通过**
 
 Run: `uv run python -m pytest tests/test_console_db.py tests/test_console_artifacts.py -q`
 Expected: PASS —— 约 24 passed
 
-- [ ] **Step 7: 确认没有打破约定测试**
+- [x] **Step 7: 确认没有打破约定测试**
 
 Run: `uv run python -m pytest tests/test_conventions.py -q`
 Expected: PASS（新增的 `kev/console/*.py` 不得触发任何 single_home 规则；注意 `artifacts.py` 走 `kev.suite.read_json`，没有裸 `open()`/`read_text()`）
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add kev/console/__init__.py kev/console/paths.py kev/console/db.py kev/console/artifacts.py tests/test_console_db.py tests/test_console_artifacts.py pyproject.toml
