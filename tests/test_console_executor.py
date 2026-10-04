@@ -30,13 +30,11 @@ def make_job(store, kind="train"):
 
 
 def drain(store, executor, job_id, timeout=20.0):
-    """轮询到终态，返回 exit_code。生产代码由 SSE 推流，测试里用轮询。"""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if store.get_job(job_id)["status"] in {"succeeded", "failed", "canceled", "interrupted"}:
-            return store.get_job(job_id)["exit_code"]
-        time.sleep(0.05)
-    raise AssertionError("job never reached a terminal state")
+    """轮询到终态，返回 exit_code。生产代码由 SSE 推流，测试里靠 wait() 等。"""
+    try:
+        return executor.wait(job_id, timeout=timeout)
+    except TimeoutError as error:
+        raise AssertionError(f"job never reached a terminal state: {error}") from None
 
 
 def test_streams_stdout_into_events_and_marks_success(store):
@@ -181,3 +179,104 @@ def test_secret_values_never_reach_the_database(store, monkeypatch):
     drain(store, executor, job_id)
     assert store.get_job(job_id)["env_overlay"] == {"OMP_NUM_THREADS": "4"}
     assert b"sk-do-not-persist" not in store.path.read_bytes()
+
+
+# ---- 评审新增（Task 3）----------------------------------------------------
+
+
+def test_metrics_respects_the_configured_buffer_limit(store):
+    """未 spawn 的作业也必须用配置的 limit，否则 UI 的「仅显示最近 N 点」提示
+    会报出一个与实际不符的数字（spawn 建的用 limit，metrics 建的用默认值 2000）。"""
+    executor = LocalExecutor(store, buffer_limit=2)
+    buffer = executor.metrics("never-spawned")
+    for step in (1, 2, 3, 4):
+        buffer.push({"ep": 0, "step": step, "total": 9, "loss": 0.5,
+                     "kl": 0.0, "anchor": 0.0, "sec": 1.0})
+    assert len(buffer.points()) == 2
+    assert buffer.dropped() == 2
+
+
+def test_event_logging_failure_does_not_break_the_job(store, monkeypatch):
+    """事件落库失败由 _flush 自己兜住（不能连带杀掉训练进程），作业照常到终态。"""
+    executor = LocalExecutor(store)
+    job_id = make_job(store)
+    monkeypatch.setattr(store, "append_events",
+                        lambda job, rows: (_ for _ in ()).throw(RuntimeError("disk gone")))
+    executor.spawn(job_id, [sys.executable, "-c", "print('x')"], cwd=os.getcwd(),
+                   log_path=str(store.path.parent / "job.log"))
+    monkeypatch.undo()
+    try:
+        executor.wait(job_id, timeout=20)
+    except TimeoutError as error:
+        raise AssertionError(f"作业卡在非终态：{error}") from None
+    assert store.get_job(job_id)["status"] == "succeeded"
+
+
+def test_pump_outer_guard_marks_failed_when_stream_itself_breaks(store, monkeypatch):
+    executor = LocalExecutor(store)
+    job_id = make_job(store)
+    real_open = open
+
+    def exploding_open(path, *args, **kwargs):
+        if str(path).endswith("job.log"):
+            raise OSError("log path not writable")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", exploding_open)
+    executor.spawn(job_id, [sys.executable, "-c", "print('x')"], cwd=os.getcwd(),
+                   log_path=str(store.path.parent / "job.log"))
+    monkeypatch.undo()
+    try:
+        executor.wait(job_id, timeout=10)
+    except TimeoutError as error:
+        raise AssertionError(f"作业卡在非终态：{error}") from None
+    job = store.get_job(job_id)
+    assert job["status"] == "failed"
+    assert "reader 线程异常" in job["error"]
+
+
+def test_settle_loses_the_race_cleanly_and_skips_on_finished(store, monkeypatch):
+    """reader 与 cancel 抢同一个终态：Store.transition 的原子条件 UPDATE 保证恰好一个赢家。
+    输的一方必须安静返回，且**不**回调 on_finished —— 两边都注册会重复写血缘。"""
+    calls = []
+    executor = LocalExecutor(store, on_finished=lambda jid, code: calls.append(jid))
+    job_id = make_job(store)
+    real_transition = store.transition
+
+    def lose_the_race(jid, to_status, **kwargs):
+        # 模拟 cancel() 在 _settle 的 transition 之前抢先落定
+        if to_status in {"succeeded", "failed"}:
+            real_transition(jid, "canceled", exit_code=130)
+        return real_transition(jid, to_status, **kwargs)
+
+    monkeypatch.setattr(store, "transition", lose_the_race)
+    executor.spawn(job_id, [sys.executable, "-c", "print('x')"], cwd=os.getcwd(),
+                   log_path=str(store.path.parent / "job.log"))
+    # 补丁必须留到作业落定之后 —— reader 线程是异步的，提前 undo 等于没打补丁
+    deadline = time.time() + 10
+    while time.time() < deadline and store.get_job(job_id)["status"] not in {
+            "succeeded", "failed", "canceled", "interrupted"}:
+        time.sleep(0.05)
+    monkeypatch.undo()
+    assert store.get_job(job_id)["status"] == "canceled"
+    assert calls == [], "输掉终态竞态的一方不得注册产物"
+
+
+def test_wait_returns_the_exit_code_and_times_out(store):
+    executor = LocalExecutor(store)
+    ok = make_job(store)
+    executor.spawn(ok, [sys.executable, "-c", "print('fine')"], cwd=os.getcwd(),
+                   log_path=str(store.path.parent / "a.log"))
+    assert executor.wait(ok, timeout=20) == 0
+
+    bad = make_job(store)
+    executor.spawn(bad, [sys.executable, "-c", "raise SystemExit(7)"], cwd=os.getcwd(),
+                   log_path=str(store.path.parent / "b.log"))
+    assert executor.wait(bad, timeout=20) == 7
+
+    slow = make_job(store)
+    executor.spawn(slow, [sys.executable, "-c", "import time; time.sleep(30)"],
+                   cwd=os.getcwd(), log_path=str(store.path.parent / "c.log"))
+    with pytest.raises(TimeoutError, match="still running"):
+        executor.wait(slow, timeout=0.3)
+    executor.cancel(slow)

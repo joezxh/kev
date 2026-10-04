@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from .db import Store
+from .db import TERMINAL, Store
 from .events import DEFAULT_BUFFER, MetricBuffer, parse_step
 
 # 允许持久化到 jobs.env_overlay 的非敏感键。其余一律不落库。
@@ -34,8 +34,8 @@ ALLOWED_ENV = frozenset({
 SECRET_ENV = ("KEV_API_KEY", "KEV_GEN_API_KEYS", "KEV_HF_SECRET", "KEV_SERVE_SECRET", "HF_TOKEN")
 
 BATCH = 10
-TERMINAL = frozenset({"succeeded", "failed", "canceled", "interrupted"})
 
+# TERMINAL（作业终态集合）由 kev.console.db 拥有 —— 状态机是它的家，本模块只读。
 # signal.SIGKILL 只存在于 POSIX；Windows 上升级档退化成同一个 signal.SIGTERM。
 SIGKILL = getattr(signal, "SIGKILL", signal.SIGTERM)
 
@@ -60,8 +60,6 @@ class LocalExecutor:
         self.on_finished = on_finished
         self._handles: dict[str, ProcessHandle] = {}
         self._metrics: dict[str, MetricBuffer] = {}
-        self._buffers: dict[str, list[tuple[str, str]]] = {}
-        self._flushes: dict[str, threading.Event] = {}
         # cancel() 在杀进程前登记：reader 线程收尾时看到它就让路，不再把作业标成
         # failed/succeeded。没有它就是两个线程抢同一个终态，谁后写谁赢（见 cancel）。
         self._canceling: set[str] = set()
@@ -101,8 +99,6 @@ class LocalExecutor:
         with self._lock:
             self._handles[job_id] = handle
             self._metrics[job_id] = MetricBuffer(self.buffer_limit)
-            self._buffers[job_id] = []
-            self._flushes[job_id] = threading.Event()
         self.store.transition(job_id, "running")
         threading.Thread(target=self._pump, args=(job_id, popen, log_path),
                          name=f"console-{job_id[:8]}", daemon=True).start()
@@ -120,6 +116,15 @@ class LocalExecutor:
             connection.execute("UPDATE jobs SET env_overlay = ? WHERE id = ?", (payload, job_id))
 
     def _pump(self, job_id, popen, log_path) -> None:
+        """reader 线程。**绝不能带着未捕获异常死掉** —— 作业卡在 running 就意味着
+        UI 永久转角。所以主体出错也必须把作业推到终态（failed），而不是静默退出。
+        """
+        try:
+            self._stream(job_id, popen, log_path)
+        except Exception as error:          # noqa: BLE001 - 见 docstring
+            self._force_terminal(job_id, f"reader 线程异常：{error!r}")
+
+    def _stream(self, job_id, popen, log_path) -> None:
         buffer = self._metrics[job_id]
         pending: list[tuple[str, str]] = []
         with open(log_path, "a", encoding="utf-8", newline="") as sink:
@@ -138,27 +143,40 @@ class LocalExecutor:
             sink.flush()
         if pending:
             self._flush(job_id, pending)
-        code = popen.wait()
+        self._settle(job_id, popen.wait())
+
+    def _settle(self, job_id, code) -> None:
+        """落定终态。
+
+        与 cancel() 抢同一个终态时，Store.transition 的原子条件 UPDATE（BEGIN IMMEDIATE
+        + `WHERE status IN (...)`）保证**恰好一个赢家**；输的一方安静返回，且**不**回调
+        on_finished —— 产物注册是赢家的责任，两边都注册会重复写血缘。
+        """
         with self._lock:
             self._handles.pop(job_id, None)
-            canceling = job_id in self._canceling
-        if canceling:
-            return  # cancel() 正在把它标成 canceled
-        status = self.store.get_job(job_id)["status"]
-        if status in TERMINAL:
-            return  # 已被 cancel() 标成 canceled / interrupted
-        if code == 0:
-            self.store.transition(job_id, "succeeded", exit_code=0)
-        else:
+            if job_id in self._canceling:
+                return          # cancel() 正在把它标成 canceled
+        try:
             self.store.transition(
-                job_id, "failed", exit_code=code,
-                error=f"exit {code}: {self.store.tail_text(job_id, lines=5)}",
-            )
+                job_id, "succeeded" if code == 0 else "failed", exit_code=code,
+                error=None if code == 0 else f"exit {code}: {self.store.tail_text(job_id, lines=5)}")
+        except ValueError:
+            return              # cancel() / 崩溃恢复抢先了，终态已归它
         if self.on_finished is not None:
             try:
                 self.on_finished(job_id, code)
-            except Exception:      # 注册失败不能改写已经落定的作业状态
+            except Exception:  # 注册失败不能改写已经落定的作业状态
                 pass
+
+    def _force_terminal(self, job_id, error) -> None:
+        """reader 线程出意外时的兜底：尽力把作业推到终态，绝不让它卡在 running。"""
+        try:
+            job = self.store.get_job(job_id)
+            if job is not None and job["status"] not in TERMINAL:
+                self.store.transition(job_id, "failed", error=error)
+        except Exception:      # 连兜底都失败时不静默：挂到线程上让它在日志里可见
+            import threading as _threading
+            _threading.excepthook(type(error), (error,), error.__traceback__)
 
     def _flush(self, job_id, rows) -> None:
         try:
@@ -183,7 +201,10 @@ class LocalExecutor:
             self._signal_group(handle.pid, SIGKILL)
         try:
             if self.store.get_job(job_id)["status"] not in TERMINAL:
-                self.store.transition(job_id, "canceled", exit_code=handle.popen.returncode)
+                try:
+                    self.store.transition(job_id, "canceled", exit_code=handle.popen.returncode)
+                except ValueError:
+                    pass          # reader 线程在同一瞬间赢了终态（原子 UPDATE 判的）
         finally:
             # 转移落定之后才撤登记：撤得太早，reader 线程会看到「没在取消、状态还是
             # running」的组合，自己去写 failed。
@@ -221,9 +242,11 @@ class LocalExecutor:
     # ---- reads ------------------------------------------------------------
 
     def metrics(self, job_id) -> MetricBuffer:
+        """取（必要时建）该作业的指标缓冲。未 spawn 的作业也必须用配置的 limit，
+        否则 UI 的「仅显示最近 N 点」提示会报出一个与实际不符的数字。"""
         with self._lock:
             if job_id not in self._metrics:
-                self._metrics[job_id] = MetricBuffer()
+                self._metrics[job_id] = MetricBuffer(self.buffer_limit)
             return self._metrics[job_id]
 
     def live(self) -> set[str]:
