@@ -34,6 +34,13 @@ def flag(argv, name):
     return argv[argv.index(name) + 1]
 
 
+# 每个 kind 的最小可用参数。image/deploy 需要温度（否则会因为没有 calibration 而被拒）。
+SAMPLES = {"generate": {}, "distill": {}, "goldset": {}, "split": {}, "precheck": {},
+           "train": {}, "baseline": {}, "benchmark": {}, "compare": {}, "calibrate": {},
+           "image": {"temperature": "2.35"}, "deploy": {"temperature": "2.35"},
+           "smoke": {}}
+
+
 # ---- 契约：14 种作业齐备 -------------------------------------------------
 
 def test_all_fourteen_kinds_are_registered():
@@ -61,11 +68,7 @@ def test_every_declared_artifact_id_resolves_to_the_right_path():
     断言「非空」是不够的：曾经把 `data/cv` 直接当 id 传进去，resolve 解析成
     `data/data/cv/summary.json`（双前缀）也能返回非空字符串，但文件永远找不到。
     """
-    samples = {"generate": {}, "distill": {}, "goldset": {}, "split": {}, "precheck": {},
-               "train": {}, "baseline": {}, "benchmark": {}, "compare": {}, "calibrate": {},
-               "image": {"temperature": "2.35"}, "deploy": {"temperature": "2.35"},
-               "smoke": {}}
-    for kind, params in samples.items():
+    for kind, params in SAMPLES.items():
         built = REGISTRY[kind].preview(req(params))
         assert built.artifacts_out, f"{kind} 没有声明产物"
         for artifact_id in built.artifacts_out:
@@ -78,6 +81,35 @@ def test_every_declared_artifact_id_resolves_to_the_right_path():
             for prefix in ("data/data/", "runs/runs/"):
                 assert prefix not in relative, \
                     f"{kind} 的 {artifact_id} -> {relative} 出现双前缀 {prefix}"
+
+
+def test_the_out_flag_writes_where_the_registered_artifact_will_be_read():
+    """--out 写的路径必须就是产物 id resolve 出来的那个路径。
+
+    手拼 --out 会和注册 id 各走一套逻辑：作业写完一个文件、闸门却按 id 去读另一个
+    ⇒ 闸门恒失败，而且失败原因是「缺少报告」，看上去像没跑过作业。
+    precheck 就是这样：--out 用 data_dir.replace('/','-') 拼出
+    precheck-data-cv-train.json，而注册的 precheck:cv/train 解析成
+    precheck-cv-train.json（附录 A #11 的同类错配，那次只修了一半）。
+
+    split 的 --out 是目录（它一次写三个分区 + summary），所以也接受「--out 是所有
+    产物路径的公共前缀」。
+    """
+    for kind, params in SAMPLES.items():
+        built = REGISTRY[kind].preview(req(params))
+        if "--out" not in built.argv:
+            continue
+        out = built.argv[built.argv.index("--out") + 1].replace("\\", "/")
+        resolved = [artifacts.resolve(a).replace("\\", "/") for a in built.artifacts_out]
+        # 只比对解析结果是**文件**的那些：dataset:cv / run:x / eval:x 是逻辑句柄
+        # （数据集目录、run 目录），--out 与它不同形是正常的，不算错配。
+        file_like = [p for p in resolved
+                     if not p.startswith("http") and Path(p).suffix in (".json", ".jsonl")]
+        if not file_like:
+            continue
+        # split 的 --out 是目录，它一次写多个文件 —— 接受「--out 是公共前缀」
+        ok = out in file_like or all(p.startswith(out.rstrip("/") + "/") for p in file_like)
+        assert ok, (f"{kind} 的 --out={out} 与产物 id 解析出的路径对不上：{file_like}")
 
 
 def test_dataset_artifact_ids_are_relative_to_the_data_dir():

@@ -335,9 +335,13 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
 
     @app.get("/console/api/gates/{stage}")
     def get_gates(stage: str, scenario: str = "critical-value",
-                  run_name: str = "") -> list:
+                  run_name: str = "", data: str = "") -> list:
+        # data 必须能显式传：阶段表单里有这个字段，用户一旦填了非默认目录，
+        # 闸门若仍按 data/<scenario> 推导就永远查不到产物，而症状是「缺少报告」，
+        # 看不出是 id 对不上（仓库里现成的 data/cv 就属于这种情况）。
+        params = {"data": data} if data else {}
         gates = evaluate(stage, **_gate_products(store(), JobRequest(
-            scenario=scenario, run_name=run_name, params={})))
+            scenario=scenario, run_name=run_name, params=params)))
         return [{"id": g.id, "ok": g.ok, "detail": g.detail,
                  "actual": g.actual, "need": g.need} for g in gates]
 

@@ -18,7 +18,7 @@ import json
 import re
 from pathlib import Path
 
-from .. import paths
+from .. import artifacts, paths
 from ..paths import SKILL_SCRIPTS, SPECS
 from .base import BuiltCommand, Conflict, Invalid, JobRequest, StageSpec
 
@@ -226,15 +226,18 @@ def _precheck(request: JobRequest) -> BuiltCommand:
     partition = params.get("split", "train")
     if partition not in SPLITS:
         raise Invalid(f"split 必须是 {SPLITS} 之一，收到 {partition!r}", field="split")
-    # 产物 id 用 precheck: —— artifacts.resolve 有 precheck 分支，指向 data/console/precheck-*.json
+    # 写文件的路径只由 artifacts.resolve 决定。手拼 --out 会和注册 id 各走一套：
+    # 作业写完 precheck-data-cv-train.json、G1 却按 id 去读 precheck-cv-train.json，
+    # 症状是「缺少 precheck 报告」而不是路径错误 —— 附录 A #11 那次只修了一半。
+    artifact_id = f"precheck:{_dataset_id(data_dir)}/{partition}"
     argv = [_python(), str(paths.CONSOLE_SCRIPTS / "precheck.py"),
             "--data", data_dir,
             "--init-from", params.get("init_from", DEFAULT_INIT),
             "--split", partition,
-            "--out", str(Path(paths.CONSOLE_REL) / f"precheck-{data_dir.replace('/', '-')}-{partition}.json")]
+            "--out", artifacts.resolve(artifact_id)]
     return BuiltCommand(argv=argv, cwd=str(paths.ROOT),
                         artifacts_in=[f"dataset:{_dataset_id(data_dir)}/{partition}"],
-                        artifacts_out=[f"precheck:{_dataset_id(data_dir)}/{partition}"])
+                        artifacts_out=[artifact_id])
 
 
 precheck = StageSpec("precheck", "data", "token 超限预检", _precheck,

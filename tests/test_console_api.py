@@ -223,6 +223,33 @@ def test_gates_endpoint_lists_each_gate_with_a_readable_reason(client):
     assert all(row["ok"] is False and row["detail"] for row in rows)
 
 
+def test_gates_can_address_a_dataset_that_is_not_named_after_the_scenario(client, tmp_path, monkeypatch):
+    """闸门必须能查到**非默认目录**下的产物。
+
+    阶段表单里有 `data` 字段，用户一旦填了 data/cv 之类，闸门若仍按
+    data/<scenario> 推导就永远查不到，而症状是「缺少 precheck 报告」——
+    看不出是 id 对不上。仓库里现成的 data/cv 正是这种情况。
+
+    把 ROOT 挪到 tmp_path 并自己写产物文件：不依赖仓库里是否存在真实数据。
+    """
+    from kev.console import paths
+
+    monkeypatch.setattr(paths, "ROOT", tmp_path)
+    target = tmp_path / "data/console/precheck-cv-train.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('{"records": 551, "over_limit": 0}', encoding="utf-8")
+
+    store = client.app.state.store
+    store.put_artifact(kind="precheck", name="cv/train", path="data/console/precheck-cv-train.json",
+                       meta={"records": 551, "over_limit": 0})
+    # 不传 data：按 data/<scenario> 推导，找不到 data/cv 下的产物
+    assert body(client.get("/console/api/gates/train"))[0]["ok"] is False
+    # 传了 data：应当找到，并且判为通过
+    rows = body(client.get("/console/api/gates/train?data=data/cv"))
+    assert rows[0]["id"] == "G1" and rows[0]["ok"] is True
+    assert "551" in rows[0]["detail"]
+
+
 def test_deploy_is_blocked_by_the_model_quality_gates(client):
     """deploy 阶段要过 G4-G7（模型质量闸），产物还没生成时必须阻断。"""
     response = submit(client, "deploy", temperature="2.35")

@@ -5146,5 +5146,46 @@ python skills/kev-finetune/scripts/split_data.py data/cv.jsonl --out data/cv --s
 产出路径与 `artifacts.resolve("precheck:cv/train")` 一致（`data/console/precheck-cv-train.json`），
 闸门能按同一个 id 找到它。
 
+#### 23. `precheck` 的 `--out` 手拼，与注册 id 解析出的路径不一致（#11 只修了一半）
+
+真机提交作业后从 `preview` 拿到的 argv：
+
+```
+--out  data/console/precheck-data-cv-train.json     ← 手拼：data_dir.replace('/','-')
+产物   precheck:cv/train -> data/console/precheck-cv-train.json   ← resolve
+```
+
+作业写完 `precheck-data-cv-train.json`，G1 却按 id 去读 `precheck-cv-train.json` ⇒ G1 恒失败，
+而症状是「缺少 precheck 报告」，看不出是路径错配。`--out` 已改为 `artifacts.resolve(artifact_id)`。
+
+根因是 L229 的注释声称已统一、实际只统一了注册侧。为此补了**通用守卫**
+`test_the_out_flag_writes_where_the_registered_artifact_will_be_read`：遍历全部 14 种作业，
+凡 `--out` 存在且产物解析为文件（`.json`/`.jsonl`），就要求两者一致或 `--out` 是其公共前缀
+（`split` 的 `--out` 是目录）。`dataset:cv` / `run:x` 这类逻辑句柄不按文件比对，
+否则 `generate`（`--out` 是 `.jsonl`、id 解析为数据集目录）会误报。
+
+#### 24. 闸门端点无法寻址非默认数据集目录
+
+`_gate_products` 用 `data/{scenario}` 推导目录。阶段表单里有 `data` 字段，用户一旦填
+`data/cv`（仓库里现成的数据集就叫这个），闸门仍推导出 `data/critical-value` ⇒ 永远查不到
+产物，症状同样只是「缺少报告」。已给 `GET /console/api/gates/{stage}` 加 `data` 查询参数。
+
+#### 真机端到端（2026-10-05）
+
+编排服务首次作为**真实进程**跑起来（此前只跑过 `TestClient`）：
+
+```
+POST /console/api/jobs  {"kind":"precheck","params":{"data":"data/cv",...}}
+  -> status=running, --out=data/console/precheck-cv-train.json
+轮询 -> succeeded, exit_code=0
+GET  /console/api/artifacts
+  -> precheck:cv/train  meta={"records":551,"over_limit":0}  path=data/console/precheck-cv-train.json
+GET  /console/api/gates/train?data=data/cv
+  -> G1 ok=True  "551 条记录全部在训练上下文内"
+```
+
+只读端点 `/config`（7 个场景）`/scenarios` `/jobs` `/artifacts` `/endpoints` 全部 200；
+闸门在缺产物时返回可读提示而非 500，符合设计意图。
+
 ⚠️ 未验证的部分：G4–G7 需要 GPU 上的真实训练与 baseline 对比，本机跑不了；
 `over_limit 0` 只说明 551 条都放得下，**不代表数据质量合格**（那是 G3 与人工评审的事）。
