@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { deltaBadge, formatMetric, formatNumber, metricAt, renderArgv } from "./format.ts";
+import { deltaBadge, formatMetric, formatNumber, metricAt, objectAt, renderArgv } from "./format.ts";
 
 describe("metricAt", () => {
   it("读取 report.json 的嵌套路径", () => {
@@ -82,5 +82,21 @@ describe("renderArgv", () => {
 
   it("不渲染任何凭据（env 是分开的字段）", () => {
     assert.doesNotMatch(renderArgv(["python", "-m", "kev.train"]), /KEY|TOKEN|SECRET/);
+  });
+});
+
+describe("objectAt", () => {
+  // 三个图表取的是嵌套字典（top_bins / selective），metricAt 只返回数字会全部落空。
+  it("取到 top_bins 这种嵌套字典", () => {
+    const meta = { clean: { candidate: { top_bins: { "0.9": { n: 12, errors: 1 } } } } };
+    const bins = objectAt(meta, ["clean", "candidate", "top_bins"]);
+    assert.deepEqual(bins, { "0.9": { n: 12, errors: 1 } });
+  });
+
+  it("路径缺失或落在标量上时返回 undefined，不抛错", () => {
+    assert.equal(objectAt({}, ["clean", "candidate", "selective"]), undefined);
+    assert.equal(objectAt(undefined, ["clean"]), undefined);
+    // 走到 ece 这个数字上再往下取，不该把数字当对象返回
+    assert.equal(objectAt({ clean: { ece: 0.07 } }, ["clean", "ece", "n"]), undefined);
   });
 });

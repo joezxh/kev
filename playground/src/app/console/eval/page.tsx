@@ -7,7 +7,10 @@ import { api } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
 import { JobStagePage, type FieldSpec } from "@/components/console/JobStagePage";
 import { usePoll } from "@/components/console/usePoll";
-import { deltaBadge, formatMetric, metricAt } from "@/components/console/format";
+import { deltaBadge, formatMetric, metricAt, objectAt } from "@/components/console/format";
+import { MetricDeltaBar, type MetricPair } from "@/components/console/MetricDeltaBar";
+import { ReliabilityDiagram, type TopBin } from "@/components/console/ReliabilityDiagram";
+import { CoverageCurve, type SelectiveBin } from "@/components/console/CoverageCurve";
 
 /**
  * 阶段 3 · 评测。
@@ -41,6 +44,21 @@ export default function EvalPage() {
   const low = latest ? metricAt(latest.meta, ["paired", "acc", "ci95", 0]) : undefined;
   const high = latest ? metricAt(latest.meta, ["paired", "acc", "ci95", 1]) : undefined;
   const badge = deltaBadge(low !== undefined && high !== undefined ? [low, high] : undefined);
+
+  // 图表数据源：candidate 是微调后、reference 是 baseline，两者只在 compare 的产物里同时存在。
+  // 单跑 benchmark 只有 candidate，图表会退化成空态提示而不是画半张图。
+  const pairs: MetricPair[] = latest
+    ? ["acc", "ece", "brier", "nll", "aurc", "confident_error_rate", "coverage_at_5pct_error"]
+        .map((name) => ({
+          name,
+          reference: metricAt(latest.meta, ["clean", "reference", name]),
+          candidate: metricAt(latest.meta, ["clean", "candidate", name]),
+        }))
+    : [];
+  const topBins = objectAt(latest?.meta, ["clean", "candidate", "top_bins"]) as
+    Record<string, TopBin> | undefined;
+  const selective = objectAt(latest?.meta, ["clean", "candidate", "selective"]) as
+    Record<string, SelectiveBin> | undefined;
 
   return (
     <div className="space-y-8">
@@ -111,6 +129,37 @@ export default function EvalPage() {
             <p className="text-xs text-muted-foreground">{t("console.eval.overconfident")}</p>
           </div>
         )}
+      </section>
+
+      <section className="space-y-6">
+        <h2 className="text-sm font-medium">
+          {lang === "zh" ? "指标差与校准" : "Deltas and calibration"}
+        </h2>
+        <div className="space-y-1">
+          <h3 className="text-xs text-muted-foreground">
+            {lang === "zh" ? "微调 vs baseline" : "fine-tuned vs baseline"}
+          </h3>
+          <MetricDeltaBar pairs={pairs} />
+        </div>
+        <div className="space-y-1">
+          <h3 className="text-xs text-muted-foreground">
+            {lang === "zh" ? "高置信区间可靠性（过度自信）" : "Top-confidence reliability (overconfidence)"}
+          </h3>
+          <ReliabilityDiagram
+            bins={topBins}
+            ece={metricAt(latest?.meta, ["clean", "candidate", "ece"])}
+          />
+        </div>
+        <div className="space-y-1">
+          <h3 className="text-xs text-muted-foreground">
+            {lang === "zh" ? "覆盖 vs 错误率" : "Coverage vs error rate"}
+          </h3>
+          <CoverageCurve
+            selective={selective}
+            coverageAt5Pct={metricAt(latest?.meta, ["clean", "candidate", "coverage_at_5pct_error"])}
+            coverageAt1Pct={metricAt(latest?.meta, ["clean", "candidate", "coverage_at_1pct_error"])}
+          />
+        </div>
       </section>
     </div>
   );

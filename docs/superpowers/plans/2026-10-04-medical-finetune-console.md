@@ -2271,7 +2271,7 @@ precheck = StageSpec("precheck", "data", "token 超限预检", _precheck)
 DATA_STAGES = (plan_size, generate, distill, goldset, split, precheck)
 ```
 
-- [ ] **Step 5: 写 `docs/medical/console/precheck.py`**
+- [x] **Step 5: 写 `docs/medical/console/precheck.py`**
 
 ```python
 #!/usr/bin/env python3
@@ -2989,7 +2989,7 @@ smoke = StageSpec("smoke", "deploy", "冒烟测试", _smoke)
 DEPLOY_STAGES = (image, deploy, smoke)
 ```
 
-- [ ] **Step 4: 写 `deploy/kev-serve/Dockerfile` 与 `docs/medical/console/smoke.py`**
+- [x] **Step 4: 写 `deploy/kev-serve/Dockerfile` 与 `docs/medical/console/smoke.py`**
 
 ```dockerfile
 # deploy/kev-serve/Dockerfile
@@ -4738,7 +4738,7 @@ export function GatePanel({ gates, title }: { gates: Gate[]; title?: string }) {
 }
 ```
 
-- [ ] **Step 2: 写三个图表组件**
+- [x] **Step 2: 写三个图表组件**
 
 `ReliabilityDiagram`：读 `report.clean.top_bins`（形如 `{"0.9": {n, errors, error_rate}, "0.95": ..., "0.99": ...}`）画 reliability diagram，横轴置信度区间、纵轴实际准确率，画 `y = x` 对角线。旁边显示 `clean.ece` 与 `calibrated_clean.ece` 两个数。
 
@@ -4766,7 +4766,7 @@ export function GatePanel({ gates, title }: { gates: Gate[]; title?: string }) {
 
 用已有的 `data/cv` 与一个 `runs/*-eval` 产物，确认指标卡与图表有数据；手工把 `comparison.json` 的 `paired.acc.ci95` 改成 `[-0.01, 0.03]`，刷新后 G4 必须变红且镜像/部署按钮禁用。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add playground/src/components/console playground/src/app/console/datasets playground/src/app/console/eval
@@ -5058,15 +5058,39 @@ if (-not $p.WaitForExit(900000)) { $p.Kill() }   # 单位毫秒
 
 两者在 WSL2 / Linux 上都不会出现。**这批失败不属于本次交付范围**，修它们要动既有模块，属于独立工作。
 
-#### 构建坑：别中途强杀 `next build`
+#### 构建坑：`next build` 在已有 `.next` 上会静默挂起（本环境实测规律）
 
-`next build` 被强杀会在 `.next/lock` 留下空锁，此后所有构建都以 `Another next build process is already running` 静默挂起（CPU 掉到 ~4%，日志停在 `Running next.config.ts took 50ms`）。
+症状：日志停在 `✓ Running next.config.ts took 50ms` 之后再无输出，进程仍在但 CPU 占用只有 ~4%
+（实测 40 秒墙钟只涨 1.8 秒 CPU），即**挂起而非慢**。有时会先打一行
+`⨯ Another next build process is already running` 并留下一个 0 字节的 `.next/lock`。
 
-恢复方式按侵入性从小到大：
+**规律（4 次对照）**：
 
-1. 删 `.next/lock`（单文件）并确认无 `next` 残留进程；
-2. 仍挂起则整目录重命名（**不要用 `Remove-Item -Recurse`**，会触发批量删除守卫）：
-   `Rename-Item .next .next-corrupt-<日期>`，构建会重建全新缓存；
-3. 被重命名的目录**不会被 `.gitignore` 匹配**（忽略规则写的是 `.next`），会变成未跟踪目录 —— 处理完记得移出工作区或删除。
+| # | `.next` 状态 | 结果 |
+| --- | --- | --- |
+| 6 | 全新（旧的已移走） | 成功，18–29s |
+| 7 | 沿用上一次成功的 | **挂起** |
+| 8 | 沿用 + 只删 `.next/lock` | **挂起** |
+| 9 | 全新（旧的已移走） | 成功，18.5s |
 
-实测：全新 `.next` 下 `Compiled successfully in 29.2s`，11/11 静态页生成，7 个 `/console/*` 路由全部产出。
+所以根因**不是**「被强杀留下空锁」，而是**增量构建本身就会挂**；删 lock 无效。
+
+唯一有效的恢复：让构建生成全新缓存目录。
+
+```powershell
+# 先确认没有 next 残留进程
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+  Where-Object { $_.CommandLine -match 'next' -and $_.CommandLine -notmatch 'PyCharm' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+
+# 移走而不是删除：Remove-Item -Recurse 会触发批量删除守卫
+Move-Item .next "$env:TEMP\kev-next-stale-$(Get-Date -Format HHmmss)"
+```
+
+⚠️ 移走后的目录**不会被 `.gitignore` 匹配**（规则写的是 `.next`），留在工作区会变成未跟踪目录
+—— 所以直接移到 `$env:TEMP`，别留在仓库里。
+
+另外两点：
+
+- **构建与 pytest 不要并发**。并发会互相饿死：`test_rounds` 10 分钟只推进 3%，构建 CPU 掉到 4%。
+- **别中途强杀构建**。虽然根因不是它，但强杀确实会额外留下 `.next/lock`。

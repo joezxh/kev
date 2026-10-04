@@ -158,6 +158,28 @@ def test_precheck_argv_uses_the_right_tokenizer_and_partition():
     assert built.artifacts_out == ["precheck:cv/train"]   # 这里显式给了 data: "data/cv"
 
 
+def test_every_script_the_stages_spawn_actually_exists():
+    """编排层只组装 argv，被 spawn 的脚本是别的目录里的真实文件。
+
+    preview() 只拼字符串 —— 文件不存在照样返回 argv。所以 golden argv 全绿
+    也不代表作业跑得起来：precheck.py / smoke.py 就是这样漏掉的，
+    `argv[1].endswith("precheck.py")` 永远为真，真提交才 FileNotFoundError，
+    而 G1 读不到 over_limit ⇒ train 永远无法提交（附录 A #11）。
+
+    precheck 的路径从 argv 实测取，谁改了 data.py 的拼接这里就跟着变，不会写死。
+    """
+    scripts = {
+        "plan_size": console_paths.SKILL_SCRIPTS / "plan_size.py",
+        "generate": console_paths.SKILL_SCRIPTS / "generate_data.py",
+        "goldset": console_paths.GENERATORS / "make_goldset.py",
+        "split": console_paths.SKILL_SCRIPTS / "split_data.py",
+        "precheck": Path(d.precheck.preview(req({"data": "data/cv"})).argv[1]),
+        "smoke": dp.SMOKE_SCRIPT,
+    }
+    missing = {kind: str(p) for kind, p in scripts.items() if not p.exists()}
+    assert missing == {}, f"stage 要 spawn 的脚本不存在，作业一起就 FileNotFoundError：{missing}"
+
+
 def test_parse_plan_size_reads_both_the_json_and_the_text_form():
     assert d.parse_plan_size('{"total_records": 787}')["total_records"] == 787
     text = "development questions: 469 paired (unpaired bound 1092)\n  generate at least 787 records\n"

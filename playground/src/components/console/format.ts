@@ -16,6 +16,19 @@ export function metricAt(source: unknown, path: MetricPath): number | undefined 
   return typeof node === "number" && !Number.isNaN(node) ? node : undefined;
 }
 
+/**
+ * 取一个子对象（top_bins / selective 这类嵌套字典）。
+ * metricAt 只返回数字，取对象会全部落空，所以图表那三个组件需要这个。
+ */
+export function objectAt(source: unknown, path: MetricPath): Record<string, unknown> | undefined {
+  let node: unknown = source;
+  for (const key of path) {
+    if (node === null || typeof node !== "object") return undefined;
+    node = (node as Record<string | number, unknown>)[key];
+  }
+  return node !== null && typeof node === "object" ? (node as Record<string, unknown>) : undefined;
+}
+
 export function formatMetric(value: number | undefined, digits = 1): string {
   if (value === undefined || Number.isNaN(value)) return "—";
   return `${(value * 100).toFixed(digits)}%`;
