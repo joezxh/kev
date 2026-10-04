@@ -23,7 +23,7 @@ LIVE = frozenset({"pending", "queued", "running"})
 ALLOWED: dict[str, frozenset[str]] = {
     # pending 也收 interrupted：interrupt_stale_jobs() 是一条直接 SQL，会把全部 LIVE（含 pending）
     # 标成 interrupted。状态机不许这条边，就等于「恢复路径造得出、状态机自己造不出」的状态。
-    "pending": frozenset({"queued", "canceled", "failed", "interrupted"}),
+    "pending": frozenset({"queued", "running", "canceled", "failed", "interrupted"}),
     "queued": frozenset({"running", "canceled", "failed", "interrupted"}),
     "running": TERMINAL,
     "succeeded": frozenset(),

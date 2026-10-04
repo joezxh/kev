@@ -23,8 +23,9 @@ from .db import TERMINAL, Store
 from .events import DEFAULT_BUFFER, MetricBuffer, parse_step
 
 # 允许持久化到 jobs.env_overlay 的非敏感键。其余一律不落库。
+# KEV_SERVE_RUN 只是运行名（不是凭据），deploy 阶段要靠它告诉容器加载哪个 checkpoint。
 ALLOWED_ENV = frozenset({
-    "HF_ENDPOINT", "KEV_GEN_BASE_URL", "KEV_GEN_MODEL",
+    "HF_ENDPOINT", "KEV_GEN_BASE_URL", "KEV_GEN_MODEL", "KEV_SERVE_RUN",
     "OMP_NUM_THREADS", "PYTHONIOENCODING",
 })
 

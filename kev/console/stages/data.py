@@ -59,16 +59,22 @@ def _float(params: dict, key: str, default: float) -> float:
         raise Invalid(f"{key} 必须是数字，收到 {params.get(key)!r}", field=key) from None
 
 
-def _dataset_id(data_dir: str) -> str:
+def dataset_id(data_dir: str) -> str:
     """产物 id 里的数据集名是**相对 data/ 的**。
 
     `artifacts.resolve` 自己会拼 `DATA_DIR` 前缀（`dataset:cv/summary` ->
     `data/cv/summary.json`），所以这里如果传 `data/cv` 就会解析成 `data/data/cv/...`
     这种双前缀路径 —— 而 `register` 正是靠 resolve 找文件的。
+
+    公开的：app 的闸门预检也要用它把 `data/cv` 转成产物 id。
     """
     name = str(data_dir).replace("\\", "/").strip("/")
     prefix = paths.DATA_REL.strip("/") + "/"
     return name[len(prefix):] if name.startswith(prefix) else name
+
+
+# 内部别名，保持各阶段处理器里的调用点简短
+_dataset_id = dataset_id
 
 
 def _exists(relative: str, params: dict) -> None:
