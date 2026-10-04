@@ -2842,7 +2842,9 @@ def test_smoke_targets_the_deployed_endpoint():
     assert built.argv[1] == "-m"
     assert built.argv[2].endswith("smoke.py")
     assert built.argv[built.argv.index("--base-url") + 1] == "http://127.0.0.1:8008"
-    assert built.artifacts_out == ["eval:smoke-cv-8b-lora-v1"]
+    # 产物 id 必须是 smoke:，且与 --out 写出的路径一致（artifacts.resolve 的 smoke 分支）
+    assert built.artifacts_out == ["smoke:cv-8b-lora-v1"]
+    assert built.argv[built.argv.index("--out") + 1] == "runs/cv-8b-lora-v1-smoke.json"
 
 
 def test_serve_port_constant_matches_the_playground_rewrite():
@@ -2973,11 +2975,13 @@ deploy = StageSpec("deploy", "deploy", "启动 System One 端点", _deploy, pers
 
 def _smoke(request: JobRequest) -> BuiltCommand:
     base_url = request.params.get("base_url") or f"http://127.0.0.1:{SERVE_PORT}"
-    argv = [_python(), str(SMOKE_SCRIPT), "--base-url", base_url,
-            "--out", f"runs/{request.run_name}-smoke.json"]
+    out = f"runs/{request.run_name}-smoke.json"
+    argv = [_python(), str(SMOKE_SCRIPT), "--base-url", base_url, "--out", out]
+    # 产物 id 用 smoke: 而不是 eval: —— eval:<name> 会被 resolve 成 runs/<name>-eval，
+    # 与真实报告路径 runs/<name>-smoke.json 对不上（artifacts.resolve 已有 smoke 分支）
     return BuiltCommand(argv=argv, cwd=str(paths.ROOT),
                         artifacts_in=[f"endpoint:{SERVE_PORT}"],
-                        artifacts_out=[f"eval:smoke-{request.run_name}"])
+                        artifacts_out=[f"smoke:{request.run_name}"])
 
 
 smoke = StageSpec("smoke", "deploy", "冒烟测试", _smoke)
@@ -3225,6 +3229,53 @@ def test_a_second_train_is_refused_while_one_is_live(client):
     assert body(response)["error"]["kind"] == "conflict"
 
 
+def test_startup_marks_live_jobs_interrupted(tmp_path):
+    """崩溃恢复：WSL2 会自动回收内存，服务重启是常态。启动时残留的 running/queued
+    必须变成 interrupted，否则它们会永远卡在 running（spec §9.3、人工验收第 5 项）。"""
+    from kev.console.app import create_app
+    from kev.console.db import Store
+    store = Store(tmp_path / "db.sqlite")
+    live = store.create_job(
+        kind="train", stage="train", scenario="triage", title="t",
+        request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+        artifacts_in=[], artifacts_out=[])
+    store.transition(live, "queued")
+    store.transition(live, "running")
+    done = store.create_job(
+        kind="split", stage="data", scenario="triage", title="t",
+        request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+        artifacts_in=[], artifacts_out=[])
+    store.transition(done, "queued")
+    store.transition(done, "running")
+    store.transition(done, "succeeded")
+
+    with TestClient(create_app(store=store)):
+        pass                       # 建 app 即触发恢复
+    assert store.get_job(live)["status"] == "interrupted"
+    assert store.get_job(done)["status"] == "succeeded"
+
+
+def test_retry_increments_attempt(client):
+    """attempt 必须在重试时递增，否则 jobs 表无法区分「第一次」和「换名重试」。"""
+    first = body(client.post("/console/api/jobs", json={
+        "kind": "plan_size", "scenario": "triage", "run_name": "t", "params": {}}))
+    client.app.state.store.transition(first["id"], "queued")
+    client.app.state.store.transition(first["id"], "running")
+    client.app.state.store.transition(first["id"], "failed", error="boom", exit_code=1)
+    second = body(client.post(f"/console/api/jobs/{first['id']}/retry"))
+    assert second["attempt"] == first["attempt"] + 1
+    assert second["title"] != first["title"]      # 换名，绝不复用目录
+
+
+def test_a_broken_register_is_reported_not_swallowed(client, monkeypatch):
+    """产物注册失败必须留下痕迹。"""
+    def boom(store, job):
+        raise RuntimeError("register failed")
+    monkeypatch.setattr("kev.console.app.artifacts.register", boom)
+    with pytest.raises(RuntimeError, match="register failed"):
+        client.app.state.executor.on_finished("some-job", 0)
+
+
 def test_gate_failure_blocks_submission_with_422(client, monkeypatch):
     monkeypatch.setattr("kev.console.app.evaluate", lambda stage, **p: [
         type("G", (), {"id": "G1", "ok": False, "detail": "3 条超限", "actual": "3", "need": "0"})()])
@@ -3380,10 +3431,18 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
     app.state.store.interrupt_stale_jobs()          # spec §9.3：启动即恢复
     def register_finished(job_id, exit_code) -> None:
         """产物注册的唯一入口。作业自然成功后把它声明的 artifacts_out 落成 artifact，
-        并写 in -> out 血缘。cancel 不会触发（执行器对 cancel 不回调 on_finished）。"""
+        并写 in -> out 血缘。cancel 不会触发（执行器对 cancel 不回调 on_finished）。
+
+        注册失败**不吞**：追加一条 system 事件，让 UI 与人工验收能看见产物缺失。
+        """
         job = app.state.store.get_job(job_id)
-        if job is not None and exit_code == 0:
+        if job is None or exit_code != 0:
+            return
+        try:
             artifacts.register(app.state.store, job)
+        except Exception as error:
+            app.state.store.append_events(job_id, [("system", f"产物注册失败：{error}（见实现报告）")])
+            raise
 
     app.state.executor = executor or LocalExecutor(app.state.store, on_finished=register_finished)
 
@@ -3493,7 +3552,7 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
         job_id = _spawn(app, stage, request, built)
         return JSONResponse(status_code=201, content=store().get_job(job_id))
 
-    def _spawn(app, stage, request, built) -> str:
+    def _spawn(app, stage, request, built, *, attempt=1, parent_id=None) -> str:
         log_path = paths.JOB_LOGS / f"{uuid.uuid4().hex}.log"
         job_id = app.state.store.create_job(
             kind=stage.kind, stage=stage.stage, scenario=request.scenario,
@@ -3501,6 +3560,7 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
             argv=[str(p) for p in built.argv], env_overlay=built.env,
             cwd=built.cwd or str(paths.ROOT), log_path=str(log_path),
             artifacts_in=built.artifacts_in, artifacts_out=built.artifacts_out,
+            attempt=attempt, parent_id=parent_id,
         )
         app.state.executor.spawn(job_id, built.argv, cwd=built.cwd or str(paths.ROOT),
                                  log_path=str(log_path), env_overlay=built.env)
@@ -3539,9 +3599,25 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
             return _error("validation", f"未知作业 {job_id}", status=404)
         if job["status"] not in {"failed", "canceled", "interrupted"}:
             return _error("conflict", f"{job['status']} 的作业不能重试", status=409)
-        payload = {"kind": job["kind"], "scenario": job["scenario"],
-                   "run_name": f"{job['title']}-r{job['attempt'] + 1}", "params": job["request"]}
-        return submit_job(payload)
+        attempt = job["attempt"] + 1
+        stage = REGISTRY.get(job["kind"])
+        if stage is None:
+            return _error("validation", f"原作业类型 {job['kind']!r} 已不注册", status=409)
+        try:
+            request = JobRequest(scenario=job["scenario"],
+                                 run_name=f"{job['title']}-r{attempt}",
+                                 params=job["request"])
+            built = stage.preview(request)
+        except Invalid as error:
+            return _error("validation", error.message, status=400, field=error.field, hint=error.hint)
+        except SystemExit as error:
+            return _error("validation", str(error), status=400, field="run_name")
+        except Conflict as error:
+            return _error("conflict", str(error), status=409)
+        # 换名而非复用目录：kev.train / evaluate_records 都是 mkdir(exist_ok=False)，
+        # 且旧产物要永久保留（可审计）。attempt 递增，parent_id 指向原作业。
+        new_id = _spawn(app, stage, request, built, attempt=attempt, parent_id=job_id)
+        return JSONResponse(status_code=201, content=store().get_job(new_id))
 
     @app.get("/console/api/jobs/{job_id}/events")
     def get_events(job_id: str, after_id: int = 0):

@@ -192,6 +192,24 @@ def test_active_job_of_kind_finds_only_live(store):
     assert store.active_job_of_kind("train") is None
 
 
+def test_create_job_accepts_attempt_and_parent_for_retry(store):
+    """重试要换名 + attempt 递增 + parent_id 指向原作业，三者一起才有可审计的重试链。"""
+    first = store.create_job(
+        kind="train", stage="train", scenario="critical-value", title="cv-8b-lora-v1",
+        request={}, argv=["x"], env_overlay={}, cwd="/repo",
+        log_path="l.log", artifacts_in=[], artifacts_out=[])
+    second = store.create_job(
+        kind="train", stage="train", scenario="critical-value", title="cv-8b-lora-v1-r2",
+        request={}, argv=["x"], env_overlay={}, cwd="/repo",
+        log_path="l.log", artifacts_in=[], artifacts_out=[],
+        attempt=2, parent_id=first)
+    assert store.get_job(first)["attempt"] == 1
+    assert store.get_job(first)["parent_id"] is None
+    retried = store.get_job(second)
+    assert retried["attempt"] == 2
+    assert retried["parent_id"] == first
+
+
 def test_artifact_id_is_kind_colon_name(store):
     aid = store.put_artifact(kind="dataset", name="cv", path="data/cv", meta={"records": 787})
     assert aid == "dataset:cv"

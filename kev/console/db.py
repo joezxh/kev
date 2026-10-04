@@ -176,15 +176,19 @@ class Store:
     # ---- jobs -------------------------------------------------------------
 
     def create_job(self, *, kind, stage, scenario, title, request, argv, env_overlay,
-                   cwd, log_path, artifacts_in, artifacts_out, parent_id=None) -> str:
+                   cwd, log_path, artifacts_in, artifacts_out, parent_id=None,
+                   attempt=1) -> str:
+        """attempt 是「第几次尝试」：重试（换名续跑）时由调用方递增，jobs 表据此区分
+        首次执行与重试。parent_id 指向被重试的那个作业。
+        """
         job_id = uuid.uuid4().hex
         self.connect().execute(
             "INSERT INTO jobs (id, kind, stage, scenario, title, status, request, argv, env_overlay, cwd,"
             " log_path, artifacts_in, artifacts_out, parent_id, attempt, created_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)",
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (job_id, kind, stage, scenario, title, "pending", _dumps(request), _dumps(argv),
              _dumps(env_overlay), str(cwd), str(log_path), _dumps(artifacts_in),
-             _dumps(artifacts_out), parent_id, _now()),
+             _dumps(artifacts_out), parent_id, int(attempt), _now()),
         )
         self.connect().commit()
         return job_id
