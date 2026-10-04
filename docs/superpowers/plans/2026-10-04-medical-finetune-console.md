@@ -29,6 +29,7 @@
 | 禁止 | 改用 |
 | --- | --- |
 | 裸 `.read_text()` / `open()` 不带 `encoding=` | `kev.suite.read_json` / `write_json` / `read_jsonl` / `write_jsonl` |
+| **`encoding=` 与 `write_text(` 不在同一行**（该正则是**按行**匹配的，跨行同样违规，Linux 也一样） | 把内容存进局部变量：`payload = '...'` 再 `write_text(payload, encoding="utf-8")` |
 | 自己写 `["false","true"]` 或 `[str(i) for i in range(...)]` | `kev.api.question_keys` |
 | 硬编码 `2048` 比较、`max_state=` / `max_branch=` / `max_packed=` | `kev.model.training_context()` / `kev.model.fits` |
 | `os.environ` 读 `KEV_DTYPE`/`KEV_MERGE`/`KEV_ATTN`/`KEV_LORA_SCALE`/`KEV_TEMPERATURE`/`KEV_BACKEND`/`KEV_CUDA_GRAPHS` | `kev.checkpoint.LoadOptions.from_env`（温度从 `calibration.json` 取） |
@@ -180,6 +181,7 @@ data/console/kev-console.db                                              ← SQL
 - Create: `kev/console/paths.py`
 - Create: `kev/console/db.py`
 - Create: `kev/console/artifacts.py`
+- Create: `kev/console/stages/__init__.py`（空包标记：`pyproject.toml` 声明了 `kev.console.stages`，不建目录 setuptools 构建会失败、整个仓库连 pytest 都启动不了）
 - Modify: `pyproject.toml:60-61`
 - Test: `tests/test_console_db.py`
 - Test: `tests/test_console_artifacts.py`
@@ -411,8 +413,8 @@ def test_resolve_rejects_an_unknown_kind():
 def test_summarize_reads_a_split_summary(tmp_path, monkeypatch):
     monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
     (tmp_path / "data/cv").mkdir(parents=True)
-    (tmp_path / "data/cv/summary.json").write_text(
-        '{"records": 787, "invalid_lines": 0, "partitions": {}}', encoding="utf-8")
+    payload = '{"records": 787, "invalid_lines": 0, "partitions": {}}'
+    (tmp_path / "data/cv/summary.json").write_text(payload, encoding="utf-8")
     assert artifacts.summarize("dataset:cv/summary", artifacts.resolve("dataset:cv/summary")) == {
         "records": 787, "invalid_lines": 0}
 
@@ -420,9 +422,8 @@ def test_summarize_reads_a_split_summary(tmp_path, monkeypatch):
 def test_summarize_pulls_the_paired_ci_out_of_a_comparison(tmp_path, monkeypatch):
     monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
     (tmp_path / "runs/x-compare").mkdir(parents=True)
-    (tmp_path / "runs/x-compare/comparison.json").write_text(
-        '{"paired": {"acc": {"ci95": [0.023, 0.097], "macro_acc_delta": 0.05}}, "clean": {}}',
-        encoding="utf-8")
+    payload = '{"paired": {"acc": {"ci95": [0.023, 0.097], "macro_acc_delta": 0.05}}, "clean": {}}'
+    (tmp_path / "runs/x-compare/comparison.json").write_text(payload, encoding="utf-8")
     meta = artifacts.summarize("comparison:x", "runs/x-compare/comparison.json")
     assert meta["ci95"] == [0.023, 0.097]
     assert meta["delta"] == 0.05
@@ -3276,8 +3277,8 @@ def test_a_finished_job_registers_its_artifacts_and_lineage(client, tmp_path, mo
     from kev.console import artifacts
     monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
     (tmp_path / "data/cv").mkdir(parents=True)
-    (tmp_path / "data/cv/summary.json").write_text(
-        '{"records": 787, "invalid_lines": 0}', encoding="utf-8")
+    summary = '{"records": 787, "invalid_lines": 0}'
+    (tmp_path / "data/cv/summary.json").write_text(summary, encoding="utf-8")
 
     job_id = client.app.state.store.create_job(
         kind="split", stage="data", scenario="critical-value", title="cv",
@@ -3299,11 +3300,11 @@ def test_train_is_submittable_once_precheck_and_summary_exist(client, tmp_path, 
     from kev.console import artifacts, gates
     monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
     (tmp_path / "data/cv").mkdir(parents=True)
-    (tmp_path / "data/cv/summary.json").write_text(
-        '{"records": 787, "invalid_lines": 0, "label_warnings": []}', encoding="utf-8")
+    summary = '{"records": 787, "invalid_lines": 0, "label_warnings": []}'
+    (tmp_path / "data/cv/summary.json").write_text(summary, encoding="utf-8")
     (tmp_path / "data/console").mkdir(parents=True)
-    (tmp_path / "data/console/precheck-data-cv-train.json").write_text(
-        '{"records": 551, "over_limit": 0}', encoding="utf-8")
+    precheck = '{"records": 551, "over_limit": 0}'
+    (tmp_path / "data/console/precheck-data-cv-train.json").write_text(precheck, encoding="utf-8")
 
     client.app.state.store.transition(
         client.app.state.store.create_job(
@@ -4911,6 +4912,18 @@ git commit -m "test(console): 契约冻结（核心文件零改动 + 保留变�
 12. **模块导入顺序（阻断 Task 5）**：`stages/__init__.py` 一次导入 `train`/`eval`/`deploy`，但这三个模块 Task 6/7 才建。已修：分三次建成（Task 5 → data；Task 6 → +train/eval；Task 7 → +deploy）。
 13. **长驻作业的产物注册时机**：`deploy` 的 `kev.serve` 永不退出，「成功后才注册」会让 endpoint 产物永远不出现。已修：`StageSpec` 新增 `persist` 字段（`"success"` 默认 / `"start"`），`deploy` 用 `"start"`，在 `_spawn` 里注册；在线状态由部署页实际探 `/v1/models` 决定。
 14. 顺带清掉 `app.py` 里两个未使用的导入（`STAGE_GATES`、`parse_plan_size`），并给 Task 9 Step 8 补上删除硬编码 key 的替换代码（原计划只写了描述）。
+
+### 附录 A：Task 1 实施后回写（implementer 实际跑出来的 5 个真 bug）
+
+brief 里的实现代码有 5 处缺陷，被 TDD 的红灯逼出来。已由 implementer 修正，后续任务照修正后的契约：
+
+15. **`Store.transition` 的 UPDATE 漏了 `WHERE id = ?`** —— 会更新**整张 jobs 表**。最严重的一处，因为单作业的测试照样通过。修正：`sql = "UPDATE jobs SET status = ?" + ... + " WHERE id = ?"`，`params` 末尾追加 `job_id`。
+16. **`lineage_of` 语义**：只查出边（`WHERE parent = ?`）。原实现查 `parent = ? OR child = ?`，会让「产物只记录自己派生了什么」的断言失败。**契约：出边（这个产物派生了什么）**；入边（谁派生了它）由 `child` 那一侧查。UI 的血缘树从根节点出发只画出边即可。
+17. **`artifacts.resolve` 的 `dataset` 分支漏 `data/` 前缀** —— `dataset:cv/summary` 应解析成 `data/cv/summary.json`，不是 `cv/summary.json`。原实现会让 G2/G3 找不到文件。
+18. **`artifacts.summarize` 不该把 `partitions` 抄进 meta** —— 列表页只需要记录数与无效行数。
+19. **`lineage` 表的 `REFERENCES artifacts(id)` 与 `register` 的契约冲突** —— `artifacts_in` 里的输入产物（如 `dataset:cv`）可能尚未注册为 artifact，外键会拒绝。修正：lineage 表**不建外键**（输入产物允许是「已声明但还没落盘」的 id）。
+20. `kev/console/stages/__init__.py` 在 Task 1 就必须创建（空包标记）。只改 `pyproject.toml` 的 `packages` 声明而不建目录，setuptools 构建会失败、整个仓库连 pytest 都启动不了。已加进 Task 1 的文件清单。
+21. **`tests/test_conventions.py` 的 allowlist 在 Windows 上永不匹配（既有缺陷，已修 `d3769c1`）**：`str(path.relative_to(ROOT))` 在 Windows 上产生 `kev\checkpoint.py`（反斜杠），而 `RULES` 里的 allowlist 写的是 `kev/checkpoint.py`（正斜杠）⇒ 15/21 个检查无条件失败，本项目最主要的约定闸门形同虚设。改用 `as_posix()` 后 21 passed。**Task 1 Step 7 的「Expected: PASS」现在成立。**
 
 唯一保留的人工判断点：
 
