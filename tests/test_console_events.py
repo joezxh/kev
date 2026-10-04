@@ -72,6 +72,36 @@ def test_sse_frame_refuses_to_emit_invalid_json():
         sse_frame(event, bad)
 
 
+def test_parse_step_accepts_a_negative_zero_kl():
+    r"""真实回归：F.kl_div(reduction="sum") 在 float32 下、两个分布趋于重合时可能给出
+    极小负值，`:.3f` 渲染成 `-0.000`。旧正则 `[\d.]+` 会整行失配，连合法的 loss 一起丢 ——
+    而 kev/plot.py 用无锚 finditer 只取 loss，它照样能画，于是曲线在收敛段无声缺点。"""
+    line = "ep1 step 130/139 loss 0.412 kl -0.000 anchor 0.031 0.512s/rec"
+    point = parse_step(line)
+    assert point is not None, "带 -0.000 的进度行必须被接受"
+    assert point["loss"] == 0.412
+    assert point["kl"] == 0.0
+    assert point["step"] == 130
+
+
+def test_parse_step_rejects_unfloatable_numbers():
+    """`1.2.3` / `..` 这类串 float() 会抛 ValueError。reader 线程无保护调用本函数，
+    抛异常会打死线程、作业永远不到终态、UI 永久转圈 —— 所以必须收敛成 None。"""
+    for line in ("ep0 step 10/139 loss 1.2.3 kl 0.000 anchor 0.000 1.000s/rec",
+                 "ep0 step 10/139 loss .. kl 0.000 anchor 0.000 1.000s/rec"):
+        assert parse_step(line) is None
+
+
+def test_saved_note_keeps_a_path_with_spaces():
+    """--out 没有任何校验（train.py:415），`--out "runs/cv 8b"` 经 API 可达。
+    旧的 `\\S+` 会把路径截断成 "runs/cv"，产物链接 404。"""
+    assert parse_note("saved runs/cv 8b") == {"kind": "saved", "path": "runs/cv 8b"}
+
+
+def test_saved_note_strips_a_trailing_carriage_return():
+    assert parse_note("saved runs/cv-8b-lora-v1\r") == {"kind": "saved", "path": "runs/cv-8b-lora-v1"}
+
+
 def test_metric_buffer_keeps_the_last_n_points():
     buffer = MetricBuffer(limit=3)
     for step in (1, 2, 3, 4):

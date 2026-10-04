@@ -3308,6 +3308,21 @@ def test_stream_is_an_sse_frame_stream(client):
     assert chunk.startswith("id: ")
 
 
+def test_stream_resumes_from_the_last_event_id_header(client):
+    """EventSource 断线自动重连时沿用原 URL，Last-Event-ID 只以 header 形式回来。
+    只读 after_id 查询参数会让重连从 0 全量重放（Task 2 评审发现，人工验收第 3 项）。"""
+    job_id = body(client.post("/console/api/jobs", json={
+        "kind": "plan_size", "scenario": "triage", "run_name": "t", "params": {}}))["id"]
+    store = client.app.state.store
+    first = store.append_events(job_id, [("stdout", "one")])
+    store.append_events(job_id, [("stdout", "two")])
+    with client.stream("GET", f"/console/api/jobs/{job_id}/stream?after_id=0",
+                       headers={"Last-Event-ID": str(first)}) as response:
+        lines = list(response.iter_lines())
+    assert any('"two"' in line for line in lines)     # 只应收到 "two"
+    assert not any('"one"' in line for line in lines)  # "one" 不重放
+
+
 def test_gates_endpoint_reports_each_gate(client):
     rows = body(client.get("/console/api/gates/train"))
     assert [row["id"] for row in rows] == ["G1", "G2", "G3"]
@@ -3584,7 +3599,11 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
                 "metrics": app.state.executor.metrics(job_id).points(),
                 "metrics_dropped": app.state.executor.metrics(job_id).dropped(),
                 "artifacts": [a for a in artifacts if a],
-                "notes": [n for n in (parse_note(e["line"]) for e in store().read_events(job_id)) if n]}
+                # 倒序取尾页：read_events 默认按 id 升序取最早 500 行，训练收尾才出现的
+                # saved note 在任何真实 run 里都不会浮出来（Task 2 评审发现）
+                "notes": [n for n in (parse_note(e["line"])
+                                      for e in reversed(store().read_events(job_id, limit=500)))
+                          if n]}
 
     @app.post("/console/api/jobs/{job_id}/cancel")
     def cancel_job(job_id: str):
@@ -3627,9 +3646,12 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
     async def stream_job(job_id: str, request: Request, after_id: int = 0):
         if store().get_job(job_id) is None:
             return _error("validation", f"未知作业 {job_id}", status=404)
+        # EventSource 断线自动重连时**沿用原 URL**，Last-Event-ID 只以 header 形式回来。
+        # 只读查询参数会让重连从 after_id=0 全量重放（Task 2 评审发现）——所以 header 优先。
+        cursor = int(request.headers.get("last-event-id") or after_id or 0)
 
         async def frames():
-            cursor = after_id
+            nonlocal cursor
             while True:
                 if await request.is_disconnected():
                     break

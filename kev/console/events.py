@@ -14,24 +14,44 @@ import json
 import re
 from collections import deque
 
+    # 三个损失都是 `:.3f` 格式化的（kev/train.py:643），而 F.kl_div(reduction="sum")
+    # 在 float32 下、两个分布趋于重合时可能给出极小负值 => 渲染成 `-0.000`。
+    # 所以数值子式必须允许前导负号，否则整行失配、**连合法的 loss 一起丢掉** ——
+    # 而 kev/plot.py 用的是不带锚的 finditer 且只取 loss，它照样能画出来，
+    # 于是变成「图能画、曲线在收敛段无声缺点」这种最难查的分叉。
+    # 同时不接受 `1.2.3` / `nan` 这类 float() 会抛 ValueError 的串。
+_NUM = r"[-+]?\d*\.?\d+"
 STEP_RE = re.compile(
-    r"^ep(?P<ep>\d+) step (?P<step>\d+)/(?P<total>\d+) "
-    r"loss (?P<loss>[\d.]+) kl (?P<kl>[\d.]+) anchor (?P<anchor>[\d.]+) "
-    r"(?P<sec>[\d.]+)s/rec"
+    rf"^ep(?P<ep>\d+) step (?P<step>\d+)/(?P<total>\d+) "
+    rf"loss (?P<loss>{_NUM}) kl (?P<kl>{_NUM}) anchor (?P<anchor>{_NUM}) "
+    rf"(?P<sec>{_NUM})s/rec"
 )
 DROPPED_RE = re.compile(r"^dropped (?P<dropped>\d+) of (?P<total>\d+) records")
-SAVED_RE = re.compile(r"^saved (?P<path>\S+)")
+# 路径用惰性匹配到行尾：--out 没有校验（train.py:415），`--out "runs/cv 8b"` 经
+# API 可达，用 \S+ 会把路径截断成 "runs/cv"，产物链接 404。\s*$ 顺带兜住 \r。
+SAVED_RE = re.compile(r"^saved (?P<path>.+?)\s*$")
 NONFINITE_RE = re.compile(r"non-finite training loss")
 
 DEFAULT_BUFFER = 2000
 
 
 def parse_step(line: str):
-    """一行进度日志 -> 指标点；不是进度行返回 None。"""
+    """一行进度日志 -> 指标点；不是进度行返回 None。
+
+    `parse_step` 是对外公开接口，reader 线程（Task 3）会无保护地调用它 ——
+    一行怪数据抛异常会把线程打死、作业永远不到终态、UI 永久转圈。所以 float()
+    的 ValueError 在这里收敛成 None（"这行不是指标"），而不是往上抛。
+    """
     match = STEP_RE.match(line)
     if match is None:
         return None
-    got = match.groupdict()
+    try:
+        return _point(match.groupdict())
+    except ValueError:
+        return None
+
+
+def _point(got: dict) -> dict:
     return {
         "ep": int(got["ep"]),
         "step": int(got["step"]),
