@@ -5,6 +5,8 @@
 
 Run: uv run python -m pytest tests/test_console_db.py -q
 """
+import threading
+
 import pytest
 
 from kev.console.db import Store
@@ -41,6 +43,64 @@ def test_illegal_transition_is_rejected(store):
     store.transition(job_id, "succeeded")
     with pytest.raises(ValueError, match="illegal transition"):
         store.transition(job_id, "running")
+
+
+def test_two_threads_racing_from_running_admit_exactly_one(store, monkeypatch):
+    """reader 线程标 succeeded 与请求线程标 canceled 必须只有一个成功（Task 3 的 on_finished / cancel）。
+
+    读-改-写的 transition 有一个窗口：SELECT 校验通过之后、UPDATE 落库之前，另一个线程可以把状态改掉，
+    于是两个线程都读到 running、都通过校验，后写者赢 —— 已取消的作业最终是 succeeded，error 也会被冲掉。
+    下面用 monkeypatch 把第一个读者挂住、强制第二个读者挤进这个窗口，所以红是确定性的，不靠线程调度运气。
+    """
+    job_id = store.create_job(
+        kind="train", stage="train", scenario="triage", title="t",
+        request={}, argv=["x"], env_overlay={}, cwd="/repo",
+        log_path="l.log", artifacts_in=[], artifacts_out=[],
+    )
+    store.transition(job_id, "queued")
+    store.transition(job_id, "running")
+
+    armed = threading.Event()
+    release = threading.Event()
+    readers = []
+    read_job = Store.get_job
+
+    def instrumented(self, target):
+        job = read_job(self, target)
+        if not armed.is_set():
+            return job
+        readers.append(job["status"])
+        if len(readers) == 1:
+            release.wait(timeout=10)      # 让第二个读者先进来
+        else:
+            release.set()
+        return job
+
+    monkeypatch.setattr(Store, "get_job", instrumented)
+    armed.set()
+
+    start = threading.Barrier(2)
+    outcomes = []
+
+    def push(status):
+        start.wait()
+        try:
+            store.transition(job_id, status)
+        except ValueError:
+            outcomes.append("rejected")
+        else:
+            outcomes.append("accepted")
+
+    threads = [threading.Thread(target=push, args=(status,))
+               for status in ("succeeded", "canceled")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=15)
+    armed.clear()
+
+    assert sorted(outcomes) == ["accepted", "rejected"], f"两个线程都通过了校验：{outcomes}"
+    assert store.get_job(job_id)["status"] in {"succeeded", "canceled"}
 
 
 def test_terminal_states_accept_nothing(store):
@@ -95,6 +155,30 @@ def test_interrupt_stale_jobs_marks_running_and_queued(store):
     assert store.get_job(done)["status"] == "succeeded"
 
 
+def test_pending_also_accepts_interrupted(store):
+    """恢复路径把 pending（还没排队就被重启打断）也算 LIVE，状态机必须承认同一件事。
+
+    interrupt_stale_jobs() 是一条直接 SQL，会把 pending 改成 interrupted；如果 ALLOWED 不收这条边，
+    库里就躺着状态机自称造不出来的状态，而将来任何代码对 pending 作业调
+    transition(..., "interrupted") 都会拿到 illegal transition。
+    """
+    stale = store.create_job(
+        kind="split", stage="data", scenario="triage", title="t",
+        request={}, argv=["x"], env_overlay={}, cwd="/repo",
+        log_path="l.log", artifacts_in=[], artifacts_out=[],
+    )
+    store.transition(stale, "interrupted", error="编排服务重启")
+    assert store.get_job(stale)["status"] == "interrupted"
+
+    queued = store.create_job(
+        kind="train", stage="train", scenario="triage", title="t",
+        request={}, argv=["x"], env_overlay={}, cwd="/repo",
+        log_path="l.log", artifacts_in=[], artifacts_out=[],
+    )
+    assert store.interrupt_stale_jobs() == 1
+    assert store.get_job(queued)["status"] == "interrupted"
+
+
 def test_active_job_of_kind_finds_only_live(store):
     job_id = store.create_job(
         kind="train", stage="train", scenario="triage", title="t",
@@ -137,11 +221,29 @@ def test_events_round_trip_with_cursor(store):
         log_path="l.log", artifacts_in=[], artifacts_out=[],
     )
     last = store.append_events(job_id, [("stdout", "a"), ("stdout", "b")])
+    # 游标必须精确等于本次写入的最后一行，而不是「>= 它」。append_events 的返回值是 SSE 的续传位点，
+    # 拿大了就静默跳过一段日志，拿小了就重复推。
+    assert store.read_events(job_id)[-1]["id"] == last
     store.append_events(job_id, [("stderr", "c")])
     first = store.read_events(job_id)
     assert [e["line"] for e in first] == ["a", "b", "c"]
     assert [e["line"] for e in store.read_events(job_id, after_id=first[1]["id"])] == ["c"]
-    assert store.read_events(job_id)[-1]["id"] >= last
+
+
+def test_append_events_with_no_rows_reports_no_new_cursor(store):
+    """空批次返回 0（=「没有新增」），不能返回该作业已有的最大 id。
+
+    调用方拿返回值当续传位点：空批次把游标顶到当前末尾，等于告诉 SSE「日志到这里为止」，
+    而这一批明明什么都没写。
+    """
+    job_id = store.create_job(
+        kind="train", stage="train", scenario="triage", title="t",
+        request={}, argv=["x"], env_overlay={}, cwd="/repo",
+        log_path="l.log", artifacts_in=[], artifacts_out=[],
+    )
+    store.append_events(job_id, [("stdout", "a")])
+    assert store.append_events(job_id, []) == 0
+    assert [e["line"] for e in store.read_events(job_id)] == ["a"]
 
 
 def test_schema_version_is_stamped(store):

@@ -18,8 +18,12 @@ from . import paths
 
 PERSIST = ("success", "start")
 SPLITS = ("train", "calibration", "development")
-DATA_DIR = "data"
-CONSOLE_LOG_DIR = f"{DATA_DIR}/console"
+# 仓库相对前缀的唯一归属是 paths.py（DATA_REL / RUNS_REL / CONSOLE_REL），这里只做引用：
+# 同一个 "data/" / "runs/" 字面量不许在两个模块各写一遍。绝对路径则一律现取 paths.ROOT，
+# 测试要能 monkeypatch 它。
+DATA_DIR = paths.DATA_REL
+RUNS_DIR = paths.RUNS_REL
+CONSOLE_LOG_DIR = paths.CONSOLE_REL
 
 # stage -> 该阶段产出的血缘关系名
 RELATION = {
@@ -44,13 +48,15 @@ def resolve(artifact_id: str) -> str:
     if kind == "precheck":
         return f"{CONSOLE_LOG_DIR}/precheck-" + name.replace("/", "-") + ".json"
     if kind == "run":
-        return f"runs/{name}"
+        return f"{RUNS_DIR}/{name}"
     if kind == "eval":
-        return f"runs/{name}-eval"
+        return f"{RUNS_DIR}/{name}-eval"
     if kind == "comparison":
-        return f"runs/{name}-compare"
+        return f"{RUNS_DIR}/{name}-compare"
     if kind == "calibration":
-        return f"runs/{name}-eval/calibration.json"
+        return f"{RUNS_DIR}/{name}-eval/calibration.json"
+    if kind == "smoke":
+        return f"{RUNS_DIR}/{name}-smoke.json"           # 冒烟报告（deploy.smoke 阶段）
     if kind == "image":
         return name
     if kind == "endpoint":
@@ -70,7 +76,11 @@ def _load(relative: str):
 
 
 def summarize(artifact_id: str, path: str) -> dict:
-    """产物的小份摘要，给列表页与闸门用。文件不在就返回空 dict。"""
+    """产物的小份摘要，给列表页与闸门用。
+
+    各分支的 meta 形状本来就不同，但「读不到文件」这一个意思必须统一：一律返回空 dict，
+    不返回「有 meta 但字段全 null」的半成品 —— 否则 UI 分不清「没数据」与「字段缺失」。
+    """
     kind = artifact_id.partition(":")[0]
     if kind in {"dataset", "precheck"}:
         payload = _load(path)
@@ -107,21 +117,26 @@ def summarize(artifact_id: str, path: str) -> dict:
 def register(store, job: dict) -> list[str]:
     """把作业的 artifacts_out 注册为产物，并写 artifacts_in -> artifacts_out 的血缘。
 
+    全程一个事务：崩在血缘中途只会留下「什么都没有」，不会留下「产物已登记、血缘残缺」的半成品。
+    Task 3 的 on_finished 是 except Exception: pass，半成品会被完全静默 —— 作业显示 succeeded，
+    产物列表里却有一条没有来路的产物。N 次 commit 也因此降为 1 次。
+
     可重复调用：重试会产生第二个作业写同一个产物，put_artifact 是 upsert、add_lineage 是
     INSERT OR IGNORE，所以这里不需要额外的去重逻辑。
     """
     relation = RELATION.get(job["kind"], "produced_by")
     registered = []
-    for artifact_id in job["artifacts_out"]:
-        relative = resolve(artifact_id)
-        meta = summarize(artifact_id, relative)
-        size = None
-        target = Path(paths.ROOT) / relative
-        if target.is_file():
-            size = target.stat().st_size
-        store.put_artifact(kind=artifact_id.partition(":")[0], name=artifact_id.partition(":")[2],
-                           path=relative, meta=meta, bytes_=size)
-        for parent in job["artifacts_in"]:
-            store.add_lineage(parent, artifact_id, relation, job_id=job["id"])
-        registered.append(artifact_id)
+    with store.tx():
+        for artifact_id in job["artifacts_out"]:
+            relative = resolve(artifact_id)
+            meta = summarize(artifact_id, relative)
+            size = None
+            target = Path(paths.ROOT) / relative
+            if target.is_file():
+                size = target.stat().st_size
+            store.put_artifact(kind=artifact_id.partition(":")[0], name=artifact_id.partition(":")[2],
+                               path=relative, meta=meta, bytes_=size, commit=False)
+            for parent in job["artifacts_in"]:
+                store.add_lineage(parent, artifact_id, relation, job_id=job["id"], commit=False)
+            registered.append(artifact_id)
     return registered

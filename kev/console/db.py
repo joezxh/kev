@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 import threading
@@ -20,13 +21,22 @@ TERMINAL = frozenset({"succeeded", "failed", "canceled", "interrupted"})
 LIVE = frozenset({"pending", "queued", "running"})
 
 ALLOWED: dict[str, frozenset[str]] = {
-    "pending": frozenset({"queued", "canceled", "failed"}),
+    # pending 也收 interrupted：interrupt_stale_jobs() 是一条直接 SQL，会把全部 LIVE（含 pending）
+    # 标成 interrupted。状态机不许这条边，就等于「恢复路径造得出、状态机自己造不出」的状态。
+    "pending": frozenset({"queued", "canceled", "failed", "interrupted"}),
     "queued": frozenset({"running", "canceled", "failed", "interrupted"}),
     "running": TERMINAL,
     "succeeded": frozenset(),
     "failed": frozenset(),
     "canceled": frozenset(),
     "interrupted": frozenset(),
+}
+
+# to_status -> 全局上能到达它的来源状态集合，由 ALLOWED 反推（不是读出来的当前状态）。
+# transition 把这份集合放进 WHERE，于是「校验」与「写入」落在同一条语句上。
+SOURCES: dict[str, frozenset[str]] = {
+    target: frozenset(source for source, allowed in ALLOWED.items() if target in allowed)
+    for target in ALLOWED
 }
 
 DDL = """
@@ -143,6 +153,26 @@ class Store:
     def schema_version(self) -> int:
         return self.connect().execute("PRAGMA user_version").fetchone()[0]
 
+    @contextlib.contextmanager
+    def tx(self):
+        """一个写事务：BEGIN IMMEDIATE 当场拿写锁，让「读-改-写」整体串行化。
+
+        连接是每线程一个（FastAPI 的同步路由跑在线程池里），所以这里只能锁住**本线程**的连接：
+        事务里不要把连接交出去给别的线程，也不要调会自己 commit 的方法
+        （put_artifact / add_lineage 的 commit=True 会提前结束事务）。
+        """
+        connection = self.connect()
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            yield connection
+        except BaseException:
+            if connection.in_transaction:
+                connection.rollback()
+            raise
+        else:
+            if connection.in_transaction:
+                connection.commit()
+
     # ---- jobs -------------------------------------------------------------
 
     def create_job(self, *, kind, stage, scenario, title, request, argv, env_overlay,
@@ -177,16 +207,25 @@ class Store:
         return [_job(row) for row in rows]
 
     def transition(self, job_id, to_status, *, error=None, exit_code=None) -> None:
-        job = self.get_job(job_id)
-        if job is None:
-            raise KeyError(job_id)
-        if to_status not in ALLOWED[job["status"]]:
-            raise ValueError(
-                f"illegal transition {job['status']} -> {to_status} for job {job_id}"
-            )
+        """把作业推到 to_status。校验与写入是同一条语句，中间没有窗口。
+
+        旧的写法是「SELECT 读当前状态 → Python 里校验 → UPDATE」，两步之间任何线程都能改状态：
+        Task 3 的 reader 线程标 succeeded 与请求线程标 canceled 会双双读到 running、双双通过校验，
+        后写者赢 —— 已取消的作业最终是 succeeded，error 被冲掉，finished_at 被写两次。
+
+        所以这里用 BEGIN IMMEDIATE 拿写锁，并把**全局上能到达 to_status 的来源集合**放进 WHERE：
+        那个集合来自模块级的 SOURCES，不是读出来的当前状态（用当前状态推就等于又读了一遍）。
+        rowcount == 0 时还在事务里（WAL 下没人能在这中间改状态），回查一次区分
+        「作业不存在」(KeyError) 与「非法转移」(ValueError)。
+
+        来源集合为空（没有任何状态能到 to_status，例如 terminal 之后的任意目标）就跳过 UPDATE，
+        直接走回查分支 —— 两条异常的语义不变。
+        """
+        sources = sorted(SOURCES.get(to_status, ()))
         stamps, params = [], [to_status]
-        if to_status == "running" and job["started_at"] is None:
-            stamps.append("started_at = ?")
+        if to_status == "running":
+            # COALESCE：started_at 只在第一次进 running 时落时间，重跑不会覆盖它。
+            stamps.append("started_at = COALESCE(started_at, ?)")
             params.append(_now())
         if to_status in TERMINAL:
             stamps.append("finished_at = ?")
@@ -197,11 +236,22 @@ class Store:
         if exit_code is not None:
             stamps.append("exit_code = ?")
             params.append(exit_code)
-        params.append(job_id)
-        sql = ("UPDATE jobs SET status = ?" + (", " + ", ".join(stamps) if stamps else "")
-               + " WHERE id = ?")
-        self.connect().execute(sql, params)
-        self.connect().commit()
+
+        with self.tx() as connection:
+            changed = 0
+            if sources:
+                sql = ("UPDATE jobs SET status = ?" + (", " + ", ".join(stamps) if stamps else "")
+                       + " WHERE id = ? AND status IN (" + ", ".join("?" * len(sources)) + ")")
+                changed = connection.execute(sql, (*params, job_id, *sources)).rowcount
+            if not changed:
+                row = connection.execute(
+                    "SELECT status FROM jobs WHERE id = ?", (job_id,)
+                ).fetchone()
+        if changed:
+            return
+        if row is None:
+            raise KeyError(job_id)
+        raise ValueError(f"illegal transition {row['status']} -> {to_status} for job {job_id}")
 
     def active_job_of_kind(self, kind) -> dict | None:
         placeholders = ", ".join("?" * len(LIVE))
@@ -225,7 +275,8 @@ class Store:
 
     # ---- artifacts --------------------------------------------------------
 
-    def put_artifact(self, *, kind, name, path, meta, bytes_=None) -> str:
+    def put_artifact(self, *, kind, name, path, meta, bytes_=None, commit: bool = True) -> str:
+        """登记/更新一个产物。commit=False 让它留在调用方的事务里（见 Store.tx）。"""
         artifact_id = f"{kind}:{name}"
         self.connect().execute(
             "INSERT INTO artifacts (id, kind, name, path, meta, bytes, created_at) VALUES (?,?,?,?,?,?,?)"
@@ -233,7 +284,8 @@ class Store:
             " bytes = excluded.bytes",
             (artifact_id, kind, name, str(path), _dumps(meta), bytes_, _now()),
         )
-        self.connect().commit()
+        if commit:
+            self.connect().commit()
         return artifact_id
 
     def get_artifact(self, artifact_id) -> dict | None:
@@ -260,12 +312,14 @@ class Store:
 
     # ---- lineage ----------------------------------------------------------
 
-    def add_lineage(self, parent, child, relation, job_id=None) -> None:
+    def add_lineage(self, parent, child, relation, job_id=None, *, commit: bool = True) -> None:
+        """记一条产物血缘。commit=False 让它留在调用方的事务里（见 Store.tx）。"""
         self.connect().execute(
             "INSERT OR IGNORE INTO lineage (parent, child, relation, job_id) VALUES (?,?,?,?)",
             (parent, child, relation, job_id),
         )
-        self.connect().commit()
+        if commit:
+            self.connect().commit()
 
     def lineage_of(self, artifact_id) -> list[dict]:
         """出边（这个产物派生了什么）。入边查 child 那一侧。"""
@@ -277,7 +331,19 @@ class Store:
     # ---- events -----------------------------------------------------------
 
     def append_events(self, job_id, rows) -> int:
-        """rows: [(stream, line), ...]。返回最后一条的 id，供 SSE 续传游标使用。"""
+        """rows: [(stream, line), ...]。返回**本次写入**的最后一条 id，供 SSE 续传游标使用。
+
+        游标取 last_insert_rowid()，不是 SELECT MAX(id) WHERE job_id = ?：同一个作业有第二个写入源
+        （Task 3 里多个 reader 线程各写各的）时，MAX 会把别人写的行当成自己写的返回，
+        调用方拿它当游标会静默跳过一段日志。last_insert_rowid 是连接私有的，其他连接插不进来；
+        executemany 多行时它就是最后那行的 rowid。
+
+        空批次返回 0，语义是「没有新增」：没有行可指，而返回该作业现有的最大 id 会把游标
+        顶到当前末尾，等于谎报「日志到这里为止」。
+        """
+        rows = list(rows)
+        if not rows:
+            return 0
         stamp = _now()
         payload = [(job_id, stamp, stream, line) for stream, line in rows]
         connection = self.connect()
@@ -285,10 +351,7 @@ class Store:
             "INSERT INTO events (job_id, ts, stream, line) VALUES (?,?,?,?)", payload
         )
         connection.commit()
-        row = connection.execute(
-            "SELECT MAX(id) FROM events WHERE job_id = ?", (job_id,)
-        ).fetchone()
-        return row[0] or 0
+        return connection.execute("SELECT last_insert_rowid()").fetchone()[0]
 
     def read_events(self, job_id, after_id=0, limit=500) -> list[dict]:
         rows = self.connect().execute(

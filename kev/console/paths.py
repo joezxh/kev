@@ -9,14 +9,21 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+
+# 仓库相对前缀的唯一归属。下面的绝对路径都由这里推出来；artifacts.resolve() 拼产物路径也引用它们，
+# 免得同一个 "data/" / "runs/" 字面量在两个模块各写一遍。
+DATA_REL = "data"
+RUNS_REL = "runs"
+CONSOLE_REL = f"{DATA_REL}/console"
+
 SKILL_SCRIPTS = ROOT / "skills/kev-finetune/scripts"
 SPECS = ROOT / "docs/medical/specs"
 GENERATORS = ROOT / "docs/medical/generators"
 CONSOLE_SCRIPTS = ROOT / "docs/medical/console"
-DATA = ROOT / "data"
-RUNS = ROOT / "runs"
-JOB_LOGS = DATA / "console/jobs"
-DB_PATH = DATA / "console/kev-console.db"
+DATA = ROOT / DATA_REL
+RUNS = ROOT / RUNS_REL
+JOB_LOGS = ROOT / CONSOLE_REL / "jobs"
+DB_PATH = ROOT / CONSOLE_REL / "kev-console.db"
 
 
 def ensure_medical_on_path() -> None:
