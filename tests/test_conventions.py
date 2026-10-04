@@ -88,7 +88,10 @@ def test_single_home(what, pattern, allowed):
     regex = re.compile(pattern)
     offenders = []
     for path in sources():
-        rel = str(path.relative_to(ROOT))
+        # as_posix(): str(relative_to) yields backslashes on Windows, so every
+        # forward-slash allowlist entry ("kev/checkpoint.py") would miss and the
+        # file's own legitimate code gets reported as an offender.
+        rel = path.relative_to(ROOT).as_posix()
         if rel in allowed:
             continue
         for n, line in enumerate(path.read_text().splitlines(), 1):
