@@ -2,11 +2,11 @@
 schema_version: 1
 locale: zh-CN
 branch: main
-exported_at: "2026-10-03T17:30:37Z"
+exported_at: "2026-10-04T15:16:37Z"
 modules:
     "":
-        dir_name: Kev 决策模型项目根
-        title: Kev 决策模型项目根
+        dir_name: KEV 决策模型项目根（训练_评测_部署_Playground 编排）
+        title: KEV 决策模型项目根（训练/评测/部署/Playground 编排）
         scope:
             - README.md
             - PLAN.md
@@ -3031,7 +3031,7 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: playground
+            - path: deploy_scripts
     deploy_scripts:
         dir_name: WSL2 本地部署初始化脚本
         title: WSL2 本地部署初始化脚本
@@ -3040,18 +3040,30 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: deploy
     docs_and_skills:
-        dir_name: Kev 文档、医疗微调方案与 Modal Skill
-        title: Kev 文档、医疗微调方案与 Modal Skill
+        dir_name: KEV 项目文档与技能定义
+        title: KEV 项目文档与技能定义
         scope:
             - docs/
             - skills/
         source_files: []
+        children:
+            - docs_and_skills/medical_distill
+        depends_on: []
+        related_to: []
+    docs_and_skills/medical_distill:
+        dir_name: 医疗数据蒸馏与生成器测试套件
+        title: 医疗数据蒸馏与生成器测试套件
+        scope:
+            - docs/medical/
+            - tests/test_medical_distill.py
+            - tests/test_medical_generators.py
+        source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: kev_library
+        related_to: []
     evals_and_scripts:
         dir_name: 评测数据集与构建_发布脚本集
         title: 评测数据集与构建/发布脚本集
@@ -3074,16 +3086,27 @@ modules:
         related_to:
             - path: evals_and_scripts
     kev_library:
-        dir_name: KEV 决策模型训练_推理框架
-        title: KEV 决策模型训练/推理框架
+        dir_name: KEV 医疗微调编排与工具集
+        title: KEV 医疗微调编排与工具集
         scope:
             - kev/
+        source_files: []
+        children:
+            - kev_library/console
+        depends_on: []
+        related_to: []
+    kev_library/console:
+        dir_name: 控制台 API 客户端与编排服务测试
+        title: 控制台 API 客户端与编排服务测试
+        scope:
+            - playground/src/lib/console.ts
+            - tests/test_console_api.py
         source_files: []
         children: []
         depends_on: []
         related_to:
+            - path: playground
             - path: tests_and_tools
-            - path: docs_and_skills
     playground:
         dir_name: KEV 决策模型交互式 Playground
         title: KEV 决策模型交互式 Playground
@@ -3093,10 +3116,10 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: deploy
+            - path: kev_library/console
     tests_and_tools:
-        dir_name: 测试套件与标签审阅工具
-        title: 测试套件与标签审阅工具
+        dir_name: 测试套件与标注审查工具
+        title: 测试套件与标注审查工具
         scope:
             - tests/
             - tools/
@@ -3104,4 +3127,4 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: kev_library
+            - path: kev_library/console

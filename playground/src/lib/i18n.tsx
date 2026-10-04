@@ -60,6 +60,7 @@ const dict: Dict = {
   "kev.inputTokens": { en: "input tokens", zh: "输入 tokens" },
   "kev.connecting": { en: "connecting", zh: "连接中" },
   "kev.backendUnavailable": { en: "backend unavailable: {error}", zh: "后端不可用：{error}" },
+  "kev.nav.console": { en: "console", zh: "控制台" },
 
   // ---- chess tab ----
   "chess.tagline": { en: "Every move is a Choice question.", zh: "每一步都是一道选择题。" },

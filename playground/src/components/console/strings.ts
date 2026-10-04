@@ -9,6 +9,7 @@ export const CONSOLE_STRINGS = {
     en: "Five stages, fourteen job kinds, one shared dataset. Every form shows the exact command it will run.",
     zh: "五个阶段、十四种作业、共用一份数据。每个表单都显示它将执行的完整命令。",
   },
+  "console.back": { en: "← kev", zh: "← kev" },
   "console.nav.overview": { en: "Overview", zh: "总览" },
   "console.nav.data": { en: "1 · Data", zh: "1 · 数据" },
   "console.nav.train": { en: "2 · Train", zh: "2 · 训练" },

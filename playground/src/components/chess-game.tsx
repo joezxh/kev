@@ -196,6 +196,7 @@ export function ChessGame() {
         <nav className="flex items-baseline gap-4 text-[15px]">
           <Link href="/" className="text-muted-foreground hover:text-foreground">kev</Link>
           <span className="font-medium tracking-tight">chess</span>
+          <Link href="/console" className="text-muted-foreground hover:text-foreground">{t("kev.nav.console")}</Link>
           <Link href="/docs/zh" className="text-muted-foreground hover:text-foreground">kev文档</Link>
         </nav>
         <div className="flex items-center gap-4">
