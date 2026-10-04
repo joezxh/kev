@@ -1,0 +1,117 @@
+"use client";
+
+import { useCallback, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { api } from "@/lib/console";
+import { useLang } from "@/lib/i18n";
+import { JobStagePage, type FieldSpec } from "@/components/console/JobStagePage";
+import { usePoll } from "@/components/console/usePoll";
+import { deltaBadge, formatMetric, metricAt } from "@/components/console/format";
+
+/**
+ * 阶段 3 · 评测。
+ *
+ * G4「增益真实」只能由 baseline + benchmark + compare 三件套产出 —— kev.benchmark 的
+ * report.json 里没有 bootstrap 键（它写的是 paired_flip），所以「跑一次 benchmark 就能
+ * 判增益」是错的，UI 必须把三步串起来呈现。
+ */
+const KINDS: Record<string, { kind: string; fields: FieldSpec[] }> = {
+  baseline: { kind: "baseline", fields: [
+    { key: "baseline", label: "--run", hint: "零样本对照的 checkpoint" },
+    { key: "device", kind: "select", label: "--device",
+      options: ["cuda", "cpu", "mps"].map((v) => ({ value: v, label: v })) },
+  ] },
+  benchmark: { kind: "benchmark", fields: [
+    { key: "device", kind: "select", label: "--device",
+      options: ["cuda", "cpu", "mps"].map((v) => ({ value: v, label: v })) },
+  ] },
+  compare: { kind: "compare", fields: [] },
+  calibrate: { kind: "calibrate", fields: [] },
+};
+
+export default function EvalPage() {
+  const { t, lang } = useLang();
+  const [evalKind, setEvalKind] = useState("benchmark");
+  const loadComparison = useCallback(() => api.artifacts("comparison"), []);
+  const comparison = usePoll(loadComparison, []);
+  const active = KINDS[evalKind];
+  const latest = comparison.value[0];
+
+  const low = latest ? metricAt(latest.meta, ["paired", "acc", "ci95", 0]) : undefined;
+  const high = latest ? metricAt(latest.meta, ["paired", "acc", "ci95", 1]) : undefined;
+  const badge = deltaBadge(low !== undefined && high !== undefined ? [low, high] : undefined);
+
+  return (
+    <div className="space-y-8">
+      <section className="space-y-3">
+        <h1 className="text-lg font-semibold">{t("console.nav.eval")}</h1>
+        <div className="flex flex-wrap gap-1.5">
+          {Object.keys(KINDS).map((name) => (
+            <button key={name} type="button" onClick={() => setEvalKind(name)}
+                    className={`rounded-md px-2.5 py-1 font-mono text-xs transition-colors ${
+                      name === evalKind ? "bg-secondary text-secondary-foreground" : "hover:bg-accent"}`}>
+              {name}
+            </button>
+          ))}
+        </div>
+        <Alert>
+          <AlertTitle>{lang === "zh" ? "顺序不能乱" : "The order matters"}</AlertTitle>
+          <AlertDescription>
+            {lang === "zh"
+              ? "baseline 与 benchmark 必须用同一份 development.jsonl —— compare 要求两侧 suite_sha256 一致，而它是数据文件内容的哈希。配对 CI 只在 compare 的产物里。"
+              : "baseline and benchmark must score the same development.jsonl: compare requires matching suite_sha256, which is the content hash of the data file. The paired CI exists only in compare's output."}
+          </AlertDescription>
+        </Alert>
+      </section>
+
+      <JobStagePage
+        key={evalKind}
+        kind={active.kind}
+        gateStage="image"
+        title={t("console.nav.eval")}
+        fields={active.fields}
+        initial={{ device: "cuda", baseline: "jaredpalmer/kev-0.8b" }}
+      />
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium">
+          {lang === "zh" ? "配对 CI（G4 的判据）" : "Paired CI (what G4 reads)"}
+        </h2>
+        {!latest ? (
+          <p className="text-sm text-muted-foreground">
+            {lang === "zh" ? "还没有 compare 产物" : "No comparison artifact yet"}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <p className={badge.ok ? "text-sm text-emerald-600" : "text-sm text-destructive"}>
+              {badge.label} — {badge.detail}
+            </p>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>metric</TableHead>
+                  <TableHead>baseline</TableHead><TableHead>fine-tuned</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {["acc", "ece", "confident_error_rate", "coverage_at_5pct_error", "aurc"].map((name) => (
+                  <TableRow key={name}>
+                    <TableCell className="font-mono text-xs">{name}</TableCell>
+                    <TableCell className="text-xs">
+                      {formatMetric(metricAt(latest.meta, ["clean", "reference", name]))}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {formatMetric(metricAt(latest.meta, ["clean", "candidate", name]))}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <p className="text-xs text-muted-foreground">{t("console.eval.overconfident")}</p>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
