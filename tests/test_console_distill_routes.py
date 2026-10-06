@@ -42,3 +42,23 @@ def test_provider_crud_and_usage_ingest(client, tmp_path):
     rows = client.get(f"/console/api/distill/{jid}/usage").json()
     assert rows[0]["tokens"] == 123
     assert rows[0]["key_hint"] == "sk-...1111"
+
+
+def test_distill_build_resolves_existing_generate_data_script():
+    """_distill_build 依赖 skills/kev-finetune/scripts/generate_data.py：该脚本读取
+    KEV_GEN_* 环境并写 <state_dir>/usage_<date>.json（spec §9 的用量上报契约）。若路径被
+    移动/改名，蒸馏端到端会静默失败。守卫：引用文件必须存在，且 argv[1] 指向同一文件。
+    """
+    from pathlib import Path
+
+    from kev.console import paths
+    from kev.console.stages.base import JobRequest
+    from kev.console.stages.data import _distill_build
+
+    target = paths.SKILL_SCRIPTS / "generate_data.py"
+    assert target.exists(), f"蒸馏脚本缺失：{target}（_distill_build 依赖它）"
+    req = JobRequest(scenario="critical-value", run_name="cv-8b-lora-v1",
+                     params={"skip_exists_check": True, "api_keys": ["sk-test0001"]})
+    built = _distill_build(req)
+    assert Path(built.argv[1]) == target, (
+        f"_distill_build 指向 {built.argv[1]}，与 {target} 不一致")

@@ -85,13 +85,19 @@ def test_all_fourteen_kinds_are_registered_and_no_more():
 
 
 def _minimal_params(kind: str) -> dict:
-    """新阶段 preview 对必填字段缺失会直接 Invalid；这里给最小可用参数。"""
-    return {
+    """新阶段 preview 对必填字段缺失会直接 Invalid；这里给最小可用参数。
+
+    skip_exists_check=True 让 preview 不依赖本机 data/ 目录状态 —— 否则本机跑过
+    generate 后留下的 data/critical-value.jsonl 会让 _exists 抛 Conflict，使这两个
+    契约测试变成环境相关。它们只关心产物血缘/命名，与文件是否存在无关。
+    """
+    base = {
         "publish": {"repo": "j", "card": "c.md"},
         "modal": {"run": "x"},
         "goldset_audit": {"a": "x", "b": "y"},
-        "distill_daemon": {"schedule": "03:00", "skip_exists_check": True},
+        "distill_daemon": {"schedule": "03:00"},
     }.get(kind, {"temperature": "2.35"} if kind in {"image", "deploy"} else {})
+    return {**base, "skip_exists_check": True}
 
 
 def test_every_kind_declaring_artifacts_has_a_lineage_relation():
