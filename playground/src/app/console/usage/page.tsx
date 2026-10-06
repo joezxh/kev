@@ -1,0 +1,118 @@
+"use client";
+import { useCallback, useEffect, useState } from "react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { api, type UsageRow, type UsageDay, type DistillUsageRow, type DistillProvider } from "@/lib/console";
+import { useLang } from "@/lib/i18n";
+import { usePoll } from "@/components/console/usePoll";
+import { formatNumber } from "@/components/console/format";
+import { UsageChart } from "@/components/console/UsageChart";
+
+const RANGES = [["7", "7d"], ["30", "30d"], ["", "all"]] as const;
+
+export default function UsagePage() {
+  const { t, lang } = useLang();
+  const [days, setDays] = useState<string>("7");
+  const from = days ? isoDaysAgo(Number(days)) : undefined;
+  const load = useCallback(() => api.usageSummary(from), [from]);
+  const { value: rows } = usePoll<UsageRow[]>(load, []);
+  const [open, setOpen] = useState<string | null>(null);
+  const series = usePoll<UsageDay[]>(
+    useCallback(() => (open ? api.usageTimeseries(open, from) : Promise.resolve([])), [open, from]),
+    [],
+  );
+
+  // ---- distill 第三方用量 ----
+  const [provFilter, setProvFilter] = useState("");
+  const [providers, setProviders] = useState<Pick<DistillProvider, "id" | "name">[]>([]);
+  const [distill, setDistill] = useState<DistillUsageRow[]>([]);
+  useEffect(() => {
+    api.distillProviders().then(setProviders).catch(() => setProviders([]));
+  }, []);
+  useEffect(() => {
+    api.distillUsage(provFilter || undefined, from).then(setDistill).catch(() => setDistill([]));
+  }, [provFilter, days]);
+  const provName = (id: string) => providers.find((p) => p.id === id)?.name ?? id;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold">{t("console.usage.kev")}</h1>
+        <div className="flex gap-1">
+          {RANGES.map(([d, label]) => (
+            <Button key={label} size="sm" variant={d === days ? "secondary" : "ghost"}
+                    onClick={() => setDays(d)}>{label}</Button>
+          ))}
+        </div>
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>prefix</TableHead><TableHead>{t("console.apikeys.name")}</TableHead>
+            <TableHead>{t("console.apikeys.calls")}</TableHead>
+            <TableHead>in/out tok</TableHead>
+            <TableHead>avg ms</TableHead><TableHead>p99 ms</TableHead>
+            <TableHead>{t("console.apikeys.lastUsed")}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {(rows ?? []).map((r) => (
+            <TableRow key={r.id} className="cursor-pointer" onClick={() => setOpen(open === r.id ? null : r.id)}>
+              <TableCell className="font-mono text-xs">{r.prefix}</TableCell>
+              <TableCell>{r.name}</TableCell>
+              <TableCell>{formatNumber(r.calls, 0)}</TableCell>
+              <TableCell className="text-xs">{formatNumber(r.input_tokens, 0)}/{formatNumber(r.output_tokens, 0)}</TableCell>
+              <TableCell className="text-xs">{r.avg_latency_ms == null ? "—" : formatNumber(r.avg_latency_ms, 1)}</TableCell>
+              <TableCell className="text-xs">{formatNumber(r.p99_latency_ms, 1)}</TableCell>
+              <TableCell className="text-xs text-muted-foreground">{r.last_used ?? "—"}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {open && series.value && series.value.length > 0 && (
+        <UsageChart days={series.value} />
+      )}
+
+      <div className="space-y-4 border-t border-border pt-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">{t("console.usage.distill")}</h2>
+          <div className="flex gap-1">
+            <Button size="sm" variant={provFilter === "" ? "secondary" : "ghost"} onClick={() => setProvFilter("")}>all</Button>
+            {providers.map((p) => (
+              <Button key={p.id} size="sm" variant={provFilter === p.id ? "secondary" : "ghost"}
+                      onClick={() => setProvFilter(p.id)}>{p.name}</Button>
+            ))}
+          </div>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow><TableHead>config</TableHead><TableHead>key</TableHead><TableHead>model</TableHead>
+              <TableHead>tokens</TableHead><TableHead>days</TableHead><TableHead>{t("console.distill.dailyLimit")}</TableHead></TableRow>
+          </TableHeader>
+          <TableBody>
+            {(distill ?? []).map((r, i) => (
+              <TableRow key={i}>
+                <TableCell>{r.provider_id ? provName(r.provider_id) : "—"}</TableCell>
+                <TableCell className="font-mono text-xs">{r.key_hint}</TableCell>
+                <TableCell>{r.model}</TableCell>
+                <TableCell>{formatNumber(r.tokens, 0)}</TableCell>
+                <TableCell>{r.days}</TableCell>
+                <TableCell className="text-xs">
+                  {formatNumber(r.tokens, 0)} / {formatNumber(r.daily_limit, 0)}
+                  {r.daily_limit > 0 && r.tokens >= r.daily_limit &&
+                    <span className="ml-1 text-destructive">⚠</span>}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function isoDaysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10) + "T00:00:00";
+}
