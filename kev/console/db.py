@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 TERMINAL = frozenset({"succeeded", "failed", "canceled", "interrupted"})
 LIVE = frozenset({"pending", "queued", "running"})
@@ -95,6 +95,31 @@ CREATE TABLE IF NOT EXISTS events (
   line   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_job_idx ON events(job_id, id);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  prefix TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS api_keys_hash_idx ON api_keys(key_hash);
+
+CREATE TABLE IF NOT EXISTS usage_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key_id TEXT NOT NULL REFERENCES api_keys(id),
+  endpoint TEXT NOT NULL,
+  method TEXT NOT NULL,
+  status INTEGER NOT NULL,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  latency_ms REAL NOT NULL,
+  ts TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS usage_log_key_ts_idx ON usage_log(key_id, ts);
+CREATE INDEX IF NOT EXISTS usage_log_ts_idx ON usage_log(ts);
 """
 
 _JSON_COLUMNS = frozenset({"request", "env_overlay", "artifacts_in", "artifacts_out"})
@@ -371,3 +396,114 @@ class Store:
             (job_id, lines),
         ).fetchall()
         return "\n".join(f"[{row['stream']}] {row['line']}" for row in reversed(rows))
+
+    # ---- api keys ---------------------------------------------------------
+
+    def create_api_key(self, name: str) -> tuple[str, dict]:
+        import hashlib
+        import secrets as _secrets
+        raw = "kev_" + _secrets.token_hex(32)
+        key_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        key_id = uuid.uuid4().hex
+        self.connect().execute(
+            "INSERT INTO api_keys (id, name, key_hash, prefix, active, created_at) "
+            "VALUES (?,?,?,?,1,?)",
+            (key_id, name, key_hash, raw[:12], _now()),
+        )
+        self.connect().commit()
+        row = self.connect().execute("SELECT * FROM api_keys WHERE id=?", (key_id,)).fetchone()
+        return raw, dict(row)
+
+    def get_key_by_hash(self, key_hash: str) -> dict | None:
+        row = self.connect().execute(
+            "SELECT * FROM api_keys WHERE key_hash=? AND active=1", (key_hash,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_api_keys(self) -> list[dict]:
+        rows = self.connect().execute(
+            "SELECT a.*, COALESCE(u.calls,0) AS calls, "
+            "COALESCE(u.input_tokens,0) AS input_tokens, "
+            "COALESCE(u.output_tokens,0) AS output_tokens, u.last_used "
+            "FROM api_keys a LEFT JOIN ("
+            "  SELECT key_id, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens, "
+            "  SUM(output_tokens) AS output_tokens, MAX(ts) AS last_used "
+            "  FROM usage_log GROUP BY key_id) u ON u.key_id=a.id "
+            "ORDER BY a.created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def revoke_api_key(self, key_id: str) -> bool:
+        cursor = self.connect().execute(
+            "UPDATE api_keys SET active=0, revoked_at=? WHERE id=? AND active=1",
+            (_now(), key_id),
+        )
+        self.connect().commit()
+        return cursor.rowcount == 1
+
+    def record_usage(self, *, key_id, endpoint, method, status,
+                      input_tokens, output_tokens, latency_ms) -> None:
+        self.connect().execute(
+            "INSERT INTO usage_log (key_id, endpoint, method, status, input_tokens, "
+            "output_tokens, latency_ms, ts) VALUES (?,?,?,?,?,?,?,?)",
+            (key_id, endpoint, method, int(status), int(input_tokens), int(output_tokens),
+             float(latency_ms), _now()),
+        )
+        self.connect().commit()
+
+    def _usage_pred(self, from_ts, to_ts) -> tuple[str, list]:
+        clauses, params = [], []
+        if from_ts:
+            clauses.append("ts >= ?")
+            params.append(from_ts)
+        if to_ts:
+            clauses.append("ts <= ?")
+            params.append(to_ts)
+        return (" AND " + " AND ".join(clauses)) if clauses else "", params
+
+    @staticmethod
+    def _p99(values):
+        if not values:
+            return 0.0
+        ordered = sorted(values)
+        return ordered[min(len(ordered) - 1, int(round(0.99 * (len(ordered) - 1))))]
+
+    def usage_summary(self, from_ts=None, to_ts=None) -> list[dict]:
+        pred, p = self._usage_pred(from_ts, to_ts)
+        if pred:
+            pred = pred.replace("ts", "l.ts")
+        keys = self.connect().execute(
+            "SELECT id, name, prefix, active FROM api_keys ORDER BY created_at DESC"
+        ).fetchall()
+        out = []
+        for k in keys:
+            row = dict(k)
+            stats = self.connect().execute(
+                f"SELECT COUNT(*) c, COALESCE(SUM(input_tokens),0) i, "
+                f"COALESCE(SUM(output_tokens),0) o, MAX(ts) last FROM usage_log l "
+                f"WHERE l.key_id=?{pred}", [k["id"], *p]
+            ).fetchone()
+            lats = [r[0] for r in self.connect().execute(
+                f"SELECT latency_ms FROM usage_log l WHERE l.key_id=?{pred}",
+                [k["id"], *p],
+            ).fetchall()]
+            row["calls"] = stats["c"]
+            row["input_tokens"] = stats["i"]
+            row["output_tokens"] = stats["o"]
+            row["last_used"] = stats["last"]
+            row["avg_latency_ms"] = (sum(lats) / len(lats)) if lats else None
+            row["p99_latency_ms"] = self._p99(lats)
+            out.append(row)
+        return out
+
+    def usage_timeseries(self, key_id, from_ts=None, to_ts=None) -> list[dict]:
+        pred, p = self._usage_pred(from_ts, to_ts)
+        if pred:
+            pred = pred.replace("ts", "l.ts")
+        rows = self.connect().execute(
+            "SELECT substr(l.ts,1,10) AS date, COUNT(*) AS calls, "
+            "SUM(l.input_tokens) AS input_tokens, SUM(l.output_tokens) AS output_tokens, "
+            "AVG(l.latency_ms) AS avg_latency_ms FROM usage_log l WHERE l.key_id=?" + pred +
+            " GROUP BY date ORDER BY date", [key_id, *p]
+        ).fetchall()
+        return [dict(r) for r in rows]
