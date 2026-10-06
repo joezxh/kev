@@ -415,7 +415,10 @@ def test_distill_env_carries_the_base_url_but_never_a_key():
     assert built.env["KEV_GEN_MODEL"] == "Ling-3.0-flash"
     # 凭据由执行器在 spawn 时从编排服务进程环境注入，永不进 env_overlay
     assert not any("KEY" in key or "TOKEN" in key for key in built.env)
-    assert flag(built.argv, "--category") == "critical-value"
+    # 场景经 DB 的 spec_path 以位置参数形式传给 generate_data.py（绕开其冻结的
+    # CATEGORY_SPECS 硬编码映射），不再用 --category；argv[2] 即 spec 文件绝对路径。
+    assert "--category" not in built.argv
+    assert str(built.argv[2]).endswith("critical-value.json")
 
 
 def test_distill_rejects_more_keys_than_the_rotation_limit():

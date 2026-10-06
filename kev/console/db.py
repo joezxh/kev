@@ -15,7 +15,24 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+from . import paths
+
+SCHEMA_VERSION = 3
+
+# 运行时共享的编排库单例：create_app 启动时写入，stage 模块（data.py 等）借此解析
+# 场景 spec_path。未初始化时返回 None，调用方应回退到 docs/medical/specs 目录。
+_STORE: "Store | None" = None
+
+
+def set_store(store: "Store") -> None:
+    global _STORE
+    _STORE = store
+
+
+def store() -> "Store":
+    if _STORE is None:
+        raise RuntimeError("console store not initialized")
+    return _STORE
 
 TERMINAL = frozenset({"succeeded", "failed", "canceled", "interrupted"})
 LIVE = frozenset({"pending", "queued", "running"})
@@ -149,6 +166,30 @@ CREATE TABLE IF NOT EXISTS distill_usage (
 CREATE UNIQUE INDEX IF NOT EXISTS distill_usage_ukd ON distill_usage(provider_id, key_hash, day);
 CREATE INDEX IF NOT EXISTS distill_usage_job_idx ON distill_usage(job_id);
 CREATE INDEX IF NOT EXISTS distill_usage_day_idx ON distill_usage(day);
+
+CREATE TABLE IF NOT EXISTS scenario_domains (
+  id         TEXT PRIMARY KEY,
+  slug       TEXT NOT NULL UNIQUE,
+  label_zh   TEXT NOT NULL,
+  label_en   TEXT NOT NULL,
+  sort       INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS scenarios (
+  id         TEXT PRIMARY KEY,
+  domain_id  TEXT NOT NULL REFERENCES scenario_domains(id),
+  slug       TEXT NOT NULL UNIQUE,
+  label_zh   TEXT NOT NULL,
+  label_en   TEXT NOT NULL,
+  spec_path  TEXT NOT NULL,
+  category   TEXT NOT NULL DEFAULT 'medical',
+  sort       INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS scenarios_slug_idx   ON scenarios(slug);
+CREATE INDEX IF NOT EXISTS scenarios_domain_idx ON scenarios(domain_id);
 """
 
 _JSON_COLUMNS = frozenset({"request", "env_overlay", "artifacts_in", "artifacts_out"})
@@ -193,6 +234,9 @@ class Store:
         with self.connect() as connection:
             connection.executescript(DDL)
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        # 幂等播种：把 run_matrix 已知的医疗场景落库（INSERT OR IGNORE 按 slug 去重，
+        # 不覆盖用户后续编辑）。建库即播种，保证 fresh DB 也能开箱即用。
+        self.seed_scenarios()
 
     def connect(self) -> sqlite3.Connection:
         connection = getattr(self._local, "connection", None)
@@ -617,3 +661,194 @@ class Store:
         for r in out:
             r["daily_limit"] = prov["daily_limit"] if prov else 0
         return out
+
+    # ---- scenario domains & scenarios ------------------------------------
+
+    def seed_scenarios(self) -> None:
+        """幂等播种：把 run_matrix 已知的医疗场景落库。
+
+        INSERT OR IGNORE 按 slug 去重，所以重复初始化不会插脏数据，也不会覆盖用户
+        后续对标签/ spec_path 的编辑。仅当「域/场景表不存在或为空」时才需要，但放这里
+        每次建库都跑一次、代价可忽略。
+        """
+        paths.ensure_medical_on_path()
+        from run_matrix import SCENARIOS as _RM_SCENARIOS
+        labels = {
+            "critical-value": ("危急值", "Critical Value"),
+            "diagnosis": ("诊断", "Diagnosis"),
+            "icd-coding": ("ICD 编码", "ICD Coding"),
+            "medication-review": ("用药审查", "Medication Review"),
+            "nursing-quality": ("护理质量", "Nursing Quality"),
+            "record-summary": ("病历摘要", "Record Summary"),
+            "triage": ("分诊", "Triage"),
+        }
+        with self.tx() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO scenario_domains (id, slug, label_zh, label_en, sort, created_at)"
+                " VALUES (?,?,?,?,?,?)",
+                ("medical", "medical", "医疗", "Medical", 0, _now()))
+            domain_id = "medical"
+            for idx, name in enumerate(_RM_SCENARIOS):
+                zh, en = labels.get(name, (name, name))
+                connection.execute(
+                    "INSERT OR IGNORE INTO scenarios"
+                    " (id, domain_id, slug, label_zh, label_en, spec_path, category, sort, created_at, updated_at)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (uuid.uuid4().hex, domain_id, name, zh, en,
+                     f"docs/medical/specs/{name}.json", "medical", idx, _now(), _now()))
+
+    def list_scenario_slugs(self) -> list[str]:
+        rows = self.connect().execute(
+            "SELECT slug FROM scenarios ORDER BY sort, slug").fetchall()
+        return [r["slug"] for r in rows]
+
+    def list_scenario_tree(self, lang: str = "zh") -> list[dict]:
+        """两级树：域下挂场景。label 按 lang 取中/英；spec 文件缺失仅标 exists=False。"""
+        label = "label_en" if lang == "en" else "label_zh"
+        domains = self.connect().execute(
+            "SELECT * FROM scenario_domains ORDER BY sort, slug").fetchall()
+        scenes = self.connect().execute("SELECT * FROM scenarios ORDER BY sort, slug").fetchall()
+        by_domain: dict[str, list[dict]] = {}
+        for s in scenes:
+            spec = (paths.ROOT / s["spec_path"]).resolve()
+            by_domain.setdefault(s["domain_id"], []).append({
+                "id": s["id"], "slug": s["slug"], "label": s[label],
+                "label_zh": s["label_zh"], "label_en": s["label_en"],
+                "spec_path": s["spec_path"], "category": s["category"],
+                "sort": s["sort"], "exists": spec.is_file()})
+        tree = []
+        for d in domains:
+            tree.append({
+                "id": d["id"], "slug": d["slug"], "label": d[label],
+                "label_zh": d["label_zh"], "label_en": d["label_en"],
+                "sort": d["sort"], "scenarios": by_domain.get(d["id"], [])})
+        return tree
+
+    def get_scenario_by_slug(self, slug: str) -> dict | None:
+        row = self.connect().execute(
+            "SELECT * FROM scenarios WHERE slug=?", (slug,)).fetchone()
+        return dict(row) if row else None
+
+    def get_scenario_by_id(self, scenario_id: str) -> dict | None:
+        row = self.connect().execute(
+            "SELECT * FROM scenarios WHERE id=?", (scenario_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_domain(self, domain_id: str) -> dict | None:
+        row = self.connect().execute(
+            "SELECT * FROM scenario_domains WHERE id=?", (domain_id,)).fetchone()
+        return dict(row) if row else None
+
+    def resolve_spec_path(self, slug: str) -> Path:
+        """返回场景 spec 文件的绝对路径（先查 DB.spec_path，相对仓库根解析）。
+
+        不校验文件是否存在——调用方（_spec / read_spec_file）按需判缺。场景不存在抛 KeyError。
+        """
+        row = self.get_scenario_by_slug(slug)
+        if row is None:
+            raise KeyError(slug)
+        return (paths.ROOT / row["spec_path"]).resolve()
+
+    # ---- domain CRUD ------------------------------------------------------
+
+    def create_domain(self, *, slug, label_zh, label_en, sort=0) -> str:
+        domain_id = uuid.uuid4().hex
+        self.connect().execute(
+            "INSERT INTO scenario_domains (id, slug, label_zh, label_en, sort, created_at)"
+            " VALUES (?,?,?,?,?,?)",
+            (domain_id, slug, label_zh, label_en, int(sort), _now()))
+        self.connect().commit()
+        return domain_id
+
+    def update_domain(self, domain_id, *, label_zh=None, label_en=None, sort=None) -> bool:
+        fields, params = [], []
+        if label_zh is not None:
+            fields.append("label_zh=?"); params.append(label_zh)
+        if label_en is not None:
+            fields.append("label_en=?"); params.append(label_en)
+        if sort is not None:
+            fields.append("sort=?"); params.append(int(sort))
+        if not fields:
+            return True
+        cursor = self.connect().execute(
+            f"UPDATE scenario_domains SET {', '.join(fields)} WHERE id=?", (*params, domain_id))
+        self.connect().commit()
+        return cursor.rowcount == 1
+
+    def delete_domain(self, domain_id) -> bool:
+        with self.tx() as connection:
+            connection.execute("DELETE FROM scenarios WHERE domain_id=?", (domain_id,))
+            cursor = connection.execute(
+                "DELETE FROM scenario_domains WHERE id=?", (domain_id,))
+        return cursor.rowcount == 1
+
+    # ---- scenario CRUD ----------------------------------------------------
+
+    def create_scenario(self, *, domain_id, slug, label_zh, label_en, spec_path,
+                        category="medical", sort=0) -> str:
+        scenario_id = uuid.uuid4().hex
+        now = _now()
+        self.connect().execute(
+            "INSERT INTO scenarios (id, domain_id, slug, label_zh, label_en, spec_path,"
+            " category, sort, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (scenario_id, domain_id, slug, label_zh, label_en, spec_path, category,
+             int(sort), now, now))
+        self.connect().commit()
+        return scenario_id
+
+    def update_scenario(self, scenario_id, *, domain_id=None, label_zh=None, label_en=None,
+                        spec_path=None, category=None, sort=None) -> bool:
+        fields, params = [], []
+        if domain_id is not None:
+            fields.append("domain_id=?"); params.append(domain_id)
+        if label_zh is not None:
+            fields.append("label_zh=?"); params.append(label_zh)
+        if label_en is not None:
+            fields.append("label_en=?"); params.append(label_en)
+        if spec_path is not None:
+            fields.append("spec_path=?"); params.append(spec_path)
+        if category is not None:
+            fields.append("category=?"); params.append(category)
+        if sort is not None:
+            fields.append("sort=?"); params.append(int(sort))
+        if not fields:
+            return True
+        fields.append("updated_at=?")
+        params.append(_now())
+        cursor = self.connect().execute(
+            f"UPDATE scenarios SET {', '.join(fields)} WHERE id=?", (*params, scenario_id))
+        self.connect().commit()
+        return cursor.rowcount == 1
+
+    def delete_scenario(self, scenario_id) -> bool:
+        cursor = self.connect().execute("DELETE FROM scenarios WHERE id=?", (scenario_id,))
+        self.connect().commit()
+        return cursor.rowcount == 1
+
+    # ---- spec file read/write (sandboxed under repo root) ----------------
+
+    def read_spec_file(self, slug: str) -> str:
+        path = self.resolve_spec_path(slug)
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"spec 文件不存在：{path}（场景 {slug} 的 spec_path 未指向有效文件）")
+        return path.read_text(encoding="utf-8")
+
+    def write_spec_file(self, slug: str, content: str) -> None:
+        """写回场景 spec 文件。校验 JSON 合法性与必要字段，并限制路径在仓库根内。"""
+        path = self.resolve_spec_path(slug)
+        root = paths.ROOT.resolve()
+        if path != root and root not in path.parents:
+            raise ValueError(f"spec_path 必须在仓库根内：{path}")
+        if not str(path).endswith(".json"):
+            raise ValueError("spec_path 必须是 .json 文件")
+        try:
+            data = json.loads(content)
+        except ValueError as error:
+            raise ValueError(f"spec 不是合法 JSON：{error}") from error
+        for field in ("name", "domain", "state", "questions"):
+            if not data.get(field):
+                raise ValueError(f"spec 缺少必要字段 {field!r}")
+        if not isinstance(data.get("questions"), dict) or not data["questions"]:
+            raise ValueError("spec.questions 必须是非空对象")
+        path.write_text(content, encoding="utf-8")

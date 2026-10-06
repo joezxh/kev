@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import json
 import os
+import sqlite3
 import uuid
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import artifacts, paths
 from . import secrets as distill_secrets
-from .db import Store
+from .db import Store, set_store
 from .events import parse_note, parse_step, sse_frame
 from .executor import LocalExecutor
 from .gates import evaluate
@@ -97,6 +98,8 @@ def _gate_products(store: Store, request: JobRequest) -> dict:
 def create_app(*, store: Store | None = None, executor: LocalExecutor | None = None) -> FastAPI:
     app = FastAPI(title="kev-console")
     app.state.store = store or Store(Path(os.environ.get(DB_ENV, paths.DB_PATH)))
+    # 让 stage 模块（data.py 等）在运行时能解析场景 spec_path。
+    set_store(app.state.store)
     # 崩溃恢复：WSL2 会自动回收内存，服务重启是常态。必须在**建 app 时**调用，而不是放进
     # Store.__init__ —— 后者会让任何只读工具 new 一个 Store 就误杀在途作业。
     app.state.store.interrupt_stale_jobs()
@@ -160,7 +163,7 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
     def get_config(scenario: str = "critical-value") -> dict:
         # 三种微调方式的默认值只在这里暴露一次，前端不许硬编码
         return {
-            "scenarios": list(data_stages.SCENARIOS),
+            "scenarios": store().list_scenario_slugs(),
             "methods": train_stages.methods_for(scenario),
             "serve_port": 8008,
             # 只回布尔态：凭据值永远不下发到浏览器
@@ -170,10 +173,123 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
     @app.get("/console/api/scenarios")
     def get_scenarios() -> list:
         out = []
-        for name in data_stages.SCENARIOS:
-            spec = json.loads((paths.SPECS / f"{name}.json").read_text(encoding="utf-8"))
-            out.append({"name": name, "questions": len(spec.get("questions", {}))})
+        for name in store().list_scenario_slugs():
+            spec_path = data_stages._resolve_spec_path(name)
+            if spec_path is None or not spec_path.is_file():
+                out.append({"name": name, "questions": 0, "exists": False})
+                continue
+            try:
+                spec = json.loads(spec_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                out.append({"name": name, "questions": 0, "exists": False})
+                continue
+            out.append({"name": name, "questions": len(spec.get("questions", {})), "exists": True})
         return out
+
+    # ---- scenario domains & scenarios (two-level, bilingual) -------------
+
+    @app.get("/console/api/scenario-domains")
+    def get_scenario_tree(lang: str = "zh") -> list:
+        return store().list_scenario_tree(lang=lang)
+
+    @app.post("/console/api/scenario-domains")
+    def create_domain(payload: dict):
+        slug = (payload.get("slug") or "").strip()
+        label_zh = (payload.get("label_zh") or "").strip()
+        label_en = (payload.get("label_en") or "").strip()
+        if not slug:
+            return _error("validation", "域 slug 必填", status=400, field="slug")
+        if not label_zh or not label_en:
+            return _error("validation", "中英文标签均必填", status=400, field="label_zh")
+        try:
+            domain_id = store().create_domain(
+                slug=slug, label_zh=label_zh, label_en=label_en, sort=int(payload.get("sort", 0)))
+        except sqlite3.IntegrityError:
+            return _error("conflict", f"域 slug 已存在：{slug}", status=409, field="slug")
+        return JSONResponse(status_code=201, content=store().get_domain(domain_id))
+
+    @app.put("/console/api/scenario-domains/{domain_id}")
+    def update_domain(domain_id: str, payload: dict):
+        if store().get_domain(domain_id) is None:
+            return _error("validation", f"未知域 {domain_id}", status=404)
+        ok = store().update_domain(domain_id, label_zh=payload.get("label_zh"),
+                                   label_en=payload.get("label_en"), sort=payload.get("sort"))
+        return store().get_domain(domain_id) if ok else _error("validation", f"未知域 {domain_id}", status=404)
+
+    @app.delete("/console/api/scenario-domains/{domain_id}")
+    def delete_domain(domain_id: str):
+        if not store().delete_domain(domain_id):
+            return _error("validation", f"未知域 {domain_id}", status=404)
+        return {"deleted": True}
+
+    @app.post("/console/api/scenarios")
+    def create_scenario(payload: dict):
+        domain_id = (payload.get("domain_id") or "").strip()
+        slug = (payload.get("slug") or "").strip()
+        label_zh = (payload.get("label_zh") or "").strip()
+        label_en = (payload.get("label_en") or "").strip()
+        spec_path = (payload.get("spec_path") or "").strip()
+        if not domain_id:
+            return _error("validation", "所属域必填", status=400, field="domain_id")
+        if not slug:
+            return _error("validation", "场景 slug 必填", status=400, field="slug")
+        if not label_zh or not label_en:
+            return _error("validation", "中英文标签均必填", status=400, field="label_zh")
+        if not spec_path:
+            return _error("validation", "spec 路径必填", status=400, field="spec_path")
+        resolved = (paths.ROOT / spec_path).resolve()
+        if not str(spec_path).endswith(".json"):
+            return _error("validation", "spec_path 必须是 .json 文件", status=400, field="spec_path")
+        if not resolved.is_file():
+            # 缺失仅告警不阻断：允许用户先建场景后补 spec 文件
+            pass
+        category = (payload.get("category") or "medical").strip()
+        try:
+            scenario_id = store().create_scenario(
+                domain_id=domain_id, slug=slug, label_zh=label_zh, label_en=label_en,
+                spec_path=spec_path, category=category, sort=int(payload.get("sort", 0)))
+        except sqlite3.IntegrityError:
+            return _error("conflict", f"场景 slug 已存在：{slug}", status=409, field="slug")
+        return JSONResponse(status_code=201, content=store().get_scenario_by_slug(slug))
+
+    @app.put("/console/api/scenarios/{scenario_id}")
+    def update_scenario(scenario_id: str, payload: dict):
+        if store().get_scenario_by_id(scenario_id) is None:
+            return _error("validation", f"未知场景 {scenario_id}", status=404)
+        ok = store().update_scenario(
+            scenario_id, domain_id=payload.get("domain_id"), label_zh=payload.get("label_zh"),
+            label_en=payload.get("label_en"), spec_path=payload.get("spec_path"),
+            category=payload.get("category"), sort=payload.get("sort"))
+        row = store().get_scenario_by_id(scenario_id)
+        return row if ok and row else _error("validation", f"未知场景 {scenario_id}", status=404)
+
+    @app.delete("/console/api/scenarios/{scenario_id}")
+    def delete_scenario(scenario_id: str):
+        if not store().delete_scenario(scenario_id):
+            return _error("validation", f"未知场景 {scenario_id}", status=404)
+        return {"deleted": True}
+
+    @app.get("/console/api/scenarios/{slug}/spec")
+    def get_scenario_spec(slug: str):
+        try:
+            content = store().read_spec_file(slug)
+        except KeyError:
+            return _error("validation", f"未知场景 {slug}", status=404)
+        except FileNotFoundError as error:
+            return _error("validation", str(error), status=404, field="spec_path",
+                          hint="先在控制台为该场景配置有效的 spec_path")
+        return {"slug": slug, "content": content}
+
+    @app.put("/console/api/scenarios/{slug}/spec")
+    def put_scenario_spec(slug: str, payload: dict):
+        content = payload.get("content", "")
+        try:
+            store().write_spec_file(slug, content)
+        except KeyError:
+            return _error("validation", f"未知场景 {slug}", status=404)
+        except ValueError as error:
+            return _error("validation", str(error), status=400, field="content")
+        return {"slug": slug, "saved": True}
 
     # ---- datasets ---------------------------------------------------------
 

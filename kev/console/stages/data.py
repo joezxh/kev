@@ -25,6 +25,8 @@ from .base import BuiltCommand, Conflict, Invalid, JobRequest, StageSpec
 paths.ensure_medical_on_path()
 from run_matrix import FOUR_B_ONLY, SCENARIOS as _SCENARIOS, SIZES, check_name  # noqa: E402
 
+from .. import db as _db
+
 SCENARIOS = tuple(_SCENARIOS)
 SPLITS = ("train", "calibration", "development")
 PLAN_RE = re.compile(r"generate at least (\d+) records")
@@ -38,11 +40,26 @@ def _python() -> str:
     return sys.executable
 
 
+def _resolve_spec_path(scenario: str) -> Path | None:
+    """场景 spec 文件绝对路径：优先查 DB 中场景的 spec_path（相对仓库根解析），
+
+    查不到时回退 docs/medical/specs/<slug>.json；都没有返回 None。无运行时 store 时
+    （单测直调 stage 而不经 create_app）自动走回退分支。
+    """
+    try:
+        return _db.store().resolve_spec_path(scenario)
+    except Exception:
+        pass
+    fallback = SPECS / f"{scenario}.json"
+    return fallback if fallback.is_file() else None
+
+
 def _spec(scenario: str) -> Path:
-    if scenario not in SCENARIOS:
+    path = _resolve_spec_path(scenario)
+    if path is None:
         raise Invalid(f"未知场景 {scenario!r}", field="scenario",
                       hint=f"可选：{', '.join(SCENARIOS)}")
-    return SPECS / f"{scenario}.json"
+    return path
 
 
 def _int(params: dict, key: str, default: int) -> int:
@@ -170,8 +187,13 @@ def _distill_build(request: JobRequest, *, require_schedule: bool = False) -> Bu
     if require_schedule and not schedule:
         raise Invalid("守护模式必须给 --schedule HH:MM", field="schedule",
                       hint="每天蒸馏到当日份额后睡到本地 HH:MM；靠 cron/Task Scheduler 常驻")
-    argv = [_python(), str(SKILL_SCRIPTS / "generate_data.py"),
-            "--category", category,
+    # 经 DB 的 spec_path 把 spec 文件绝对路径作为位置参数传给 generate_data.py，
+    # 绕开该冻结脚本里只认原 6 个 key 的 CATEGORY_SPECS 硬编码映射，使自定义场景也能蒸馏。
+    spec_path = _resolve_spec_path(request.scenario)
+    if spec_path is None:
+        raise Invalid(f"未知场景 {request.scenario!r}", field="scenario",
+                      hint="先在控制台「场景管理」里为它配置 spec_path")
+    argv = [_python(), str(SKILL_SCRIPTS / "generate_data.py"), str(spec_path),
             "--n", str(_int(params, "n", PLANNED_RECORDS)),
             "--model", params.get("model", "Ling-3.0-tiny"),
             "--out", out]

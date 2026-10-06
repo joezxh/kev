@@ -265,4 +265,4 @@ def test_append_events_with_no_rows_reports_no_new_cursor(store):
 
 
 def test_schema_version_is_stamped(store):
-    assert store.schema_version() == 2
+    assert store.schema_version() == 3
