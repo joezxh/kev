@@ -9,10 +9,13 @@ SSE 从 events 表按 id 游标轮询，而不是靠进程内的队列：日志�
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import uuid
 from pathlib import Path
+
+import requests
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -348,5 +351,92 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
     @app.get("/console/api/endpoints")
     def get_endpoints() -> dict:
         return {"endpoints": store().list_artifacts("endpoint")}
+
+    # ---- api keys ---------------------------------------------------------
+
+    KEV_SERVE_URL = os.environ.get("KEV_SERVE_URL", "http://127.0.0.1:8008")
+    ADMIN_KEY = os.environ.get("KEV_API_KEY")
+
+    def _sha256(text: str) -> str:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    def _ep(path: str) -> str:
+        tail = path.rstrip("/").split("/")[-1]
+        return {"systemone": "systemone", "separate": "separate",
+                "permute": "permute", "models": "models"}.get(tail, tail)
+
+    @app.post("/console/api/apikeys")
+    def create_api_key(payload: dict):
+        name = (payload.get("name") or "").strip()
+        if not name:
+            return _error("validation", "名称必填", status=400, field="name")
+        raw, meta = store().create_api_key(name)
+        return JSONResponse(status_code=201, content={"key": raw, **meta})
+
+    @app.get("/console/api/apikeys")
+    def list_api_keys() -> list:
+        return store().list_api_keys()
+
+    @app.delete("/console/api/apikeys/{key_id}")
+    def delete_api_key(key_id: str):
+        if not store().revoke_api_key(key_id):
+            return _error("validation", f"未知或已撤销的 key {key_id}", status=404)
+        return {"revoked": True}
+
+    # ---- usage -------------------------------------------------------------
+
+    @app.get("/console/api/usage")
+    def usage_summary(from_ts: str | None = None, to_ts: str | None = None) -> list:
+        return store().usage_summary(from_ts, to_ts)
+
+    @app.get("/console/api/usage/{key_id}")
+    def usage_timeseries(key_id: str, from_ts: str | None = None, to_ts: str | None = None) -> list:
+        return store().usage_timeseries(key_id, from_ts, to_ts)
+
+    # ---- kev proxy ---------------------------------------------------------
+
+    def _do_proxy(key_id: str, path: str, headers: dict, query: str, method: str, body):
+        import time
+        upstream = f"{KEV_SERVE_URL}/{path}"
+        fwd = {"content-type": headers.get("content-type", "application/json")}
+        if ADMIN_KEY:
+            fwd["authorization"] = f"Bearer {ADMIN_KEY}"
+        started = time.perf_counter()
+        try:
+            if method == "POST":
+                resp = requests.post(upstream, data=body, headers=fwd, params=query, timeout=300)
+            else:
+                resp = requests.get(upstream, headers=fwd, params=query, timeout=300)
+        except requests.RequestException:
+            store().record_usage(key_id=key_id, endpoint=_ep(path), method=method,
+                                  status=502, input_tokens=0, output_tokens=0,
+                                  latency_ms=round((time.perf_counter() - started) * 1000, 1))
+            return _error("upstream", "kev.serve 不可达", status=502)
+        dt = round((time.perf_counter() - started) * 1000, 1)
+        in_t = out_t = 0
+        try:
+            usage = resp.json().get("usage") or {}
+            in_t = int(usage.get("input_tokens", 0) or 0)
+            out_t = int(usage.get("output_tokens", 0) or 0)
+        except (ValueError, AttributeError):
+            pass
+        store().record_usage(key_id=key_id, endpoint=_ep(path), method=method, status=resp.status_code,
+                             input_tokens=in_t, output_tokens=out_t, latency_ms=dt)
+        return JSONResponse(status_code=resp.status_code, content=resp.json(),
+                             headers={"content-type": resp.headers.get("content-type", "application/json")})
+
+    async def proxy_kev(path: str, request: Request):
+        auth = request.headers.get("authorization", "")
+        if not auth.startswith("Bearer "):
+            return _error("auth", "缺少 API Key", status=401, hint="Authorization: Bearer <key>")
+        key = store().get_key_by_hash(_sha256(auth[7:].strip()))
+        if key is None:
+            return _error("auth", "API Key 无效或已撤销", status=401)
+        method = request.method
+        body = await request.body() if method == "POST" else None
+        return await asyncio.to_thread(_do_proxy, key["id"], path, dict(request.headers),
+                                        str(request.url.query), method, body)
+
+    app.add_api_route("/console/api/kev/{path:path}", proxy_kev, methods=["POST", "GET"])
 
     return app

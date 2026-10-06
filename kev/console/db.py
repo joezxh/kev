@@ -422,7 +422,8 @@ class Store:
 
     def list_api_keys(self) -> list[dict]:
         rows = self.connect().execute(
-            "SELECT a.*, COALESCE(u.calls,0) AS calls, "
+            "SELECT a.id, a.name, a.prefix, a.active, a.created_at, a.revoked_at, "
+            "COALESCE(u.calls,0) AS calls, "
             "COALESCE(u.input_tokens,0) AS input_tokens, "
             "COALESCE(u.output_tokens,0) AS output_tokens, u.last_used "
             "FROM api_keys a LEFT JOIN ("
