@@ -120,6 +120,35 @@ CREATE TABLE IF NOT EXISTS usage_log (
 );
 CREATE INDEX IF NOT EXISTS usage_log_key_ts_idx ON usage_log(key_id, ts);
 CREATE INDEX IF NOT EXISTS usage_log_ts_idx ON usage_log(ts);
+
+CREATE TABLE IF NOT EXISTS distill_providers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  model TEXT NOT NULL,
+  daily_limit INTEGER NOT NULL DEFAULT 500000,
+  key_count INTEGER NOT NULL DEFAULT 0,
+  key_hints TEXT NOT NULL DEFAULT '[]',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS distill_providers_active_idx ON distill_providers(active);
+
+CREATE TABLE IF NOT EXISTS distill_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL REFERENCES jobs(id),
+  provider_id TEXT NOT NULL,
+  key_hash TEXT NOT NULL,
+  key_hint TEXT NOT NULL,
+  model TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  day TEXT NOT NULL,
+  tokens INTEGER NOT NULL DEFAULT 0,
+  ts TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS distill_usage_ukd ON distill_usage(provider_id, key_hash, day);
+CREATE INDEX IF NOT EXISTS distill_usage_job_idx ON distill_usage(job_id);
+CREATE INDEX IF NOT EXISTS distill_usage_day_idx ON distill_usage(day);
 """
 
 _JSON_COLUMNS = frozenset({"request", "env_overlay", "artifacts_in", "artifacts_out"})
@@ -508,3 +537,74 @@ class Store:
             " GROUP BY date ORDER BY date", [key_id, *p]
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # ---- distill providers ------------------------------------------------
+
+    def create_distill_provider(self, name, base_url, model, daily_limit, keys) -> dict:
+        import json as _json
+        provider_id = uuid.uuid4().hex
+        hints = _json.dumps([(k[:3] + "..." + k[-4:]) for k in keys], ensure_ascii=False)
+        self.connect().execute(
+            "INSERT INTO distill_providers (id, name, base_url, model, daily_limit, "
+            "key_count, key_hints, active, created_at) VALUES (?,?,?,?,?,?,?,1,?)",
+            (provider_id, name, base_url, model, int(daily_limit), len(keys), hints, _now()))
+        self.connect().commit()
+        return self.get_distill_provider(provider_id)
+
+    def list_distill_providers(self) -> list[dict]:
+        rows = self.connect().execute(
+            "SELECT * FROM distill_providers WHERE active=1 ORDER BY created_at DESC").fetchall()
+        return [dict(r) for r in rows]
+
+    def get_distill_provider(self, provider_id) -> dict | None:
+        row = self.connect().execute(
+            "SELECT * FROM distill_providers WHERE id=?", (provider_id,)).fetchone()
+        return dict(row) if row else None
+
+    def deactivate_distill_provider(self, provider_id) -> bool:
+        cursor = self.connect().execute(
+            "UPDATE distill_providers SET active=0 WHERE id=? AND active=1", (provider_id,))
+        self.connect().commit()
+        return cursor.rowcount == 1
+
+    def upsert_distill_usage(self, *, job_id, provider_id, key_hash, key_hint,
+                              model, base_url, day, tokens) -> None:
+        self.connect().execute(
+            "INSERT INTO distill_usage (job_id, provider_id, key_hash, key_hint, model, "
+            "base_url, day, tokens, ts) VALUES (?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(provider_id, key_hash, day) DO UPDATE SET tokens=excluded.tokens, "
+            "job_id=excluded.job_id, model=excluded.model, base_url=excluded.base_url, ts=excluded.ts",
+            (job_id, provider_id, key_hash, key_hint, model, base_url, day, int(tokens), _now()))
+        self.connect().commit()
+
+    def distill_usage_by_provider(self, provider_id=None, from_day=None, to_day=None) -> list[dict]:
+        where, params = [], []
+        if provider_id:
+            where.append("provider_id=?"); params.append(provider_id)
+        if from_day:
+            where.append("day >= ?"); params.append(from_day)
+        if to_day:
+            where.append("day <= ?"); params.append(to_day)
+        w = (" WHERE " + " AND ".join(where)) if where else ""
+        rows = self.connect().execute(
+            "SELECT provider_id, key_hint, model, SUM(tokens) AS tokens, "
+            "COUNT(DISTINCT day) AS days, MAX(day) AS last_day FROM distill_usage" + w +
+            " GROUP BY provider_id, key_hint, model ORDER BY tokens DESC", params).fetchall()
+        return [dict(r) for r in rows]
+
+    def distill_usage_by_job(self, job_id, from_day=None, to_day=None) -> list[dict]:
+        where, params = ["job_id=?"], [job_id]
+        if from_day:
+            where.append("day >= ?"); params.append(from_day)
+        if to_day:
+            where.append("day <= ?"); params.append(to_day)
+        rows = self.connect().execute(
+            "SELECT key_hint, model, SUM(tokens) AS tokens, COUNT(DISTINCT day) AS days, "
+            "MAX(day) AS last_day FROM distill_usage WHERE " + " AND ".join(where) +
+            " GROUP BY key_hint, model", params).fetchall()
+        out = [dict(r) for r in rows]
+        job = self.get_job(job_id)
+        prov = self.get_distill_provider((job["request"].get("provider_id") if job else "") or "")
+        for r in out:
+            r["daily_limit"] = prov["daily_limit"] if prov else 0
+        return out
