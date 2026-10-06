@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -21,6 +21,8 @@ export type FieldSpec = {
   label?: string;
   kind?: "text" | "number" | "select";
   options?: { value: string; label: string }[];
+  /** 选项从接口动态拉取（例如蒸馏配置列表），取代静态 options。 */
+  optionsUrl?: string;
   hint?: string;
   /** 只在某些场景下出现（例如 snapshot_fractions 只对全参数有意义） */
   when?: (scenario: string, values: Record<string, string>) => boolean;
@@ -59,6 +61,24 @@ export function JobStagePage({
   }));
   const [busy, setBusy] = useState(false);
   const [gateError, setGateError] = useState<ApiError | null>(null);
+  const [dynamicOptions, setDynamicOptions] = useState<Record<string, { value: string; label: string }[]>>({});
+  useEffect(() => {
+    for (const f of fields) {
+      if (f.optionsUrl && !(f.key in dynamicOptions)) {
+        api.distillProviders().then((list) => {
+          setDynamicOptions((prev) => ({
+            ...prev,
+            [f.key]: [
+              { value: "", label: "（进程环境变量）" },
+              ...list.map((p) => ({ value: p.id, label: `${p.name} · ${p.model}` })),
+            ],
+          }));
+        }).catch(() => {});
+      }
+    }
+    // dynamicOptions 仅作去重哨兵，故意不进依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fields]);
 
   const loadGates = useCallback(
     () => (gateStage ? api.gates(gateStage, values.scenario) : Promise.resolve([])),
@@ -128,7 +148,7 @@ export function JobStagePage({
                 <Select value={values[field.key]} onValueChange={(v) => v !== null && set(field.key, v)}>
                   <SelectTrigger id={`f-${field.key}`}><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {field.options?.map((option) => (
+                    {(field.optionsUrl ? dynamicOptions[field.key] ?? [] : field.options ?? []).map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
