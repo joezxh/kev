@@ -6,6 +6,7 @@ import { api, PRESETS, type PermuteResponse, type Question, type SystemOneReques
 import { useLang } from "@/lib/i18n";
 import { AnswerCard } from "@/components/answer-card";
 import { LangToggle } from "@/components/lang-toggle";
+import { ApiKeyPicker } from "@/components/console/ApiKeyPicker";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -110,6 +111,7 @@ export function Playground() {
             {model === null ? t("kev.connecting") : "error" in model ? t("kev.backendUnavailable", { error: model.error }) : <><span className="font-mono">{model.base}</span> · <span className="font-mono">{model.run}</span></>}
           </p>
           <LangToggle />
+          <ApiKeyPicker />
         </div>
       </header>
 

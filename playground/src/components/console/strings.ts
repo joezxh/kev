@@ -6,8 +6,8 @@
 export const CONSOLE_STRINGS = {
   "console.title": { en: "fine-tune console", zh: "微调控制台" },
   "console.subtitle": {
-    en: "Five stages, fourteen job kinds, one shared dataset. Every form shows the exact command it will run.",
-    zh: "五个阶段、十四种作业、共用一份数据。每个表单都显示它将执行的完整命令。",
+    en: "Eight tabs, eighteen job kinds, one shared dataset. Every form shows the exact command it will run.",
+    zh: "八个标签页、十八种作业、共用一份数据。每个表单都显示它将执行的完整命令。",
   },
   "console.back": { en: "← kev", zh: "← kev" },
   "console.nav.overview": { en: "Overview", zh: "总览" },
@@ -16,6 +16,30 @@ export const CONSOLE_STRINGS = {
   "console.nav.eval": { en: "3 · Evaluate", zh: "3 · 评测" },
   "console.nav.image": { en: "4 · Image", zh: "4 · 镜像" },
   "console.nav.deploy": { en: "5 · Deploy", zh: "5 · 部署" },
+  "console.nav.apikeys": { en: "6 · API Keys", zh: "6 · API Keys" },
+  "console.nav.usage": { en: "7 · Usage", zh: "7 · 用量" },
+  "console.nav.distill": { en: "8 · Distill config", zh: "8 · 蒸馏配置" },
+
+  "console.apikeys.name": { en: "Name", zh: "名称" },
+  "console.apikeys.create": { en: "Create key", zh: "创建 key" },
+  "console.apikeys.createHint": { en: "create one first", zh: "先去创建一个" },
+  "console.apikeys.use": { en: "API key", zh: "API key" },
+  "console.apikeys.shownOnce": { en: "Key created — shown only once. Copy it now:", zh: "key 已创建，仅显示一次，请立即复制：" },
+  "console.apikeys.copyNow": { en: "It will not be shown again. Stored locally in your browser only.", zh: "不会再次显示，仅保存在你本机浏览器。" },
+  "console.apikeys.status": { en: "Status", zh: "状态" },
+  "console.apikeys.active": { en: "active", zh: "启用" },
+  "console.apikeys.revoked": { en: "revoked", zh: "已撤销" },
+  "console.apikeys.calls": { en: "calls", zh: "调用" },
+  "console.apikeys.lastUsed": { en: "last used", zh: "最后调用" },
+  "console.apikeys.revoke": { en: "Revoke", zh: "撤销" },
+
+  "console.usage.kev": { en: "Kev core interface usage", zh: "Kev 核心接口用量" },
+  "console.usage.distill": { en: "Distillation 3rd-party usage", zh: "蒸馏第三方模型用量" },
+
+  "console.distill.created": { en: "provider saved (keys stored server-side only)", zh: "配置已保存（密钥仅存于服务端）" },
+  "console.distill.keys": { en: "API keys (one per line)", zh: "API Key（每行一个）" },
+  "console.distill.create": { en: "Save config", zh: "保存配置" },
+  "console.distill.deactivate": { en: "Deactivate", zh: "停用" },
 
   "console.argv.preview": { en: "Command preview", zh: "将要执行的命令" },
   "console.argv.copy": { en: "Copy", zh: "复制" },

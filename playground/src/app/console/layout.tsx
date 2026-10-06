@@ -14,6 +14,9 @@ const NAV = [
   { href: "/console/eval", key: "console.nav.eval" },
   { href: "/console/images", key: "console.nav.image" },
   { href: "/console/deploy", key: "console.nav.deploy" },
+  { href: "/console/apikeys", key: "console.nav.apikeys" },
+  { href: "/console/usage", key: "console.nav.usage" },
+  { href: "/console/distill-providers", key: "console.nav.distill" },
 ];
 
 /**
