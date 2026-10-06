@@ -25,6 +25,11 @@ RUNS = ROOT / RUNS_REL
 JOB_LOGS = ROOT / CONSOLE_REL / "jobs"
 DB_PATH = ROOT / CONSOLE_REL / "kev-console.db"
 
+# 蒸馏用量状态目录的缺省落点（generate_data.py 写 <dir>/usage_<date>.json，控制台
+# _ingest_distill_usage 读同一目录）。作业未显式传 --state-dir 时统一落这里，保证用量
+# 采集端到端可通（spec §9）；与 secrets（data/console/secrets）同归 data/console 之下。
+DEFAULT_DISTILL_STATE_DIR = ROOT / CONSOLE_REL / "distill-state"
+
 
 def ensure_medical_on_path() -> None:
     """把 docs/medical/generators 与 skills/kev-finetune/scripts 加进 sys.path。

@@ -184,7 +184,12 @@ def _distill_build(request: JobRequest, *, require_schedule: bool = False) -> Bu
     elif params.get("daily_limit"):
         argv += ["--daily-limit", str(_int(params, "daily_limit", 500000))]
     if params.get("state_dir"):
-        argv += ["--state-dir", params["state_dir"]]
+        state_dir = params["state_dir"]
+    else:
+        # 缺省也落到一个控制台已知的固定目录（spec §9）：否则 generate_data.py 会写
+        # cwd 下的 .distill，而 _ingest_distill_usage 读不到，用量采集端到端断开。
+        state_dir = str(paths.DEFAULT_DISTILL_STATE_DIR)
+    argv += ["--state-dir", state_dir]
     if not provider_id:
         if params.get("base_url"):
             env["KEV_GEN_BASE_URL"] = params["base_url"]

@@ -478,8 +478,10 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
         job = store().get_job(job_id)
         if job is None or job["kind"] not in ("distill", "distill_daemon"):
             return
-        state_dir = (job["request"].get("state_dir") or "").strip()
-        if not state_dir or not _Path(state_dir).is_dir():
+        # 作业未显式传 state_dir 时，与 _distill_build 的缺省保持一致（paths.DEFAULT_DISTILL_STATE_DIR），
+        # 保证用量采集端到端可通（spec §9）。
+        state_dir = (job["request"].get("state_dir") or str(paths.DEFAULT_DISTILL_STATE_DIR)).strip()
+        if not _Path(state_dir).is_dir():
             return
         provider_id = job["request"].get("provider_id") or ""
         prov = store().get_distill_provider(provider_id) or {}
