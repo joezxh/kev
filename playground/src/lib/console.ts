@@ -175,7 +175,42 @@ export const api = {
     if (to) q.set("to", to);
     return call<DistillUsageRow[]>(`distill/${jobId}/usage${q.toString() ? `?${q}` : ""}`);
   },
+
+  // ---- scenario domains & scenarios (two-level, bilingual) ---------------
+  scenarioDomains: (lang = "zh") =>
+    call<ScenarioTree[]>(`scenario-domains?lang=${encodeURIComponent(lang)}`),
+  createDomain: (p: { slug: string; label_zh: string; label_en: string; sort?: number }) =>
+    call<ScenarioDomain>("scenario-domains", { method: "POST", body: JSON.stringify(p) }),
+  updateDomain: (id: string, p: { label_zh?: string; label_en?: string; sort?: number }) =>
+    call<ScenarioDomain>(`scenario-domains/${id}`, { method: "PUT", body: JSON.stringify(p) }),
+  deleteDomain: (id: string) =>
+    call<{ deleted: boolean }>(`scenario-domains/${id}`, { method: "DELETE" }),
+
+  createScenario: (p: { domain_id: string; slug: string; label_zh: string; label_en: string;
+                         spec_path: string; category?: string; sort?: number }) =>
+    call<Scenario>("scenarios", { method: "POST", body: JSON.stringify(p) }),
+  updateScenario: (id: string, p: { domain_id?: string; label_zh?: string; label_en?: string;
+                                     spec_path?: string; category?: string; sort?: number }) =>
+    call<Scenario>(`scenarios/${id}`, { method: "PUT", body: JSON.stringify(p) }),
+  deleteScenario: (id: string) =>
+    call<{ deleted: boolean }>(`scenarios/${id}`, { method: "DELETE" }),
+
+  scenarioSpec: (slug: string) =>
+    call<{ slug: string; content: string }>(`scenarios/${encodeURIComponent(slug)}/spec`),
+  saveScenarioSpec: (slug: string, content: string) =>
+    call<{ slug: string; saved: boolean }>(`scenarios/${encodeURIComponent(slug)}/spec`,
+      { method: "PUT", body: JSON.stringify({ content }) }),
 };
+
+export type Scenario = {
+  id: string; slug: string; label: string; label_zh: string; label_en: string;
+  spec_path: string; category: string; sort: number; exists: boolean;
+};
+export type ScenarioDomain = {
+  id: string; slug: string; label: string; label_zh: string; label_en: string;
+  sort: number; scenarios: Scenario[];
+};
+export type ScenarioTree = ScenarioDomain;
 
 /**
  * 订阅作业的 SSE 日志流。

@@ -19,6 +19,7 @@ export const CONSOLE_STRINGS = {
   "console.nav.apikeys": { en: "6 · API Keys", zh: "6 · API Keys" },
   "console.nav.usage": { en: "7 · Usage", zh: "7 · 用量" },
   "console.nav.distill": { en: "8 · Distill config", zh: "8 · 蒸馏配置" },
+  "console.nav.scenarios": { en: "9 · Scenarios", zh: "9 · 场景管理" },
 
   "console.apikeys.name": { en: "Name", zh: "名称" },
   "console.apikeys.create": { en: "Create key", zh: "创建 key" },
@@ -186,4 +187,42 @@ export const CONSOLE_STRINGS = {
   },
 
   "console.train.advanced": { en: "Advanced training switches", zh: "训练高级开关" },
+
+  "console.scenarios.title": { en: "Scenario management", zh: "场景管理" },
+  "console.scenarios.subtitle": {
+    en: "Two-level taxonomy: a domain groups scenarios. Each scenario points to a spec JSON (prompts & config) and can be edited in place.",
+    zh: "两级分类：一级域聚合二级场景。每个场景指向一份 spec JSON（提示词与配置），可在此直接编辑。",
+  },
+  "console.scenarios.newDomain": { en: "New domain", zh: "新建域" },
+  "console.scenarios.newScenario": { en: "New scenario", zh: "新建场景" },
+  "console.scenarios.search": { en: "Search scenarios…", zh: "搜索场景…" },
+  "console.scenarios.empty": {
+    en: "No scenarios yet. Create a domain, then add scenarios under it and point each to a spec JSON.",
+    zh: "还没有场景。先建一个域，再在其下添加场景，并为每个场景指定一份 spec JSON。",
+  },
+  "console.scenarios.labelZh": { en: "Chinese label", zh: "中文标签" },
+  "console.scenarios.labelEn": { en: "English label", zh: "英文标签" },
+  "console.scenarios.domain": { en: "Domain", zh: "所属域" },
+  "console.scenarios.slug": { en: "Slug", zh: "Slug" },
+  "console.scenarios.specPath": { en: "Spec path (relative to repo root)", zh: "Spec 路径（相对仓库根）" },
+  "console.scenarios.category": { en: "Category", zh: "分类" },
+  "console.scenarios.sort": { en: "Sort", zh: "排序" },
+  "console.scenarios.exists": { en: "spec file found", zh: "spec 文件存在" },
+  "console.scenarios.missing": { en: "spec file missing", zh: "spec 文件缺失" },
+  "console.scenarios.save": { en: "Save", zh: "保存" },
+  "console.scenarios.delete": { en: "Delete", zh: "删除" },
+  "console.scenarios.confirmDelete": {
+    en: "Delete this item? This cannot be undone.", zh: "确认删除？此操作不可撤销。",
+  },
+  "console.scenarios.specEditor": { en: "Spec configuration (prompts & config)", zh: "Spec 配置（提示词与配置）" },
+  "console.scenarios.specSave": { en: "Save config", zh: "保存配置" },
+  "console.scenarios.specSaved": { en: "spec saved", zh: "配置已保存" },
+  "console.scenarios.specInvalid": { en: "Invalid JSON or missing required fields", zh: "JSON 非法或缺少必要字段" },
+  "console.scenarios.specLoadFailed": { en: "Could not load spec file", zh: "无法读取 spec 文件" },
+  "console.scenarios.domainDeleteCascade": {
+    en: "Deleting a domain also removes its scenarios.", zh: "删除域会一并删除其下所有场景。",
+  },
+  "console.cascade.domain": { en: "Domain", zh: "领域" },
+  "console.cascade.scenario": { en: "Scenario", zh: "场景" },
+  "console.cascade.scenarioPlaceholder": { en: "select a domain first", zh: "请先选择领域" },
 } as const;

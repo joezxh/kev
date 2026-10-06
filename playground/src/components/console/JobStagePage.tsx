@@ -14,6 +14,7 @@ import { ApiError, api } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
 import { ArgvPreview } from "./ArgvPreview";
 import { GatePanel } from "./GatePanel";
+import { ScenarioCascade } from "./ScenarioCascade";
 import { usePoll } from "./usePoll";
 
 export type FieldSpec = {
@@ -121,22 +122,13 @@ export function JobStagePage({
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
           {!hideScenario && (
-          <div className="space-y-2">
-            <Label htmlFor="f-scenario">{lang === "zh" ? "场景" : "Scenario"}</Label>
-            <Select value={values.scenario} onValueChange={(value) => {
-              if (value === null) return;      // base-ui 的 onValueChange 会给 null
-              set("run_name", `${value}-8b-lora-v1`);
-              set("run_name", `${value}-8b-lora-v1`);
-            }}>
-              <SelectTrigger id="f-scenario"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {["critical-value", "triage", "medication-review", "nursing-quality",
-                  "icd-coding"].map((name) => (
-                  <SelectItem key={name} value={name}>{name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="f-scenario">{lang === "zh" ? "场景" : "Scenario"}</Label>
+              <ScenarioCascade value={values.scenario} onChange={(slug) => {
+                set("scenario", slug);
+                set("run_name", `${slug}-8b-lora-v1`);
+              }} />
+            </div>
           )}
 
           {fields.filter((f) => f.when?.(values.scenario, values) ?? true).map((field) => (

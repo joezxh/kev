@@ -17,6 +17,7 @@ const NAV = [
   { href: "/console/apikeys", key: "console.nav.apikeys" },
   { href: "/console/usage", key: "console.nav.usage" },
   { href: "/console/distill-providers", key: "console.nav.distill" },
+  { href: "/console/scenarios", key: "console.nav.scenarios" },
 ];
 
 /**
