@@ -26,27 +26,41 @@ export type PermuteResponse = {
   spread: Record<string, number>;
 };
 
-// 凭据只从编排服务的进程环境变量读，浏览器这一侧**不持有任何 key**。
-// 之前这里有一个硬编码的真实 key 作为 NEXT_PUBLIC_ 的兜底 —— 它随构建产物下发到
-// 客户端，等于公开。编排层的 /console/api/config 只回「是否已配置」的布尔态。
-const KEV_API_KEY = process.env.NEXT_PUBLIC_KEV_API_KEY ?? "";
+// 用户 key 只存在浏览器 localStorage（kev_apikey）。浏览器这一侧不持有任何管理 key ——
+// 编排层 /console/api/config 只回布尔态。调用统一经同源代理 /api/console/kev，由后端校验用户 key
+// 并注入管理 key 转发给 kev.serve（spec §3 / §9）。
+const LS_KEY = "kev_apikey";
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (KEV_API_KEY) headers["authorization"] = `Bearer ${KEV_API_KEY}`;
-  const r = await fetch(`/kev${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+function currentKey(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(LS_KEY) || null;
+}
+
+function requireKey(): string {
+  const key = currentKey();
+  if (!key) throw new Error("请先在控制台「API Keys」页创建并选择一个 key（playground 顶部）");
+  return key;
+}
+
+async function postKev<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(`/api/console/kev${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${requireKey()}` },
+    body: JSON.stringify(body),
+  });
   if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
   return r.json();
 }
 
 export const api = {
-  systemOne: (req: SystemOneRequest) => post<SystemOneResponse>("/v1/systemone", req),
-  separate: (req: SystemOneRequest) => post<SystemOneResponse>("/v1/systemone/separate", req),
-  permute: (request: SystemOneRequest, question: string, n_perm = 6) => post<PermuteResponse>("/v1/systemone/permute", { request, question, n_perm }),
+  systemOne: (req: SystemOneRequest) => postKev<SystemOneResponse>("/v1/systemone", req),
+  separate: (req: SystemOneRequest) => postKev<SystemOneResponse>("/v1/systemone/separate", req),
+  permute: (request: SystemOneRequest, question: string, n_perm = 6) =>
+    postKev<PermuteResponse>("/v1/systemone/permute", { request, question, n_perm }),
   models: async () => {
-    const headers: Record<string, string> = {};
-    if (KEV_API_KEY) headers["authorization"] = `Bearer ${KEV_API_KEY}`;
-    const r = await fetch("/kev/v1/models", { headers });
+    const r = await fetch("/api/console/kev/v1/models", {
+      headers: { authorization: `Bearer ${requireKey()}` },
+    });
     if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
     return r.json() as Promise<{ models: { name: string; run: string; base: string }[] }>;
   },

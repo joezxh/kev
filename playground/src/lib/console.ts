@@ -66,6 +66,30 @@ export class ApiError extends Error {
   }
 }
 
+export type ApiKey = {
+  id: string; name: string; prefix: string; active: boolean;
+  created_at: string; revoked_at: string | null;
+  calls: number; input_tokens: number; output_tokens: number; last_used: string | null;
+};
+export type UsageRow = {
+  id: string; name: string; prefix: string; active: boolean;
+  calls: number; input_tokens: number; output_tokens: number;
+  avg_latency_ms: number | null; p99_latency_ms: number; last_used: string | null;
+};
+export type UsageDay = {
+  date: string; calls: number; input_tokens: number; output_tokens: number;
+  avg_latency_ms: number | null;
+};
+
+export type DistillProvider = {
+  id: string; name: string; base_url: string; model: string;
+  daily_limit: number; key_count: number; key_hints: string[]; active: boolean; created_at: string;
+};
+export type DistillUsageRow = {
+  provider_id: string; key_hint: string; model: string;
+  tokens: number; days: number; last_day: string | null; daily_limit: number;
+};
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/console/${path}`, {
     ...init,
@@ -115,6 +139,42 @@ export const api = {
     call<Gate[]>(`gates/${stage}?scenario=${encodeURIComponent(scenario)}` +
                  (runName ? `&run_name=${encodeURIComponent(runName)}` : "")),
   endpoints: () => call<{ endpoints: Artifact[] }>("endpoints"),
+
+  apikeys: () => call<ApiKey[]>("apikeys"),
+  createApiKey: (name: string) =>
+    call<{ key: string } & ApiKey>("apikeys", { method: "POST", body: JSON.stringify({ name }) }),
+  revokeApiKey: (id: string) => call<{ revoked: boolean }>(`apikeys/${id}`, { method: "DELETE" }),
+  usageSummary: (from?: string, to?: string) => {
+    const q = new URLSearchParams();
+    if (from) q.set("from", from);
+    if (to) q.set("to", to);
+    return call<UsageRow[]>(`usage${q.toString() ? `?${q}` : ""}`);
+  },
+  usageTimeseries: (keyId: string, from?: string, to?: string) => {
+    const q = new URLSearchParams();
+    if (from) q.set("from", from);
+    if (to) q.set("to", to);
+    return call<UsageDay[]>(`usage/${keyId}${q.toString() ? `?${q}` : ""}`);
+  },
+
+  distillProviders: () => call<DistillProvider[]>("distill-providers"),
+  createDistillProvider: (p: { name: string; base_url: string; model: string; daily_limit: number; keys: string[] }) =>
+    call<DistillProvider>("distill-providers", { method: "POST", body: JSON.stringify(p) }),
+  deactivateDistillProvider: (id: string) =>
+    call<{ deactivated: boolean }>(`distill-providers/${id}`, { method: "DELETE" }),
+  distillUsage: (providerId?: string, from?: string, to?: string) => {
+    const q = new URLSearchParams();
+    if (providerId) q.set("provider_id", providerId);
+    if (from) q.set("from", from);
+    if (to) q.set("to", to);
+    return call<DistillUsageRow[]>(`distill-usage${q.toString() ? `?${q}` : ""}`);
+  },
+  distillJobUsage: (jobId: string, from?: string, to?: string) => {
+    const q = new URLSearchParams();
+    if (from) q.set("from", from);
+    if (to) q.set("to", to);
+    return call<DistillUsageRow[]>(`distill/${jobId}/usage${q.toString() ? `?${q}` : ""}`);
+  },
 };
 
 /**
