@@ -45,18 +45,31 @@ SAMPLES = {"generate": {}, "distill": {}, "goldset": {}, "split": {}, "precheck"
 
 def test_all_fourteen_kinds_are_registered():
     assert set(REGISTRY) == {
-        "plan_size", "generate", "distill", "goldset", "split", "precheck",
+        "plan_size", "generate", "distill", "distill_daemon", "goldset", "goldset_audit",
+        "split", "precheck",
         "train", "baseline", "benchmark", "compare", "calibrate",
-        "image", "deploy", "smoke"}
+        "image", "deploy", "smoke",
+        "publish", "modal"}
 
 
 def test_every_kind_that_declares_artifacts_has_a_relation():
     """artifacts.register 用 RELATION[job.kind] 查血缘关系名；缺了就退化成
     'produced_by'，血缘语义就丢了。plan_size 不声明任何产物（它只打印计划），
-    所以不需要关系名。"""
+    所以不需要关系名。新阶段的 preview 对必填字段缺失会直接 Invalid，这里给最小可用参数。"""
+    minimal = {
+        "publish": {"repo": "j", "card": "c.md"},
+        "modal": {"run": "x"},
+        "goldset_audit": {"a": "x", "b": "y"},
+        "distill_daemon": {"schedule": "03:00", "skip_exists_check": True},
+    }
+
+    def preview_of(kind):
+        if kind in {"image", "deploy"}:
+            return REGISTRY[kind].preview(req({"temperature": "2.35"}))
+        return REGISTRY[kind].preview(req(minimal.get(kind, {})))
+
     for kind, spec in REGISTRY.items():
-        if not spec.preview(req({"temperature": "2.35"}) if kind in {"image", "deploy"}
-                            else req({})).artifacts_out:
+        if not preview_of(kind).artifacts_out:
             continue
         assert kind in artifacts.RELATION, f"{kind} 声明了产物但 RELATION 里没有条目"
 

@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: experiments
+title: 训练实验配置与审计协议
+scope:
+    - experiments/
+source_files: []
+depends_on: []
+related_to:
+    - path: evals_and_scripts
+    - path: kev_library/vertical

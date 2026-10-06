@@ -31,6 +31,15 @@ COMMON = ["--epochs", "1", "--batch", "4", "--accum", "2", "--dtype", "bf16",
 VALUE_KEYS = ("init_from", "base", "base_revision", "lora", "lora_targets", "full_ft",
               "weights_dtype", "lr", "replay", "checkpointing", "head_dim",
               "length_sort", "row_budget", "pass_tokens_max")
+# 高级开关：runbook §七 7.4 项 3。参数名下划线风格已逐一核对 kev/train.py argparse，
+# 全部存在（无一缺失）。默认空 -> 不传，沿用 kev.train 的默认值。
+ADVANCED_KEYS = (
+    "anchor", "anchor_w", "anchor_sources", "perm_kl", "perm_frac", "ord_w",
+    "label_smoothing", "brier_w", "focal_gamma", "p_none", "p_none_distract",
+    "p_none_pair", "none_pair_max_state", "synthetic_repeat", "public_frac",
+    "train_sources", "holdout", "special_embeddings", "option_isolation",
+    "shared_prefix", "snapshot_every_steps",
+)
 SNAPSHOT_LIMIT = 8          # kev.budget.MAX_SNAPSHOTS
 
 
@@ -90,11 +99,21 @@ def build_argv(request: JobRequest) -> list:
     check_name(request.run_name)          # fullmatch，禁点号；错误时 raise SystemExit
     out = _resolve_out(request)
 
+    # 高级开关的互相约束（kev/train.py parse_args 也会校验，这里提前拦成 400 而不是
+    # 让子进程跑起来才炸）。只拦最常见的两组，其余交给 kev.train 自身。
+    if params.get("anchor") and not _positive(params, "anchor_w"):
+        raise Invalid("设了 --anchor 必须同时给 --anchor_w > 0", field="anchor_w",
+                      hint="锚定正例权重为 0 等于没设")
+    if params.get("none_pair_max_state") and not _positive(params, "p_none_pair"):
+        raise Invalid("--none_pair_max_state 需要 --p_none_pair > 0", field="p_none_pair")
+
     argv = ["-m", "kev.train",
             "--data", params.get("data") or f"data/{request.scenario}/train.jsonl",
             "--out", out, *COMMON]
     defaults = methods[method]
     argv += _with_values({key: defaults.get(key, params.get(key)) for key in VALUE_KEYS})
+    # 高级开关：默认空 -> 不传，沿用 kev.train 默认。
+    argv += _with_values({key: params.get(key) for key in ADVANCED_KEYS})
 
     if str(defaults.get("full_ft")) == "1":
         fractions = params.get("snapshot_fractions")
@@ -116,6 +135,18 @@ def _int(params: dict, key: str) -> int:
         return int(params[key])
     except (TypeError, ValueError):
         raise Invalid(f"{key} 必须是整数，收到 {params.get(key)!r}", field=key) from None
+
+
+def _positive(params: dict, key: str) -> bool:
+    """高级开关的互相约束里用：取不到或 <= 0 都算「没开」。
+
+    kev/train.py 用 argparse.type=float，空字符串会炸；这里先归一化，避免把表单空值
+    当成「0 开启」误判。
+    """
+    try:
+        return float(params.get(key)) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def _train(request: JobRequest) -> BuiltCommand:

@@ -9,12 +9,14 @@
 from . import data as _data
 from . import deploy as _deploy
 from . import eval as _eval
+from . import modal as _modal
+from . import publish as _publish
 from . import train as _train
 from .base import BuiltCommand, Conflict, Invalid, JobRequest, Persist, StageSpec
 
 REGISTRY = {}
 for _spec in (*_data.DATA_STAGES, *_train.TRAIN_STAGES, *_eval.EVAL_STAGES,
-              *_deploy.DEPLOY_STAGES):
+              *_deploy.DEPLOY_STAGES, *_publish.PUBLISH_STAGES, *_modal.MODAL_STAGES):
     if _spec.kind in REGISTRY:
         raise ValueError(f"duplicate stage kind {_spec.kind!r}")
     REGISTRY[_spec.kind] = _spec

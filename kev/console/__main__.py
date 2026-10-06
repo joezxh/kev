@@ -19,7 +19,7 @@ DEFAULT_PORT = 8790
 def main() -> None:
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     paths.JOB_LOGS.mkdir(parents=True, exist_ok=True)
-    uvicorn.run(create_app(), host="127.0.0.1",
+    uvicorn.run(create_app(), host="0.0.0.0",
                 port=int(os.environ.get("KEV_CONSOLE_PORT", DEFAULT_PORT)), log_level="info")
 
 

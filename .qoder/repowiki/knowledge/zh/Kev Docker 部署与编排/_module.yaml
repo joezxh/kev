@@ -1,0 +1,17 @@
+schema_version: 1
+module_path: deploy
+title: Kev Docker 部署与编排
+scope:
+    - Dockerfile
+    - docker-compose.yml
+    - .dockerignore
+    - DEPLOYMENT_README.md
+    - DOCKER_DEPLOYMENT_GUIDE.md
+    - LOCAL_DEPLOYMENT_GUIDE.md
+    - QUICK_START.md
+    - deploy.sh
+    - deploy-windows.ps1
+source_files: []
+depends_on: []
+related_to:
+    - path: playground

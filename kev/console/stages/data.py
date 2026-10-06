@@ -139,7 +139,7 @@ generate = StageSpec("generate", "data", "程序化规则合成", _generate,
 
 # ---- distill -----------------------------------------------------------
 
-def _distill(request: JobRequest) -> BuiltCommand:
+def _distill_build(request: JobRequest, *, require_schedule: bool = False) -> BuiltCommand:
     _spec(request.scenario)
     params = request.params
     keys = params.get("api_keys") or []
@@ -149,7 +149,13 @@ def _distill(request: JobRequest) -> BuiltCommand:
     data_dir = params.get("data") or f"data/{request.scenario}"
     category = params.get("category") or request.scenario
     out = f"{data_dir}/{category}.jsonl"
-    _exists(out, params)
+    # 守护模式长驻、自己管理产出，跳过「目录已存在」预检；一次性蒸馏照旧拒绝覆盖。
+    if not require_schedule:
+        _exists(out, params)
+    schedule = params.get("schedule")
+    if require_schedule and not schedule:
+        raise Invalid("守护模式必须给 --schedule HH:MM", field="schedule",
+                      hint="每天蒸馏到当日份额后睡到本地 HH:MM；靠 cron/Task Scheduler 常驻")
     argv = [_python(), str(SKILL_SCRIPTS / "generate_data.py"),
             "--category", category,
             "--n", str(_int(params, "n", PLANNED_RECORDS)),
@@ -157,6 +163,12 @@ def _distill(request: JobRequest) -> BuiltCommand:
             "--out", out]
     if params.get("concurrency"):
         argv += ["--concurrency", str(_int(params, "concurrency", 3))]
+    if schedule:
+        argv += ["--schedule", schedule]
+    if params.get("daily_limit"):
+        argv += ["--daily-limit", str(_int(params, "daily_limit", 500000))]
+    if params.get("state_dir"):
+        argv += ["--state-dir", params["state_dir"]]
     env = {}
     if params.get("base_url"):
         env["KEV_GEN_BASE_URL"] = params["base_url"]
@@ -167,9 +179,27 @@ def _distill(request: JobRequest) -> BuiltCommand:
                         artifacts_out=[f"dataset:{_dataset_id(data_dir)}/{category}"])
 
 
+def _distill(request: JobRequest) -> BuiltCommand:
+    return _distill_build(request, require_schedule=False)
+
+
 distill = StageSpec("distill", "data", "LLM 蒸馏", _distill,
                     outcome="蒸馏轨只能写 label（不会写软标签 target），"
                             "「证据缺失」类样本仍须靠 generate")
+
+
+def _distill_daemon(request: JobRequest) -> BuiltCommand:
+    # 守护调度：--schedule HH:MM 让进程永不自然退出（睡到次日重置预算），
+    # 所以产物在 spawn 后立刻注册（Persist.START），且跳过目录存在预检。
+    # 产出文件随时间增长、启动时还不存在，故不声明本地产物（避免注册时空文件报错）。
+    built = _distill_build(request, require_schedule=True)
+    return BuiltCommand(argv=built.argv, env=built.env, cwd=built.cwd,
+                        artifacts_in=built.artifacts_in, artifacts_out=[])
+
+
+distill_daemon = StageSpec("distill_daemon", "distill", "蒸馏守护（按日配额）",
+                           _distill_daemon, persist="start",
+                           outcome="长驻蒸馏；取消即杀整棵树（executor 用 taskkill /T）")
 
 
 # ---- goldset -----------------------------------------------------------
@@ -191,6 +221,33 @@ def _goldset(request: JobRequest) -> BuiltCommand:
 
 goldset = StageSpec("goldset", "data", "抽金标", _goldset,
                     outcome="人工审校标签后，用 split --holdout 接入；金标永不进 train")
+
+
+def _goldset_audit(request: JobRequest) -> BuiltCommand:
+    """金标分歧审计：比对两份独立标注（通常是两个不同厂商模型对同一批 state 的标注）。
+
+    make_goldset.py 的 audit 子命令：位置参数 a/b，--threshold 闸门（超阈值 exit 非 0，
+    供 CI 拦截）。它是纯本地文件比对，不读本地 checkpoint、不写新数据集，所以
+    artifacts_in/out 都为空（诊断作业，不是流水线的一环）。
+    """
+    params = request.params
+    a = params.get("a")
+    b = params.get("b")
+    if not a:
+        raise Invalid("audit 需要第一份标注（a）", field="a",
+                      hint="两份独立厂商模型对同一批 state 的标注")
+    if not b:
+        raise Invalid("audit 需要第二份标注（b）", field="b",
+                      hint="与 a 同源不同模型的标注，用于算分歧率")
+    argv = [_python(), str(paths.GENERATORS / "make_goldset.py"), "audit", a, b]
+    if params.get("out"):
+        argv += ["--out", params["out"]]
+    argv += ["--threshold", str(_float(params, "threshold", 0.05))]
+    return BuiltCommand(argv=argv, cwd=str(paths.ROOT), artifacts_in=[], artifacts_out=[])
+
+
+goldset_audit = StageSpec("goldset_audit", "goldset_audit", "金标分歧审计", _goldset_audit,
+                          outcome="分歧率超阈值则 CI 可拦截；分歧样本优先进人工审校池")
 
 
 # ---- split -------------------------------------------------------------
@@ -244,8 +301,10 @@ precheck = StageSpec("precheck", "data", "token 超限预检", _precheck,
                      outcome="over_limit 必须为 0 才能训练（闸门 G1）")
 
 
-DATA_STAGES = (plan_size, generate, distill, goldset, split, precheck)
+DATA_STAGES = (plan_size, generate, distill, distill_daemon, goldset, goldset_audit,
+               split, precheck)
 
 __all__ = ["SCENARIOS", "SPLITS", "DEFAULT_INIT", "PLANNED_RECORDS", "MAX_DISTILL_KEYS",
-           "plan_size", "generate", "distill", "goldset", "split", "precheck",
+           "plan_size", "generate", "distill", "distill_daemon", "goldset", "goldset_audit",
+           "split", "precheck",
            "parse_plan_size", "check_name", "DATA_STAGES"]

@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: kev_library/vertical
+title: 垂直部署与风险路由层
+scope:
+    - kev/vertical.py
+    - tests/test_vertical.py
+source_files: []
+depends_on: []
+related_to:
+    - path: experiments

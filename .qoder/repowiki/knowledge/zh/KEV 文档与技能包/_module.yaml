@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: docs_and_skills
+title: KEV 文档与技能包
+scope:
+    - docs/
+    - skills/
+source_files: []
+depends_on: []
+related_to: []

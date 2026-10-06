@@ -78,19 +78,45 @@ def _benchmark_like(kind: str):
         params = request.params
         device = params.get("device", "cuda")
         if kind == "benchmark":
-            run = params.get("run") or f"runs/{request.run_name}"
+            # 开发集打分（G4/G5 的证据来源）。runbook §七 7.4 项 4 的高级选项在这里接。
             out = params.get("out") or f"runs/{request.run_name}-eval"
             name = request.run_name
-            source = f"run:{request.run_name}"
-        else:
-            run = params.get("baseline") or DEFAULT_BASELINE
-            out = params.get("out") or f"runs/{request.run_name}-baseline-eval"
-            name = f"{request.run_name}-baseline"
-            source = f"run:{run}"
+            argv = ["-m", "kev.benchmark", "--out", out, "--device", device]
+            if params.get("remote"):
+                # 远程打分：对一个 System One 兼容端点打 development 分区，不读本地 checkpoint。
+                argv += ["--remote", params["remote"]]
+                if params.get("remote_model"):
+                    argv += ["--remote-model", params["remote_model"]]
+                if params.get("remote_concurrency"):
+                    argv += ["--remote-concurrency", str(params["remote_concurrency"])]
+                artifacts_in: list = []
+            else:
+                run = params.get("run") or f"runs/{request.run_name}"
+                argv += ["--run", run]
+                artifacts_in = [f"run:{request.run_name}"]
+            # --data（本地分区文件）与 --suite（冻结 suite）互斥。
+            if params.get("suite"):
+                argv += ["--suite", params["suite"]]
+                if params.get("split"):
+                    argv += ["--split", params["split"]]
+            else:
+                argv += ["--data", _partition(request)]
+            if params.get("allow_test") == "1":
+                argv.append("--allow-test")          # 读锁定的 test 分区
+            if params.get("date_facts") == "1":
+                argv.append("--date_facts")          # 打分前对 state 套 with_date_facts
+            if params.get("rotations"):
+                argv += ["--rotations", str(params["rotations"])]
+            return BuiltCommand(argv=[_python()] + argv, cwd=str(paths.ROOT),
+                                artifacts_in=artifacts_in, artifacts_out=[f"eval:{name}"])
+        # baseline：零样本对照，固定打同一份 development 文件（compare 要靠 suite_sha256 一致）。
+        run = params.get("baseline") or DEFAULT_BASELINE
+        out = params.get("out") or f"runs/{request.run_name}-baseline-eval"
+        name = f"{request.run_name}-baseline"
         argv = ["-m", "kev.benchmark", "--run", run, "--data", _partition(request),
                 "--out", out, "--device", device]
         return BuiltCommand(argv=[_python()] + argv, cwd=str(paths.ROOT),
-                            artifacts_in=[source], artifacts_out=[f"eval:{name}"])
+                            artifacts_in=[f"run:{run}"], artifacts_out=[f"eval:{name}"])
     return build
 
 

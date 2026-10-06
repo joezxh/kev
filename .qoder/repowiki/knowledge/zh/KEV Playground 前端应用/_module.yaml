@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: playground
+title: KEV Playground 前端应用
+scope:
+    - playground/
+source_files: []
+depends_on: []
+related_to:
+    - path: deploy
+    - path: kev_library/console

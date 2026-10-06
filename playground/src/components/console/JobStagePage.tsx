@@ -36,6 +36,7 @@ export type FieldSpec = {
  */
 export function JobStagePage({
   kind, title, gateStage, fields, initial, children, aside, submitLabel,
+  hideScenario,
 }: {
   kind: string;
   title: string;
@@ -45,6 +46,8 @@ export function JobStagePage({
   children?: React.ReactNode;
   aside?: React.ReactNode;
   submitLabel?: string;
+  /** 不绑定场景的作业（publish / modal / goldset_audit）隐藏场景选择器。 */
+  hideScenario?: boolean;
 }) {
   const router = useRouter();
   const { lang } = useLang();
@@ -97,6 +100,7 @@ export function JobStagePage({
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
+          {!hideScenario && (
           <div className="space-y-2">
             <Label htmlFor="f-scenario">{lang === "zh" ? "场景" : "Scenario"}</Label>
             <Select value={values.scenario} onValueChange={(value) => {
@@ -113,6 +117,7 @@ export function JobStagePage({
               </SelectContent>
             </Select>
           </div>
+          )}
 
           {fields.filter((f) => f.when?.(values.scenario, values) ?? true).map((field) => (
             <div key={field.key} className="space-y-2">

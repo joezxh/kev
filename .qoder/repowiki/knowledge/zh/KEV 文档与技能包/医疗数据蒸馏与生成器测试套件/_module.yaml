@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: docs_and_skills/medical_distill
+title: 医疗数据蒸馏与生成器测试套件
+scope:
+    - docs/medical/
+    - tests/test_medical_distill.py
+    - tests/test_medical_generators.py
+source_files: []
+depends_on: []
+related_to:
+    - path: evals_and_scripts

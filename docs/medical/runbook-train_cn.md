@@ -128,6 +128,8 @@ To detect a +5% accuracy gain over a 75% baseline at 80% power (paired, 95% two-
 - **验证**：`total_records` = 787（= train 551 + cal 118 + dev 118）。每场景 4 个问题 → 787 条。
   非配对保守上界（1092）随 `--baseline-acc` 变化；0.8B 基线更弱、上界更大，故先测两条基线再核对。
 
+**控制台执行**：Data 标签页 → 「算记录数」(`plan_size`)，填**场景**（如下拉 `critical-value`），后端执行 `plan_size.py <spec>.json --baseline-acc 0.75 --json`，回显 `total_records`（结构化，等价手动 `--baseline-acc 0.75`）。✅
+
 ---
 
 ### 步骤 2 · 生成数据（程序化规则合成 / 可选 LLM 蒸馏生成式轨）
@@ -229,6 +231,11 @@ python skills/kev-finetune/scripts/generate_data.py --category triage \
 
 > 已有标注数据（CSV/JSONL）→ Kev 记录：用 `convert_data.py`（列映射），再用 `split_data.py --holdout` 接入，永远不进 train。
 
+**控制台执行**：
+- 程序化：Data → 「程序化规则合成」(`generate`)，填**场景** + **n**(默认 787) + **seed**(默认 0)，后端 `gen_<scenario>.py --n <n> --out data/<scenario>.jsonl --seed 0`。
+- LLM 蒸馏：Data → 「LLM 蒸馏」(`distill`)，填 **category**(6 大类键) + **n** + **model**(默认 `Ling-3.0-tiny`) + **base_url** + **api_keys**(≤6 把) + **concurrency**；后端 `generate_data.py --category <cat> --n <n> --model <m> --out data/<scenario>/<cat>.jsonl`，`KEV_GEN_API_KEYS` 由服务端环境注入、不下发浏览器。
+- ✅ `--schedule` 每日守护与 cron 额度续算已实现：Data → 「LLM 蒸馏」(`distill`) 表单新增 `--schedule`/`--daily-limit`/`--state-dir` 字段（一次性也可填），或用 Data → 「蒸馏守护」(`distill_daemon`) 标签页跑常驻调度（后端 `generate_data.py --schedule HH:MM --daily-limit N --state-dir DIR`，`persist=START`，取消即杀整棵树）。
+
 ---
 
 ### 步骤 3 · 抽金标 + 人工审校（闭环自证的关键防线）
@@ -245,6 +252,10 @@ python docs/medical/generators/make_goldset.py audit data/cv.jsonl --out data/cv
 - **预期输出**：分层抽样后稀有标签也有样本；打印标签覆盖。
 - **验证**：金标 ≥150 条（否则 calibration/development 噪声大，尽量凑 200）；临床/药学人员按 spec `guidance` 逐条核对签字。
   金标集**只用于最后一次终评**，绝不针对它调参。
+
+**控制台执行**：Data → 「抽金标」(`goldset`)，填**场景** + **n**(默认 200) + **seed**(默认 0)，后端 `make_goldset.py sample data/<scenario>.jsonl --n <n> --seed <seed> --out data/<scenario>.gold.jsonl`。✅
+- 金标分歧审计：Goldset 标签页 → 「金标分歧审计」(`goldset_audit`)，填两份标注路径 **A**/**B**（如厂商甲/乙）+ `--threshold`（默认 0.05）+ 可选 `--out`；后端 `make_goldset.py audit <A> <B> [--out ...] --threshold <t>`，分歧率超阈值以非 0 退出（可作 CI 闸门），分歧样本进人工审校池。✅
+- 金标人工审校：Goldset 标签页「打开审校页」→ 载入任一 `*.gold` 数据集，逐条改 `label`，点「导出金标」下载 holdout jsonl 供 `split --holdout` 使用（金标永不进 train）。纯前端、无子进程。✅
 
 ---
 
@@ -278,6 +289,8 @@ wrote data\cv\train.jsonl: 551 records
 - **验证**：三分区计数之和等于 787；`conflicting labels dropped` 非 0 → 标注规则自相矛盾，回去改 `guidance`。
   同一 `state` 永远落在同一分区（按 state 哈希分组），所以**同一份 `data/cv` 可直接喂给 0.8B 与 4B 两个尺寸**。
 
+**控制台执行**：Data → 「格式转换与划分」(`split`)，填**场景** + **calibration**(默认 0.15) + **development**(默认 0.15) + **seed**(默认 0) + 可选 **holdout**，后端 `split_data.py data/<scenario>.jsonl --out data/<scenario> --calibration 0.15 --development 0.15 --seed 0 [--holdout ...]`，并注册 `summary.json`（闸门 G2/G3 依赖）。✅
+
 ---
 
 ### 步骤 5 · token 超限预检（中文必做）
@@ -298,6 +311,8 @@ print('over_limit', len(over))"
 
 - **预期输出**：`over_limit 0`。非 0 → 缩短 state 字段或精简 `state_example`，不要靠字符数估算。
 - **验证**：两个尺寸 tokenizer 对中文切分不同，理想情况下各自实测一次。
+
+**控制台执行**：Data → 「token 超限预检」(`precheck`)，填**场景** + **init_from**(默认 `jaredpalmer/kev-0.8b`) + **split**(默认 `train`)，走专用 `docs/medical/console/precheck.py --data data/<scenario> --init-from <init> --split <split> --out <按产物 id 解析>`；回显 `over_limit` 须为 0 才能训练（闸门 G1）。✅
 
 ---
 
@@ -321,6 +336,8 @@ print('over_limit', len(over))"
 | `--dtype` | `bf16` | `bf16` | `bf16`（autocast） |
 
 > `kev.train` 默认 `--base Qwen/Qwen3-0.6B-Base`，**不要漏填** `--base`/`--init_from`，否则会训到错误的基座上。
+
+**控制台执行**：本步无独立命令，其开关表即 Train 页「SFT 训练」(`train`) 表单的字段来源——在 Train 页选**方式**(a1/a2/b)并填 `init_from`/`base`/`base_revision`/`lora`/`lora_targets`/`lr`/`replay` 等即可，等价于本表。详见步骤 7 控制台说明。
 
 ---
 
@@ -386,6 +403,9 @@ saved runs/cv-8b-lora-v1
 
 > 0.8B 在 H100 上约 8 分钟 / 400–1000 条。CPU 仅用于冒烟（fp32，极慢）。`--out` 目录不可已存在（除非 `--resume 1`）。
 
+**控制台执行**：Train → 「SFT 训练」(`train`)，填**运行名**(须符合 `run_matrix.check_name`，禁点号) + **方式** + **数据**(默认 `data/<scenario>/train.jsonl`) + **out**(默认 `runs/<run_name>`) 及方式相关字段；后端按 `kev/console/stages/train.py:build_argv` 拼 `kev.train`（含 `--epochs 1 --batch 4 --accum 2 --dtype bf16 --device cuda --seed 0 --head_lr 0 --weight_decay 0.01`）。✅
+**高级训练开关已全部暴露**（Train 页表单下方「高级训练开关」字段区，参数名下划线、与 `kev/train.py` argparse 逐一核对）：`--anchor`/`--anchor_w`/`--anchor_sources`、`--perm_kl`/`--perm_frac`、`--ord_w`、`--label_smoothing`/`--brier_w`/`--focal_gamma`、`--p_none`/`--p_none_distract`/`--p_none_pair`/`--none_pair_max_state`、`--synthetic_repeat`/`--public_frac`/`--train_sources`/`--holdout`、`--special_embeddings`/`--option_isolation`/`--shared_prefix`、`--snapshot_every_steps`。`--anchor` 与 `--anchor_w` 互锁（缺 `anchor_w>0` 提交即 422），`--none_pair_max_state` 需 `--p_none_pair>0` 同理。✅
+
 ---
 
 ### 步骤 8 · 监控
@@ -396,6 +416,8 @@ saved runs/cv-8b-lora-v1
   `peak_device_bytes`、`backbone_save_seconds`。回滚判据见「梯度爆炸」：某 epoch `max` 梯度范数远超均值即异常。
 - **方式 B 专属**：`resume` 点（`--save_every_minutes` / `--save_every_steps`）、`snapshots/step-<N>/checkpoint`
   （`--snapshot_fractions 0.25,0.5,0.75`，永不删除，可续训）。
+
+**控制台执行**：Train 作业详情页实时看 loss 曲线（读 `/console/api/jobs/<id>/stream` 的 SSE 帧）、`metrics` 缓冲、产物与血缘；**取消**=POST `/jobs/<id>/cancel`、**换名重试**=POST `/jobs/<id>/retry`（自动 `-rN` 新名 + `parent_id` 指向原作业）。✅（比手动 `tail` 更顺）
 
 ---
 
@@ -419,6 +441,12 @@ uv run python -m kev.benchmark \
   - `coverage_at_5pct_error`（业务指标：可自动化比例）
 - **验证**：`mean_conf` 与 `acc` 相差几个点内（0.8B 更易过度自信，卡更严）；回归 > 2 点 → 降 `--lr` 减半、保留 `--replay`、不加 epoch。
 
+**控制台执行**：Evaluate 页三件套（后端分别拼 `kev.benchmark`/`kev.benchmark`/`kev.compare`）：
+- 「基线打分」(`baseline`)：默认 `--run jaredpalmer/kev-0.8b --data data/<scenario>/development.jsonl --out runs/<run>-baseline-eval`。
+- 「开发集打分」(`benchmark`)：默认 `--run runs/<run> --data data/<scenario>/development.jsonl --out runs/<run>-eval`。
+- 「配对 bootstrap 对比」(`compare`)：默认 `--candidate runs/<run>-eval --reference runs/<run>-baseline-eval`（suite_sha256 不一致预检成 409）。✅
+**benchmark 高级选项已全部暴露**（Evaluate → 「开发集打分」`benchmark` 表单）：填 **remote**（任意 System One 端点 URL；填了则不打本地 checkpoint）+ **remote_model**（默认 kev-latest）+ **remote_concurrency**；**suite**（冻结 suite，替代 `--data`）+ **split**；**allow_test**（读锁定 test 分区）、**date_facts**（打分前套 `with_date_facts`）、**rotations**（旋转平均次数）。✅
+
 ---
 
 ### 步骤 10 · 温度拟合（kev.calibrate）
@@ -435,6 +463,8 @@ uv run python -m kev.calibrate --rows runs/cv-8b-lora-v1-eval/rows.json \
   及 `workload_temperature`（要写入服务配置的温度）、`oof_vs_shipped` 配对 bootstrap。
 - **验证**：`workload_oof` 的 ECE/Brier 应 ≤ `shipped`；把 `workload_temperature` 作为服务温度。
   **注意**：均衡训练先验 ≠ 真实临床先验（危急值线上仅 1–3%），上线前须用真实流量重标定切点（见 `data-format.md`）。
+
+**控制台执行**：Evaluate → 「温度拟合」(`calibrate`)，填**场景**（或显式 **rows** 路径，须以 `rows.json` 结尾），后端 `kev.calibrate --rows runs/<run>-eval/rows.json --out runs/<run>-eval/calibration.json`；`workload_temperature` 是部署阶段服务温度来源（闸门 G7）。✅
 
 ---
 
@@ -457,12 +487,20 @@ uv run python -m kev.publish \
 - **验证**：`hf auth login` 已登录；目标 repo 缺则 `--private` 自建，已存在且非私则被拒绝（不会误传公仓）。
 - **本地导出替代**：直接保留 `<out>/` 目录即可本地/容器内加载，无需上传 Hub。
 
+**控制台执行**：Publish 标签页 → 「发布到 Hub」(`publish`)。表单填 **checkpoint 目录**（默认 `runs/<run>/checkpoint`）+ **repo**（如 `jaredpalmer/kev-0.8b`）+ **model card 路径**（必填，如 `docs/model-cards/kev-0.8b.md`）+ **message** + **private**（`0`/`1`，`1` 确保私有仓）+ **tag** + **revision** + **replace**（`0`/`1`）。后端：`python -m kev.publish --run <dir> --repo <repo> --card <md> [--message ...] [--private] [--tag ...] [--revision ...] [--replace]`；凭据走编排服务进程环境的 `HF_TOKEN`（在 `SECRET_NAMES` 布尔态里、仅在 spawn 注入、**永不落库/不下发浏览器**）。Hub 远端无本地产物（不注册 dataset），`persist=SUCCESS` 进程退出后回到作业列表。✅
+
 ---
 
 ### 步骤 12 · 部署（二选一）
 
 - **Modal（推荐，与 `runbook.md` 一致）**：`KEV_APP_NAME=kev-cv-8b KEV_SERVE_RUN=cv-8b-lora-v1 modal deploy skills/kev-finetune/scripts/kev_modal.py`
 - **本地 System One 端点**：`uv run python -m kev.serve --run runs/cv-8b-lora-v1 --port 8008`（按 `workload_temperature` 设温度）。
+
+**控制台执行**：
+- 本地端点：Deploy → 「启动 System One 端点」(`deploy`)，**必填 temperature**（取自 `calibration.json` 的 `workload_temperature`，缺失即拦；绝不在 development 上拟合），后端 `kev.serve --run runs/<run> --port 8008 --temperature <temp>`（长驻，`persist=START`，spawn 后即注册端点）。✅
+- 冒烟：Deploy → 「冒烟测试」(`smoke`)，5 场景各 1 例探针（同手动 `smoke.py`）。✅
+- 镜像：Image → 「构建部署镜像」(`image`)，填**运行名** + **temperature**，后端 `docker build -t kev-<run>:<temp> ...`（需宿主机 docker）。✅
+- **Modal 云部署**：Modal 标签页 → 「Modal 部署」(`modal`)。表单填 **KEV_SERVE_RUN**（本地 `runs/<name>` 或 Hub id，如 `jaredpalmer/kev-4b`）+ **KEV_SERVE_GPU**（默认 `L4`）+ **KEV_APP_NAME**（默认 `kev-finetune`）+ **KEV_REF**（commit 钉，可空）。后端：`modal deploy skills/kev-finetune/scripts/kev_modal.py`，配置全走环境变量（**没有** argparse 参数）；`KEV_SERVE_SECRET`/`KEV_HF_SECRET` 为 Modal secret 名、由编排服务进程环境注入（值只持 `KEV_API_KEY`/`HF_TOKEN`，**永不落库/不下发浏览器**）。`modal deploy` 在 App 上线后返回（`persist=SUCCESS`），被部署端点落在 Modal 远端、不在本地 8008。✅
 
 ---
 
@@ -574,3 +612,214 @@ uv run python -m kev.publish --run runs/cv-8b-lora-v1 --repo jaredpalmer/kev-0.8
 - 基座权重此前因直连 `huggingface.co` 不可达无法拉取，现经 `HF_ENDPOINT=https://hf-mirror.com` 镜像已实测可达，整条链路无外部阻塞。
 - **LLM 蒸馏（可选生成式轨，需百灵）** 独立于上表：百灵 `Ling-3.0-flash` 蒸馏 triage 试跑产物 `data/triage_bailian.jsonl` + `data/triage_bailian/{train,calibration,development}.jsonl`（40 条）。cv 危急值刻意**不**用 LLM 蒸馏（标签源自阈值表，LLM 会引入漂移）。
 - **6 大类蒸馏命令（`--category`）**：`generate_data.py --category <键>` 现支持 6 大类任选其一（映射表见步骤 2）；多 key 每日 50w 软上限 + `.distill/usage_<日期>.json` 续算；`--schedule` 或 cron/任务计划程序实现「每天蒸馏一部分」。每类产物落到 `data/cv/<spec名>.jsonl`，按 `split_data.py --out data/cv/<spec名>` 划分后喂训练。
+
+---
+
+## 七、图形化 Console 控制台执行（与手动命令逐操作对照）
+
+本手册第二节的每一步都可以在 **playground 的 `/console` 图形控制台**里点选完成，无需手敲命令。控制台后端是
+`kev.console`（FastAPI + uvicorn，监听 `8790`），前端 playground 通过同源代理 `/api/console/*` 转发
+（见 `playground/src/app/api/console/[...path]/route.ts`）。所有作业类型的 argv 组装逻辑在
+`kev/console/stages/`（`data.py` / `train.py` / `eval.py` / `deploy.py` / `publish.py` / `modal.py`），共 **18 种作业类型**（含本手册 7.4 清单全部 7 项：publish / goldset_audit / train 高级开关 / benchmark 选项 / distill 守护 / Modal 部署 / 金标审校 UI），与手动命令逐字对应。
+
+> 控制台**额外做的事**（手动命令没有）：提交前自动跑验收闸门（G1–G7，见 `kev/console/gates.py`），
+> 闸门不过直接 422 拦截，不落库；作业有血缘（artifact lineage）、可取消/换名重试、SSE 实时日志流。
+> 这些在「7.3 控制台独有能力」里展开。
+
+### 7.0 前置：启动后端与前端
+
+```bash
+# 后端（仓库根目录，WSL2 / Linux 推荐；Windows 也能起服务，但真实训练需 GPU）
+cd d:\projects\github\kev
+uv run python -m kev.console          # 默认 8790；可用 KEV_CONSOLE_PORT 改
+# 前端
+cd playground && npm run dev          # 打开 http://localhost:3000/console
+```
+
+PyCharm 里把该后端配成 **Run/Debug → Module name = `kev.console`**、工作目录 = 仓库根目录、解释器 = `.venv`
+（必须用 `-m` 模块方式，不能用 `--file`，否则相对导入 `from . import paths` 报错）。前端 `/console` 下有 8 个标签页：
+**1·Data / 2·Train / 3·Evaluate / 4·Image / 5·Deploy / 6·Goldset / 7·Publish / 8·Modal**，与下面各操作一一对应。
+
+### 7.1 总览映射表
+
+| 本手册步骤 | 操作 | Console 作业类型 (`kind`) | 控制台标签页 | 状态 |
+| --- | --- | --- | --- | --- |
+| 步骤 1 | 算记录数 | `plan_size` | Data | ✅ 已实现 |
+| 步骤 2（程序化） | 规则合成生成 | `generate` | Data | ✅ 已实现 |
+| 步骤 2（蒸馏） | LLM 蒸馏 | `distill` / `distill_daemon` | Data | ✅ 已实现（单批 + `distill_daemon` 守护调度 `--schedule`/`--daily-limit`/`--state-dir`） |
+| 步骤 3 | 抽金标 | `goldset` | Data | ✅ 已实现（`sample` + 人工审校） |
+| 步骤 3 | 金标分歧审计 | `goldset_audit` | Goldset | ✅ 已实现（`make_goldset.py audit`，双标注分歧率闸门） |
+| 步骤 3 | 金标人工审校 | （纯前端） | Goldset → 审校 | ✅ 已实现（载入 jsonl 改标签、导出 holdout，见 7.2 步骤 3） |
+| 步骤 4 | 划分 | `split` | Data | ✅ 已实现 |
+| 步骤 5 | token 超限预检 | `precheck` | Data | ✅ 已实现（用专用 `precheck.py`） |
+| 步骤 6 | 训练配置 | （表单字段） | Train | ✅ 已体现在 `train` 表单 |
+| 步骤 7 | 训练 | `train` | Train | ✅ 已实现（含全部高级开关，见 7.2 步骤 7） |
+| 步骤 8 | 监控 | 作业详情 / SSE 流 | Train / 各 | ✅ UI 轮询 + 日志流 |
+| 步骤 9 | 基线/评估/对比 | `baseline` / `benchmark` / `compare` | Evaluate | ✅ 已实现（含 `--remote`/`--allow-test`/`--date_facts`/`--suite` 选项） |
+| 步骤 10 | 温度拟合 | `calibrate` | Evaluate | ✅ 已实现 |
+| 步骤 11 | 导出到 Hub | `publish` | Publish | ✅ 已实现（凭据走 `KEV_HF_SECRET`） |
+| 步骤 12（本地） | 部署 / 冒烟 | `deploy` / `smoke` | Deploy | ✅ 已实现 |
+| 步骤 12（镜像） | 构建镜像 | `image` | Image | ✅ 已实现 |
+| 步骤 12（Modal） | Modal 云部署 | `modal` | Modal | ✅ 已实现（`modal deploy kev_modal.py`，配置走 env） |
+
+### 7.2 逐操作对照
+
+下面每个操作都给：**手动命令**（第二节原文）+ **控制台执行**（哪个 `kind`、表单填什么、后端实际拼出的 argv）。
+
+#### 步骤 1 · 算记录数
+
+- **手动命令**
+  ```bash
+python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-value.json --baseline-acc 0.75
+  ```
+- **控制台执行**：Data 标签页 → 「算记录数」(`plan_size`)。表单只填 **场景**（`critical-value` 等下拉）。
+  后端拼出：`python plan_size.py <spec>.json --baseline-acc 0.75 --json`（多 `--json`，结果结构化回显 `total_records`）。
+  ✅ 与手动一致（`baseline-acc` 固定 0.75，与手册建议相同）。
+
+#### 步骤 2 · 生成数据
+
+**程序化（Data → 「程序化规则合成」`generate`）**
+- **手动命令**：`python docs/medical/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0`
+- **控制台执行**：填 **场景** + **n**（默认 787）+ **seed**（默认 0）。后端：`python gen_<scenario>.py --n <n> --out data/<scenario>.jsonl --seed <seed>`。
+  ⚠️ 控制台只支持各场景的 `gen_<scenario>.py`；`--out` 固定为 `data/<scenario>.jsonl`（不让你自定义路径，避免与产物注册 id 不一致）。✅
+
+**LLM 蒸馏（Data → 「LLM 蒸馏」`distill`）**
+- **手动命令**：
+  ```bash
+  export KEV_GEN_BASE_URL=https://api.ant-ling.com/v1
+  python skills/kev-finetune/scripts/generate_data.py --category triage --n 787 \
+    --model Ling-3.0-tiny --out data/cv/triage.jsonl --concurrency 3
+  # 多 key：export KEV_GEN_API_KEYS="sk-...1,sk-...2"
+  ```
+- **控制台执行**：填 **场景** + **category**（6 大类键，默认 = 场景）+ **n**（默认 787）+ **model**（默认 `Ling-3.0-tiny`）
+  + **base_url** + **api_keys**（数组，最多 6 把）+ **concurrency**。后端：`python generate_data.py --category <cat> --n <n> --model <m> --out data/<scenario>/<cat>.jsonl [--concurrency N]`；
+  `KEV_GEN_BASE_URL` / `KEV_GEN_MODEL` 经环境变量注入，`KEV_GEN_API_KEYS` 由**编排服务进程环境**注入、永不落库（凭据值不下发浏览器，见 `app.py:SECRET_NAMES`）。
+  ✅ 单批蒸馏与手动一致；**每日守护调度已实现**：表单点开 `distill` 的「调度」字段填 `--schedule HH:MM`/`--daily-limit`/`--state-dir`，或直接用 `distill_daemon` 守护标签页跑常驻（后端 `generate_data.py --schedule ...`，`persist=START`）。
+
+#### 步骤 3 · 抽金标 + 人工审校
+
+- **手动命令**：
+  ```bash
+  python docs/medical/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
+  # 双模型分歧审计
+  python docs/medical/generators/make_goldset.py audit data/cv.jsonl --out data/cv.audit.jsonl
+  ```
+- **控制台执行**：Data → 「抽金标」(`goldset`)。填 **场景** + **n**（默认 200）+ **seed**（默认 0）。
+  后端：`python make_goldset.py sample data/<scenario>.jsonl --n <n> --seed <seed> --out data/<scenario>.gold.jsonl`。
+  ✅ `sample` 子命令已实现。
+  **金标分歧审计**：Goldset 标签页 → 「金标分歧审计」(`goldset_audit`)，填两份标注 **A**/**B** + `--threshold`（默认 0.05）+ 可选 `--out`；后端 `make_goldset.py audit <A> <B> [--out ...] --threshold <t>`，分歧率超阈值非 0 退出（CI 闸门）。✅
+  **金标人工审校**：Goldset 标签页「打开审校页」载入任一 `*.gold` 数据集、逐条改 `label`、导出 holdout jsonl（纯前端，金标永不进 train）。✅
+
+#### 步骤 4 · 格式转换与划分
+
+- **手动命令**：
+  ```bash
+  python skills/kev-finetune/scripts/split_data.py data/cv.jsonl --out data/cv --holdout data/cv.gold.jsonl
+  ```
+- **控制台执行**：Data → 「格式转换与划分」(`split`)。填 **场景** + **calibration**（默认 0.15）+ **development**（默认 0.15）
+  + **seed**（默认 0）+ **holdout**（可选金标路径）。后端：`python split_data.py data/<scenario>.jsonl --out data/<scenario> --calibration 0.15 --development 0.15 --seed 0 [--holdout ...]`。
+  注册产物含 `summary.json`（闸门 G2/G3 读它判记录数与标签分布）。✅
+
+#### 步骤 5 · token 超限预检
+
+- **手动命令**（runbook 里的内联 `python -c` 片段，按 tokenizer 实测 `over_limit`）
+- **控制台执行**：Data → 「token 超限预检」(`precheck`)。填 **场景** + **init_from**（默认 `jaredpalmer/kev-0.8b`）+ **split**（默认 `train`）。
+  后端走**专用脚本** `docs/medical/console/precheck.py --data data/<scenario> --init-from <init> --split <split> --out <按产物 id 解析的路径>`
+  （`kev/console/stages/data.py:_precheck`）。功能等价但命令形态不同（不是内联 `python -c`），`over_limit` 必须为 0 才能训（闸门 G1）。✅
+
+#### 步骤 7 · 启动训练
+
+- **手动命令**（方式 A1 示例）：
+  ```bash
+  uv run python -m kev.train --data data/cv/train.jsonl --init_from jaredpalmer/kev-0.8b \
+    --lora 16 --lora_targets all --lr 4e-5 --head_lr 0 --weight_decay 0.01 \
+    --epochs 1 --batch 4 --accum 2 --dtype bf16 --device cuda --replay 2000 --seed 0 \
+    --out runs/cv-8b-lora-v1
+  ```
+- **控制台执行**：Train → 「SFT 训练」(`train`)。表单核心：
+  - **场景**、**运行名**（须符合 `run_matrix.check_name`，禁点号）、**方式**（`a1` 热启动 / `a2` 裸基座 / `b` 全参数，默认 a1）、
+    **数据**（默认 `data/<scenario>/train.jsonl`）、**out**（默认 `runs/<run_name>`）。
+  - 方式相关字段：`init_from` / `base` / `base_revision`（A2/B 默认 `Qwen/Qwen3.5-0.8B-Base` @ `9a45d25e`）/ `lora` / `lora_targets` / `lr`（0.8B 默认 4e-5）/ `replay` / `full_ft` / `weights_dtype` / `head_dim` / `checkpointing`。
+  - 仅方式 B 显示：`snapshot_fractions`（需同时给 `max_steps`，否则预检验拦截）。
+  后端按 `kev/console/stages/train.py:build_argv` 拼 `kev.train` 的 argv（COMMON 含 `--epochs 1 --batch 4 --accum 2 --dtype bf16 --device cuda --seed 0 --head_lr 0 --weight_decay 0.01`）。
+  ✅ 三种方式与手动一致。
+  **高级训练开关已全部暴露**（Train 页「高级训练开关」字段区，参数名下划线、与 `kev/train.py` argparse 逐一核对）：`--anchor`/`--anchor_w`/`--anchor_sources`、`--perm_kl`/`--perm_frac`、`--ord_w`、`--label_smoothing`/`--brier_w`/`--focal_gamma`、`--p_none`/`--p_none_distract`/`--p_none_pair`/`--none_pair_max_state`、`--synthetic_repeat`/`--public_frac`/`--train_sources`/`--holdout`、`--special_embeddings`/`--option_isolation`/`--shared_prefix`、`--snapshot_every_steps`。`--anchor` 需配 `--anchor_w>0`、`--none_pair_max_state` 需配 `--p_none_pair>0`，否则在提交前 422 拦截。
+
+#### 步骤 8 · 监控
+
+- **手动**：终端每 10 步打印 `loss/kl/anchor`；读 `<out>/training_metrics.json`、`<out>/training_config.json`。
+- **控制台执行**：在 Train 作业详情页实时看 `loss` 曲线（JobMonitor 读 `/console/api/jobs/<id>/stream` 的 SSE 帧）、指标缓冲、产物与血缘。
+  取消 = POST `/console/api/jobs/<id>/cancel`；换名重试 = POST `/console/api/jobs/<id>/retry`（自动 `-rN` 新名 + `parent_id` 指向原作业）。✅ UI 自带，比手动 `tail` 更顺。
+
+#### 步骤 9 · 评估
+
+- **手动命令**：
+  ```bash
+  uv run python -m kev.benchmark --run runs/cv-8b-lora-v1 --data data/cv/development.jsonl --out runs/cv-8b-lora-v1-eval --device cuda
+  ```
+- **控制台执行**（Evaluate 标签页，三件套）：
+  - 「基线打分」(`baseline`)：后端 `kev.benchmark --run jaredpalmer/kev-0.8b --data data/<scenario>/development.jsonl --out runs/<run>-baseline-eval`。
+  - 「开发集打分」(`benchmark`)：后端 `kev.benchmark --run runs/<run> --data data/<scenario>/development.jsonl --out runs/<run>-eval`。
+  - 「配对 bootstrap 对比」(`compare`)：后端 `kev.compare --candidate runs/<run>-eval --reference runs/<run>-baseline-eval --out runs/<run>-compare`
+    （suite_sha256 不一致会被预检成 409 conflict，见 `eval.py:suite_hash_mismatch`）。
+  ✅ 与手动「baseline+benchmark+compare」三件套一致（G4/G6 证据来源）。
+  **benchmark 高级选项已全部暴露**（Evaluate → 「开发集打分」`benchmark` 表单）：填 **remote**（任意 System One 端点；填了则不打本地 checkpoint）+ **remote_model** + **remote_concurrency**；**suite**（冻结 suite，替代 `--data`）+ **split**；**allow_test**（读锁定 test 分区）、**date_facts**（打分前套 `with_date_facts`）、**rotations**（旋转平均次数）。`--data` 外部行仍走「场景」分区文件选择。
+
+#### 步骤 10 · 温度拟合
+
+- **手动命令**：`uv run python -m kev.calibrate --rows runs/cv-8b-lora-v1-eval/rows.json --out runs/cv-8b-lora-v1-eval/calibration.json`
+- **控制台执行**：Evaluate → 「温度拟合」(`calibrate`)。填 **场景**（或显式 **rows** 路径，须以 `rows.json` 结尾）。
+  后端 `kev.calibrate --rows runs/<run>-eval/rows.json --out runs/<run>-eval/calibration.json`。`workload_temperature` 是部署阶段的服务温度来源（G7）。✅
+
+#### 步骤 11 · 导出（kev.publish）
+
+- **手动命令**：
+  ```bash
+  uv run python -m kev.publish --run runs/cv-8b-lora-v1 --repo jaredpalmer/kev-0.8b \
+    --card docs/model-cards/kev-0.8b.md --private --message "medical critical-value delta v1"
+  ```
+- **控制台执行**：Publish 标签页 → 「发布到 Hub」(`publish`)。表单填 **checkpoint 目录**（默认 `runs/<run>/checkpoint`）+ **repo** + **model card 路径**（必填）+ **message** + **private**(0/1) + **tag** + **revision** + **replace**(0/1)。后端 `python -m kev.publish --run <dir> --repo <repo> --card <md> [--message ...] [--private] [--tag ...] [--revision ...] [--replace]`；凭据走编排服务进程环境的 `HF_TOKEN`（在 `SECRET_NAMES` 布尔态里、仅 spawn 注入、**永不落库/不下发浏览器**）。`persist=SUCCESS`，Hub 远端无本地产物、不注册 dataset。✅
+
+#### 步骤 12 · 部署
+
+**本地 System One 端点（Deploy → 「启动端点」`deploy`）**
+- **手动命令**：`uv run python -m kev.serve --run runs/cv-8b-lora-v1 --port 8008`
+- **控制台执行**：Deploy → 「启动 System One 端点」(`deploy`)。**必须填 `temperature`**（取自 `calibration.json` 的 `workload_temperature`，缺失直接拦；绝不在 development 上拟合温度）。
+  后端 `python -m kev.serve --run runs/<run> --port 8008 --temperature <temp>`（`persist=START` 长驻进程，spawn 后立刻注册端点）。部署完现有问答页 `/` 经 playground rewrite 即可打新模型。✅
+
+**冒烟（Deploy → 「冒烟测试」`smoke`）**
+- **手动命令**：`python docs/medical/console/smoke.py --base-url http://127.0.0.1:8008 --out runs/<run>-smoke.json`
+- **控制台执行**：Deploy → 「冒烟测试」(`smoke`)。后端同命令，5 个场景各 1 例探针（`deploy.py:SMOKE_PROBES`）。✅
+
+**构建镜像（Image → 「构建部署镜像」`image`）**
+- **手动命令**：`docker build -t kev-<run>:<temp> -f deploy/kev-serve/Dockerfile --build-arg KEV_SERVE_RUN=<run> --build-arg TEMPERATURE=<temp> deploy/kev-serve`
+- **控制台执行**：Image → 「构建部署镜像」(`image`)。填 **运行名** + **temperature**（必填）。后端拼上述 `docker build`。✅ 需宿主机有 docker。
+
+**Modal 云部署**
+- **手动命令**：`KEV_APP_NAME=kev-cv-8b KEV_SERVE_RUN=cv-8b-lora-v1 modal deploy skills/kev-finetune/scripts/kev_modal.py`
+- **控制台执行**：Modal 标签页 → 「Modal 部署」(`modal`)。表单填 **KEV_SERVE_RUN** + **KEV_SERVE_GPU**（默认 `L4`）+ **KEV_APP_NAME**（默认 `kev-finetune`）+ **KEV_REF**（commit 钉，可空）。后端：`modal deploy skills/kev-finetune/scripts/kev_modal.py`，全部配置走环境变量（**没有** argparse 参数）；`KEV_SERVE_SECRET`/`KEV_HF_SECRET` 是 Modal secret 名、由编排服务进程环境注入（值只持 `KEV_API_KEY`/`HF_TOKEN`，**永不落库/不下发浏览器**）。`modal deploy` 在 App 上线后返回（`persist=SUCCESS`），端点落在 Modal 远端（不在本地 8008）。✅
+
+### 7.3 控制台独有能力（手动命令没有）
+
+1. **验收闸门自动预检（G1–G7）**：提交 `train`/`benchmark` 等前，`gates.evaluate` 按产物血缘检查（如 G1 要求 `precheck` 报告 `over_limit=0`、G2/G3 要求 `summary.json`、G4 要求 compare 的配对 CI、G7 要求 `calibrate`）。不过则 422 拦截、不落库——手动路径里这些靠人肉核对。
+2. **作业血缘（artifact lineage）**：每个产物（dataset/run/eval/comparison/calibration/endpoint/image/smoke）登记到 `data/console/kev-console.db`，UI 的 Artifacts 页可追来源与去向。
+3. **取消 / 换名重试**：`cancel` 杀子进程；`retry` 自动 `-rN` 新目录 + `parent_id`，旧产物永久保留（可审计）。
+4. **SSE 实时日志流**：训练/评估日志从 `jobs/<id>/stream` 逐块推送，断线靠 `Last-Event-ID` 续传，不缓冲。
+5. **单 GPU 训练互斥闸**：`train` 提交前检查是否已有 active train 作业，有则 409（手动 `kev.experiment` 在 Windows 因 `fcntl` 不可 import，这道闸由控制台自己实现，`app.py:219`）。
+
+### 7.4 未实现清单（下一步完善 console 功能）
+
+> ✅ **本 backlog 全部 7 项已在本次迭代实现**（作业类型从 14 增至 18）。下方仅作历史留痕与对应实现位置，便于后续维护。
+
+| # | 缺口 | 对应手动能力 | 已实现位置 |
+| --- | --- | --- | --- |
+| 1 | `kev.publish` 无阶段 | 步骤 11 导出私有 Hub | 新增 `publish` 阶段（`stages/publish.py` + REGISTRY），表单 `repo/card/private/message/revision`，凭据走 `HF_TOKEN`（SECRET_ENV） |
+| 2 | `goldset` 仅 `sample` | 步骤 3 `audit` 分歧审计 | 新增 `goldset_audit` 阶段（`make_goldset.py audit`）；人工审校见 Goldset 审校页（纯前端） |
+| 3 | `train` 高级开关未暴露 | 步骤 6/7 的 anchor/perm_kl/ord_w/校准屏/数据混合 | 扩展 `train.ADVANCED_KEYS` + Train 页「高级训练开关」字段区（21 个开关全部挂上） |
+| 4 | `benchmark` 选项未暴露 | 步骤 9 `--remote/--allow-test/--date_facts/外部 rows` | 扩展 `eval._benchmark_like`：`remote`/`remote_model`/`remote_concurrency`/`suite`/`allow_test`/`date_facts`/`rotations` 字段 |
+| 5 | `distill` 无调度 | 步骤 2 `--schedule` 守护 / cron 每日额度 | 新增 `distill_daemon` 阶段（`generate_data.py --schedule`，`persist=START`）+ `distill` 表单加 `schedule`/`daily_limit`/`state_dir` |
+| 6 | Modal 部署未接入 | 步骤 12 `kev_modal.py modal deploy` | 新增 `modal` 阶段（`stages/modal.py`，`modal deploy` + env 注入；`ALLOWED_ENV` 增 `KEV_SERVE_GPU`/`KEV_APP_NAME`/`KEV_REF`） |
+| 7 | 金标人工审校 UI | 步骤 3 线下临床核对 | Goldset 标签页「打开审校页」：载入 `*.gold` jsonl、逐条改 `label`、导出 holdout（纯前端，无子进程） |
+
+> 状态口径：「✅ 已实现」= 控制台该 `kind` 的 argv 与手动命令逐字等价、表单字段覆盖手册默认值；「❌ 未实现」=
+> 该手动步骤在 `kev.console` 里完全没有对应作业类型，需先补 `stages/*.py` + 前端表单，再能点选完成。

@@ -15,6 +15,9 @@ const STAGES = [
   { href: "/console/eval", key: "console.nav.eval", stage: "benchmark" },
   { href: "/console/images", key: "console.nav.image", stage: "image" },
   { href: "/console/deploy", key: "console.nav.deploy", stage: "deploy" },
+  { href: "/console/goldset", key: "console.nav.goldset", stage: "goldset_audit" },
+  { href: "/console/publish", key: "console.nav.publish", stage: "publish" },
+  { href: "/console/modal", key: "console.nav.modal", stage: "modal" },
 ] as const;
 
 export default function OverviewPage() {

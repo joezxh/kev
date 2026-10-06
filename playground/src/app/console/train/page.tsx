@@ -1,7 +1,7 @@
 "use client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { JobStagePage } from "@/components/console/JobStagePage";
+import { JobStagePage, type FieldSpec } from "@/components/console/JobStagePage";
 import { useLang } from "@/lib/i18n";
 
 /**
@@ -9,7 +9,32 @@ import { useLang } from "@/lib/i18n";
  *
  * 方式的默认值来自 /console/api/config（服务端单一来源），前端不硬编码 ——
  * icd-coding 只支持 4B 轨，而那是 run_matrix.FOUR_B_ONLY 决定的。
+ * 训练高级开关（runbook §七 7.4 项 3）全部在此暴露，参数名下划线、与 kev/train.py 一致。
  */
+const ADVANCED: FieldSpec[] = [
+  { key: "anchor", label: "--anchor", hint: "锚定正例 json（state 列表路径）" },
+  { key: "anchor_w", label: "--anchor_w", hint: "锚定权重，>0 才生效" },
+  { key: "anchor_sources", label: "--anchor_sources", hint: "csv 来源" },
+  { key: "perm_kl", label: "--perm_kl", hint: "排列 KL 系数" },
+  { key: "perm_frac", label: "--perm_frac", hint: "默认 0.3" },
+  { key: "ord_w", label: "--ord_w", hint: "排序损失权重" },
+  { key: "label_smoothing", label: "--label_smoothing" },
+  { key: "brier_w", label: "--brier_w" },
+  { key: "focal_gamma", label: "--focal_gamma" },
+  { key: "p_none", label: "--p_none", hint: "默认 0.1" },
+  { key: "p_none_distract", label: "--p_none_distract", hint: "默认 0.12" },
+  { key: "p_none_pair", label: "--p_none_pair" },
+  { key: "none_pair_max_state", label: "--none_pair_max_state" },
+  { key: "synthetic_repeat", label: "--synthetic_repeat", hint: "默认 1" },
+  { key: "public_frac", label: "--public_frac", hint: "默认 1.0" },
+  { key: "train_sources", label: "--train_sources", hint: "csv 训练源" },
+  { key: "holdout", label: "--holdout", hint: "金标 holdout jsonl 路径，不进 train" },
+  { key: "special_embeddings", label: "--special_embeddings", hint: "0/1" },
+  { key: "option_isolation", label: "--option_isolation", hint: "0/1" },
+  { key: "shared_prefix", label: "--shared_prefix", hint: "0/1" },
+  { key: "snapshot_every_steps", label: "--snapshot_every_steps" },
+];
+
 export default function TrainPage() {
   const { t, lang } = useLang();
 
@@ -42,6 +67,7 @@ export default function TrainPage() {
           hint: lang === "zh" ? "写快照时必填：kev.budget.MAX_SNAPSHOTS = 8，且快照永不删除" : "required for snapshots: MAX_SNAPSHOTS = 8 and they are never deleted" },
         { key: "snapshot_fractions", label: "--snapshot_fractions",
           when: (_s, v) => v.method === "b" && v.max_steps !== "" },
+        ...ADVANCED,
       ]}
     >
       <Alert>

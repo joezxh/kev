@@ -26,7 +26,7 @@ from .events import DEFAULT_BUFFER, MetricBuffer, parse_step
 # KEV_SERVE_RUN 只是运行名（不是凭据），deploy 阶段要靠它告诉容器加载哪个 checkpoint。
 ALLOWED_ENV = frozenset({
     "HF_ENDPOINT", "KEV_GEN_BASE_URL", "KEV_GEN_MODEL", "KEV_SERVE_RUN",
-    "OMP_NUM_THREADS", "PYTHONIOENCODING",
+    "KEV_SERVE_GPU", "KEV_APP_NAME", "KEV_REF", "OMP_NUM_THREADS", "PYTHONIOENCODING",
 })
 
 # 敏感键：只从本进程环境变量读，spawn 时注入子进程，只在 UI 显示布尔态。

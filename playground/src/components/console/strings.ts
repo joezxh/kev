@@ -4,7 +4,7 @@
 // 医疗场景默认中文优先（docs/medical 全中文），但英文也必须完整：模型卡与 Hub 上
 // 的医疗模型发布走英文。
 export const CONSOLE_STRINGS = {
-  "console.title": { en: "Medical fine-tune console", zh: "医疗微调控制台" },
+  "console.title": { en: "fine-tune console", zh: "微调控制台" },
   "console.subtitle": {
     en: "Five stages, fourteen job kinds, one shared dataset. Every form shows the exact command it will run.",
     zh: "五个阶段、十四种作业、共用一份数据。每个表单都显示它将执行的完整命令。",
@@ -102,4 +102,64 @@ export const CONSOLE_STRINGS = {
   "console.jobs.empty": { en: "No jobs yet.", zh: "还没有作业。" },
   "console.common.cancel": { en: "Cancel", zh: "取消" },
   "console.common.close": { en: "Close", zh: "关闭" },
+
+  "console.nav.publish": { en: "6 · Publish", zh: "6 · 发布" },
+  "console.nav.modal": { en: "7 · Modal", zh: "7 · Modal" },
+  "console.nav.goldset": { en: "Goldset", zh: "金标集" },
+
+  "console.publish.run": { en: "checkpoint dir", zh: "checkpoint 目录" },
+  "console.publish.repo": { en: "Hub repo", zh: "Hub 仓库" },
+  "console.publish.card": { en: "model card markdown", zh: "模型卡 markdown 路径" },
+  "console.publish.message": { en: "commit message", zh: "提交说明" },
+  "console.publish.private": { en: "private repo", zh: "私有仓库" },
+  "console.publish.tag": { en: "Hub tag", zh: "Hub 标签" },
+  "console.publish.revision": { en: "branch", zh: "分支" },
+  "console.publish.replace": { en: "replace revision", zh: "替换分支内容" },
+  "console.publish.hint": {
+    en: "Pushes the checkpoint to the Hugging Face Hub. Credentials come from HF_TOKEN on the orchestrator; never entered here.",
+    zh: "把 checkpoint 推到 Hugging Face Hub。凭据来自编排服务的 HF_TOKEN，绝不在此填写。",
+  },
+
+  "console.modal.run": { en: "KEV_SERVE_RUN", zh: "部署运行名" },
+  "console.modal.gpu": { en: "GPU", zh: "GPU" },
+  "console.modal.appName": { en: "app name", zh: "App 名" },
+  "console.modal.ref": { en: "commit pin", zh: "commit 钉" },
+  "console.modal.hint": {
+    en: "Runs `modal deploy` against the Modal CLI on the orchestrator. The endpoint lives on Modal, not on local port 8008.",
+    zh: "在编排服务上执行 `modal deploy`。端点落在 Modal 远端，不在本地 8008 端口。",
+  },
+
+  "console.goldset.auditA": { en: "labelling A", zh: "标注 A" },
+  "console.goldset.auditB": { en: "labelling B", zh: "标注 B" },
+  "console.goldset.auditOut": { en: "disagreement out", zh: "分歧输出" },
+  "console.goldset.threshold": { en: "disagreement threshold", zh: "分歧率阈值" },
+  "console.goldset.auditHint": {
+    en: "Compares two independent labellings; exit non-zero when the worst-question disagreement exceeds the threshold (CI gate).",
+    zh: "比对两份独立标注；最差问题的分歧率超过阈值时以非 0 退出（可作 CI 闸门）。",
+  },
+  "console.goldset.reviewTitle": { en: "Gold-set review", zh: "金标人工审校" },
+  "console.goldset.reviewHint": {
+    en: "Edit each record's labels, then export a holdout file for split --holdout. Gold never enters train.",
+    zh: "逐条改标签，导出 holdout 文件供 split --holdout 使用。金标永不进 train。",
+  },
+  "console.goldset.exportHoldout": { en: "Export holdout", zh: "导出金标" },
+  "console.goldset.openReview": { en: "Open review UI", zh: "打开审校页" },
+
+  "console.benchmark.remote": { en: "remote endpoint", zh: "远程端点" },
+  "console.benchmark.remoteModel": { en: "remote model", zh: "远程模型" },
+  "console.benchmark.remoteConcurrency": { en: "remote concurrency", zh: "远程并发" },
+  "console.benchmark.suite": { en: "frozen suite", zh: "冻结 suite" },
+  "console.benchmark.allowTest": { en: "allow test split", zh: "允许 test 分区" },
+  "console.benchmark.dateFacts": { en: "with date facts", zh: "套用 date_facts" },
+  "console.benchmark.rotations": { en: "rotations", zh: "旋转次数" },
+
+  "console.distill.schedule": { en: "schedule (HH:MM)", zh: "调度 (HH:MM)" },
+  "console.distill.dailyLimit": { en: "daily token limit", zh: "每日 token 上限" },
+  "console.distill.stateDir": { en: "state dir", zh: "状态目录" },
+  "console.distill.daemonHint": {
+    en: "Daemon mode sleeps until the local HH:MM each day after distilling its daily quota; cancel kills the whole tree.",
+    zh: "守护模式每天蒸馏到当日配额后睡到本地 HH:MM；取消即杀整棵树。",
+  },
+
+  "console.train.advanced": { en: "Advanced training switches", zh: "训练高级开关" },
 } as const;

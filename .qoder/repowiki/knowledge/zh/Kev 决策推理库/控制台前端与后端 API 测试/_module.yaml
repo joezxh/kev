@@ -1,0 +1,24 @@
+schema_version: 1
+module_path: kev_library/console
+title: 控制台前端与后端 API 测试
+scope:
+    - kev/console/
+    - playground/src/app/api/console/
+    - playground/src/app/console/
+    - playground/src/components/console/
+    - playground/src/components/ui/alert.tsx
+    - playground/src/components/ui/dialog.tsx
+    - playground/src/components/ui/dropdown-menu.tsx
+    - playground/src/components/ui/progress.tsx
+    - playground/src/components/ui/scroll-area.tsx
+    - playground/src/components/ui/select.tsx
+    - playground/src/components/ui/skeleton.tsx
+    - playground/src/components/ui/sonner.tsx
+    - playground/src/components/ui/table.tsx
+    - playground/src/components/ui/tooltip.tsx
+    - playground/src/lib/console.ts
+    - tests/test_console_api.py
+source_files: []
+depends_on: []
+related_to:
+    - path: playground

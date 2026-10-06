@@ -2,11 +2,11 @@
 schema_version: 1
 locale: zh-CN
 branch: main
-exported_at: "2026-10-04T15:16:37Z"
+exported_at: "2026-10-05T14:07:38Z"
 modules:
     "":
-        dir_name: KEV 决策模型项目根（训练_评测_部署_Playground 编排）
-        title: KEV 决策模型项目根（训练/评测/部署/Playground 编排）
+        dir_name: KEV 决策模型训练-评测-部署一体化仓库
+        title: KEV 决策模型训练-评测-部署一体化仓库
         scope:
             - README.md
             - PLAN.md
@@ -3031,7 +3031,7 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: deploy_scripts
+            - path: playground
     deploy_scripts:
         dir_name: WSL2 本地部署初始化脚本
         title: WSL2 本地部署初始化脚本
@@ -3040,11 +3040,10 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: deploy
+        related_to: []
     docs_and_skills:
-        dir_name: KEV 项目文档与技能定义
-        title: KEV 项目文档与技能定义
+        dir_name: KEV 文档与技能包
+        title: KEV 文档与技能包
         scope:
             - docs/
             - skills/
@@ -3063,7 +3062,8 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: evals_and_scripts
     evals_and_scripts:
         dir_name: 评测数据集与构建_发布脚本集
         title: 评测数据集与构建/发布脚本集
@@ -3075,6 +3075,7 @@ modules:
         depends_on: []
         related_to:
             - path: experiments
+            - path: docs_and_skills/medical_distill
     experiments:
         dir_name: 训练实验配置与审计协议
         title: 训练实验配置与审计协议
@@ -3085,20 +3086,36 @@ modules:
         depends_on: []
         related_to:
             - path: evals_and_scripts
+            - path: kev_library/vertical
     kev_library:
-        dir_name: KEV 医疗微调编排与工具集
-        title: KEV 医疗微调编排与工具集
+        dir_name: Kev 决策推理库
+        title: Kev 决策推理库
         scope:
             - kev/
         source_files: []
         children:
             - kev_library/console
+            - kev_library/vertical
         depends_on: []
         related_to: []
     kev_library/console:
-        dir_name: 控制台 API 客户端与编排服务测试
-        title: 控制台 API 客户端与编排服务测试
+        dir_name: 控制台前端与后端 API 测试
+        title: 控制台前端与后端 API 测试
         scope:
+            - kev/console/
+            - playground/src/app/api/console/
+            - playground/src/app/console/
+            - playground/src/components/console/
+            - playground/src/components/ui/alert.tsx
+            - playground/src/components/ui/dialog.tsx
+            - playground/src/components/ui/dropdown-menu.tsx
+            - playground/src/components/ui/progress.tsx
+            - playground/src/components/ui/scroll-area.tsx
+            - playground/src/components/ui/select.tsx
+            - playground/src/components/ui/skeleton.tsx
+            - playground/src/components/ui/sonner.tsx
+            - playground/src/components/ui/table.tsx
+            - playground/src/components/ui/tooltip.tsx
             - playground/src/lib/console.ts
             - tests/test_console_api.py
         source_files: []
@@ -3106,16 +3123,27 @@ modules:
         depends_on: []
         related_to:
             - path: playground
-            - path: tests_and_tools
+    kev_library/vertical:
+        dir_name: 垂直部署与风险路由层
+        title: 垂直部署与风险路由层
+        scope:
+            - kev/vertical.py
+            - tests/test_vertical.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: experiments
     playground:
-        dir_name: KEV 决策模型交互式 Playground
-        title: KEV 决策模型交互式 Playground
+        dir_name: KEV Playground 前端应用
+        title: KEV Playground 前端应用
         scope:
             - playground/
         source_files: []
         children: []
         depends_on: []
         related_to:
+            - path: deploy
             - path: kev_library/console
     tests_and_tools:
         dir_name: 测试套件与标注审查工具
@@ -3126,5 +3154,4 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: kev_library/console
+        related_to: []

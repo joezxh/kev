@@ -35,9 +35,11 @@ RESERVED_ENV = ("KEV_DTYPE", "KEV_MERGE", "KEV_ATTN", "KEV_LORA_SCALE",
                 "KEV_TEMPERATURE", "KEV_BACKEND", "KEV_CUDA_GRAPHS")
 
 ALL_KINDS = {
-    "plan_size", "generate", "distill", "goldset", "split", "precheck",
+    "plan_size", "generate", "distill", "distill_daemon", "goldset", "goldset_audit",
+    "split", "precheck",
     "train", "baseline", "benchmark", "compare", "calibrate",
     "image", "deploy", "smoke",
+    "publish", "modal",
 }
 
 
@@ -82,6 +84,16 @@ def test_all_fourteen_kinds_are_registered_and_no_more():
     assert set(REGISTRY) == ALL_KINDS
 
 
+def _minimal_params(kind: str) -> dict:
+    """新阶段 preview 对必填字段缺失会直接 Invalid；这里给最小可用参数。"""
+    return {
+        "publish": {"repo": "j", "card": "c.md"},
+        "modal": {"run": "x"},
+        "goldset_audit": {"a": "x", "b": "y"},
+        "distill_daemon": {"schedule": "03:00", "skip_exists_check": True},
+    }.get(kind, {"temperature": "2.35"} if kind in {"image", "deploy"} else {})
+
+
 def test_every_kind_declaring_artifacts_has_a_lineage_relation():
     """artifacts.register 用 RELATION[job.kind] 查关系名；缺了就退化成 produced_by。"""
     from kev.console import artifacts
@@ -89,9 +101,9 @@ def test_every_kind_declaring_artifacts_has_a_lineage_relation():
     from kev.console.stages.base import JobRequest
 
     for kind, spec in REGISTRY.items():
-        params = {"temperature": "2.35"} if kind in {"image", "deploy"} else {}
         built = spec.preview(JobRequest(scenario="critical-value",
-                                        run_name="cv-8b-lora-v1", params=params))
+                                        run_name="cv-8b-lora-v1",
+                                        params=_minimal_params(kind)))
         if built.artifacts_out:
             assert kind in artifacts.RELATION, f"{kind} 声明了产物但 RELATION 里没有条目"
 
@@ -105,9 +117,9 @@ def test_every_declared_artifact_id_resolves_to_a_single_prefix():
     from kev.console.stages.base import JobRequest
 
     for kind, spec in REGISTRY.items():
-        params = {"temperature": "2.35"} if kind in {"image", "deploy"} else {}
         built = spec.preview(JobRequest(scenario="critical-value",
-                                        run_name="cv-8b-lora-v1", params=params))
+                                        run_name="cv-8b-lora-v1",
+                                        params=_minimal_params(kind)))
         for artifact_id in built.artifacts_out:
             relative = artifacts.resolve(artifact_id)
             assert relative, f"{kind} 的 {artifact_id} 解析为空"
