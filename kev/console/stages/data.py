@@ -199,6 +199,12 @@ def _distill_build(request: JobRequest, *, require_schedule: bool = False) -> Bu
             "--out", out]
     if params.get("concurrency"):
         argv += ["--concurrency", str(_int(params, "concurrency", 3))]
+    if params.get("examples"):
+        # few-shot 风格范例：一份真实标注记录的 JSONL，每批最多取 --n-examples 条塞进 prompt，
+        # 让模型照着目标风格写而不是自由发挥。缺 spec 里的 state_example 只是形状样板，
+        # 没有范例时蒸馏只能靠 domain/state/guidance 文字描述，质量明显偏低。
+        argv += ["--examples", params["examples"]]
+        argv += ["--n-examples", str(_int(params, "n_examples", 4))]
     if schedule:
         argv += ["--schedule", schedule]
     if daily_limit is not None:

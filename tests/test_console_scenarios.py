@@ -19,6 +19,11 @@ def _tree(client):
     return client.get("/console/api/scenario-domains").json()
 
 
+def flag(argv, name):
+    """取 --name 对应的值，找不到返回 None（与 test_console_stages 同口径）。"""
+    return argv[argv.index(name) + 1] if name in argv else None
+
+
 # ---- 种子 ---------------------------------------------------------------
 
 def test_seed_is_idempotent_and_bilingual(client):
@@ -170,3 +175,29 @@ def test_distill_build_passes_spec_path_for_custom_scenario(client):
     # 不再用 --category，而是把 spec 文件绝对路径作为位置参数
     assert "--category" not in built.argv
     assert str(built.argv[2]).endswith("diagnosis.json")
+
+
+def test_distill_build_passes_examples_few_shot(client):
+    """--examples / --n-examples 应透传到 generate_data.py（few-shot 风格范例）。"""
+    from kev.console.stages import data as d
+    from kev.console.stages.base import JobRequest
+
+    base = {"skip_exists_check": True}
+    # 不传 examples：argv 里不应出现该参数
+    without = d.distill.preview(JobRequest(
+        scenario="critical-value", run_name="cv-1", params=dict(base)))
+    assert "--examples" not in without.argv
+    assert "--n-examples" not in without.argv
+
+    # 传 examples：两个参数都要透传，且 n_examples 可选覆盖
+    with_ex = d.distill.preview(JobRequest(
+        scenario="critical-value", run_name="cv-2",
+        params={**base, "examples": "data/cv/train.jsonl", "n_examples": "6"}))
+    assert flag(with_ex.argv, "--examples") == "data/cv/train.jsonl"
+    assert flag(with_ex.argv, "--n-examples") == "6"
+
+    # 只传 examples 时 n_examples 用默认 4
+    default_n = d.distill.preview(JobRequest(
+        scenario="critical-value", run_name="cv-3",
+        params={**base, "examples": "data/cv/train.jsonl"}))
+    assert flag(default_n.argv, "--n-examples") == "4"
