@@ -52,13 +52,19 @@
       ]
     }
   },
-  "guidance": "本场景**不要求模型直接输出 ICD 编码**，只判断「病案首页填报的诊断与手术，在给定候选集内是否合理」。coding_reasonable 的判定必须以 key_findings 与 clinical_course 中可见的记录为唯一依据，不得依据常识补全病历中未提及的诊断：key_findings 与诊断列表一一对应且顺序符合「病因在前、并发症在后」时判 reasonable；主诊断是并发症而非本次入院主因、或诊断顺序颠倒（如把高血压放在急性心梗之前）判 questionable；病历记录（key_findings / clinical_course）与首页诊断直接矛盾、或首页含记录中完全未提及的诊断时判 wrong。needs_coder 为独立信号：诊断列表含恶性肿瘤（含转移瘤）、罕见病、系统性自身免疫病，或 procedure 含复杂操作（如多支血管支架、联合脏器手术、移植），或 evidence_gap 不为 none 时，即使 coding_reasonable 为 reasonable 也须 true。evidence_gap 的判定优先级：记录矛盾或凭空诊断 → over_dx 或 procedure_mismatch；主诊断选择错误或顺序颠倒 → order；记录中提到但首页未填 → missing_dx；摘要中依据不足无法判定 → insufficient_evidence 判 insufficient_record；完全一致 → none。confidence_tier 由 evidence_gap 决定：none 且 reasonable 时必须为 0；insufficient_record 时必须为 2；其余情况按 reasonable→1、questionable→2、wrong→2 映射。特别地，即使 key_findings 支持某诊断，clinical_course 完全未提及时也判 insufficient_record 而不是 reasonable——本场景宁可交人工，不可凭医学常识替编码员做主。",
+  "guidance": "本场景**不要求模型直接输出 ICD 编码**，只判断「病案首页填报的诊断与手术，在给定候选集内是否合理」。coding_reasonable 的判定必须以 key_findings 与 clinical_course 中可见的记录为唯一依据，不得依据常识补全病历中未提及的诊断：key_findings 与诊断列表一一对应且顺序符合「病因在前、并发症在后」时判 reasonable；主诊断是并发症而非本次入院主因、或诊断顺序颠倒（如把高血压放在急性心梗之前）判 questionable；病历记录（key_findings / clinical_course）与首页诊断直接矛盾、或首页含记录中完全未提及的诊断时判 wrong。needs_coder 为独立信号：诊断列表含恶性肿瘤（含转移瘤）、罕见病、系统性自身免疫病，或 procedure 含复杂操作（如多支血管支架、联合脏器手术、移植），或 evidence_gap 不为 none 时，即使 coding_reasonable 为 reasonable 也须 true。evidence_gap 的判定优先级：记录矛盾或凭空诊断 → over_dx 或 procedure_mismatch；主诊断选择错误或顺序颠倒 → order；记录中提到但首页未填 → missing_dx；摘要中依据不足无法判定 → insufficient_record；完全一致 → none。confidence_tier 由 evidence_gap 决定：none 且 reasonable 时必须为 0；insufficient_record 时必须为 2；其余情况按 reasonable→1、questionable→2、wrong→2 映射。特别地，即使 key_findings 支持某诊断，clinical_course 完全未提及时也判 insufficient_record 而不是 reasonable——本场景宁可交人工，不可凭医学常识替编码员做主。",
   "variety": [
-    "疾病系统：循环、呼吸、消化、泌尿、代谢内分泌、肿瘤、骨关节、妇产、神经",
-    "病案类型：单病种手术、复杂多系统并发症、肿瘤化疗、危重症转归、死亡病例",
-    "主诊断选择：正确、顺序颠倒、并发症误当主诊断、缺主诊断",
-    "操作复杂度：无操作、常规手术、复杂手术、多部位操作",
-    "记录质量：记录完整、关键依据缺失、记录与首页矛盾、事后补记痕迹",
-    "证据强度：key_findings 明确、仅有笼统描述、只有诊断无检查依据"
+    "疾病系统（覆盖 domain 列出的各系统）：循环（急性心梗、心衰、房颤、高血压 3 级）、呼吸（COPD 急性加重、肺炎、支气管肺癌、哮喘）、消化（肝硬化失代偿、急性胆囊炎、重症胰腺炎、上消化道出血）、泌尿（前列腺增生、肾结石、膀胱癌、急性肾损伤）、代谢内分泌（糖尿病酮症酸中毒、甲状腺功能减退、高钾血症）、肿瘤（肺癌根治术、消化道肿瘤化疗、转移瘤）、骨关节（全髋关节置换、脊柱融合、股骨颈骨折内固定）、妇产（剖宫产、子宫肌瘤剔除、卵巢囊肿蒂扭转）、神经（脑梗死、颅内出血、帕金森病）",
+    "病案类型：单病种手术、复杂多系统并发症、肿瘤化疗、危重症转归、死亡病例、择期手术、无手术的内科住院",
+    "诊断顺序问题（对应 evidence_gap=order）：主诊断正确、并发症误当主诊断、顺序颠倒（如高血压排在急性心梗之前）、主诊断为术后并发症而非入院病因、缺主诊断",
+    "诊断缺失（对应 missing_dx）：病历提到但首页未填的并发症（术后肺炎、深静脉血栓、急性肾损伤、低蛋白血症）、未填的合并症（房颤、既往骨折、陈旧性脑梗）、未填的恶性肿瘤转移灶",
+    "过度诊断（对应 over_dx）：凭空增加的诊断、与 key_findings 无关的诊断、与用药记录完全不相关的诊断",
+    "操作不符（对应 procedure_mismatch）：操作部位不符（左侧 vs 右侧、主动脉 vs 上肢）、操作层次不清（部分切除 vs 全切除、根治 vs 姑息）、操作名称笼统（仅写「手术」）、操作与记录时间线不符",
+    "记录质量：记录完整、关键依据缺失（clinical_course 完全未提及该诊断）、记录与首页直接矛盾、事后补记痕迹",
+    "证据强度：key_findings 明确且与诊断一一对应、仅有笼统描述、只有诊断无任何检查依据、影像结论与检验数值矛盾",
+    "needs_coder=true 的触发场景（须专门生成）：诊断含恶性肿瘤（含转移瘤）、罕见病、系统性自身免疫病、复杂手术（多支血管支架、联合脏器手术、器官移植）、evidence_gap 不为 none",
+    "置信档（对应 confidence_tier 三档）：0 高置信（证据链完整且 reasonable）、1 中置信（轻微疑点但方向明确）、2 低置信（关键依据缺失或矛盾，需人工裁定；insufficient_record 时必须为 2）",
+    "住院时长与转归：1-3 天、4-9 天、10 天以上、死亡、自动出院、转院",
+    "主诊断表述规范度：规范术语（含部位与性质）、笼统表述（症状主导）、待排诊断（带「?」或「待排」）、英文缩写混排"
   ]
 }
