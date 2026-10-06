@@ -142,10 +142,24 @@ generate = StageSpec("generate", "data", "程序化规则合成", _generate,
 def _distill_build(request: JobRequest, *, require_schedule: bool = False) -> BuiltCommand:
     _spec(request.scenario)
     params = request.params
-    keys = params.get("api_keys") or []
-    if len(keys) > MAX_DISTILL_KEYS:
-        raise Invalid(f"最多 {MAX_DISTILL_KEYS} 个 key（每日额度轮换用），收到 {len(keys)}",
-                      field="api_keys", hint="generate_data.py 按 key 轮换，单 key 有每日上限")
+    provider_id = params.get("provider_id")
+    env = {}
+    daily_limit = None
+    if provider_id:
+        from kev.console import secrets as distill_secrets
+        entry = distill_secrets.load().get(provider_id)
+        if entry is None:
+            raise Invalid(f"未知蒸馏配置 {provider_id}", field="provider_id",
+                          hint="先到控制台「蒸馏配置」创建并选择")
+        env["KEV_GEN_BASE_URL"] = entry["base_url"]
+        env["KEV_GEN_MODEL"] = entry["model"]
+        env["KEV_GEN_API_KEYS"] = ",".join(entry["keys"])
+        daily_limit = entry.get("daily_limit", 500000)
+    else:
+        keys = params.get("api_keys") or []
+        if len(keys) > MAX_DISTILL_KEYS:
+            raise Invalid(f"最多 {MAX_DISTILL_KEYS} 个 key（每日额度轮换用），收到 {len(keys)}",
+                          field="api_keys", hint="generate_data.py 按 key 轮换，单 key 有每日上限")
     data_dir = params.get("data") or f"data/{request.scenario}"
     category = params.get("category") or request.scenario
     out = f"{data_dir}/{category}.jsonl"
@@ -165,16 +179,18 @@ def _distill_build(request: JobRequest, *, require_schedule: bool = False) -> Bu
         argv += ["--concurrency", str(_int(params, "concurrency", 3))]
     if schedule:
         argv += ["--schedule", schedule]
-    if params.get("daily_limit"):
+    if daily_limit is not None:
+        argv += ["--daily-limit", str(int(daily_limit))]
+    elif params.get("daily_limit"):
         argv += ["--daily-limit", str(_int(params, "daily_limit", 500000))]
     if params.get("state_dir"):
         argv += ["--state-dir", params["state_dir"]]
-    env = {}
-    if params.get("base_url"):
-        env["KEV_GEN_BASE_URL"] = params["base_url"]
-    if params.get("model"):
-        env["KEV_GEN_MODEL"] = params["model"]
-    # 凭据（KEV_GEN_API_KEYS）由执行器在 spawn 时从编排服务进程环境注入，永不落库
+    if not provider_id:
+        if params.get("base_url"):
+            env["KEV_GEN_BASE_URL"] = params["base_url"]
+        if params.get("model"):
+            env["KEV_GEN_MODEL"] = params["model"]
+    # 凭据（KEV_GEN_API_KEYS）：带 provider_id 时由密钥库注入；否则沿用编排服务进程环境
     return BuiltCommand(argv=argv, env=env, cwd=str(paths.ROOT),
                         artifacts_out=[f"dataset:{_dataset_id(data_dir)}/{category}"])
 

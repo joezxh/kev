@@ -21,6 +21,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import artifacts, paths
+from . import secrets as distill_secrets
 from .db import Store
 from .events import parse_note, parse_step, sse_frame
 from .executor import LocalExecutor
@@ -438,5 +439,73 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
                                         str(request.url.query), method, body)
 
     app.add_api_route("/console/api/kev/{path:path}", proxy_kev, methods=["POST", "GET"])
+
+    # ---- distill providers ------------------------------------------------
+
+    @app.post("/console/api/distill-providers")
+    def create_distill_provider(payload: dict):
+        name = (payload.get("name") or "").strip()
+        if not name:
+            return _error("validation", "名称必填", status=400, field="name")
+        base_url = (payload.get("base_url") or "").strip() or "https://api.openai.com/v1"
+        model = (payload.get("model") or "").strip()
+        if not model:
+            return _error("validation", "模型必填", status=400, field="model")
+        keys = [k.strip() for k in (payload.get("keys") or []) if k.strip()]
+        if not keys:
+            return _error("validation", "至少提供一个 API Key", status=400, field="keys")
+        daily_limit = int(payload.get("daily_limit") or 500000)
+        meta = store().create_distill_provider(name, base_url, model, daily_limit, keys)
+        distill_secrets.put(meta["id"], {"keys": keys, "base_url": base_url,
+                                         "model": model, "daily_limit": daily_limit})
+        return JSONResponse(status_code=201, content=meta)
+
+    @app.get("/console/api/distill-providers")
+    def list_distill_providers() -> list:
+        return store().list_distill_providers()
+
+    @app.delete("/console/api/distill-providers/{provider_id}")
+    def delete_distill_provider(provider_id: str):
+        if store().get_distill_provider(provider_id) is None:
+            return _error("validation", f"未知配置 {provider_id}", status=404)
+        store().deactivate_distill_provider(provider_id)
+        distill_secrets.remove(provider_id)
+        return {"deactivated": True}
+
+    def _ingest_distill_usage(job_id: str) -> None:
+        import json as _json
+        from pathlib import Path as _Path
+        job = store().get_job(job_id)
+        if job is None or job["kind"] not in ("distill", "distill_daemon"):
+            return
+        state_dir = (job["request"].get("state_dir") or "").strip()
+        if not state_dir or not _Path(state_dir).is_dir():
+            return
+        provider_id = job["request"].get("provider_id") or ""
+        prov = store().get_distill_provider(provider_id) or {}
+        model = prov.get("model", "")
+        base_url = prov.get("base_url", "")
+        for f in sorted(_Path(state_dir).glob("usage_*.json")):
+            day = f.stem.split("_")[-1]
+            try:
+                data = _json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            for key, tokens in data.items():
+                kh, hint = distill_secrets.mask(key)
+                store().upsert_distill_usage(job_id=job_id, provider_id=provider_id, key_hash=kh,
+                    key_hint=hint, model=model, base_url=base_url, day=day, tokens=int(tokens or 0))
+
+    @app.get("/console/api/distill/{job_id}/usage")
+    def distill_job_usage(job_id: str, from_day: str | None = None, to_day: str | None = None):
+        if store().get_job(job_id) is None:
+            return _error("validation", f"未知作业 {job_id}", status=404)
+        _ingest_distill_usage(job_id)
+        return store().distill_usage_by_job(job_id, from_day, to_day)
+
+    @app.get("/console/api/distill-usage")
+    def distill_usage(provider_id: str | None = None, from_day: str | None = None,
+                      to_day: str | None = None) -> list:
+        return store().distill_usage_by_provider(provider_id, from_day, to_day)
 
     return app

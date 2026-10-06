@@ -76,3 +76,25 @@ def test_distill_one_shot_allows_omitting_schedule():
 
 def test_goldset_audit_script_exists():
     assert (console_paths.GENERATORS / "make_goldset.py").exists()
+
+
+def test_distill_build_injects_provider_env(monkeypatch):
+    import json
+    import tempfile
+    from pathlib import Path
+    tmp = Path(tempfile.mkdtemp()) / "secrets.json"
+    tmp.write_text(json.dumps({"p1": {"keys": ["sk-x"], "base_url": "http://g",
+                                      "model": "m", "daily_limit": 7}}), encoding="utf-8")
+    monkeypatch.setattr("kev.console.secrets.DEFAULT_PATH", tmp)
+    built = d.distill.preview(req({"provider_id": "p1", "category": "critical-value",
+                                    "state_dir": ".d", "skip_exists_check": True}))
+    assert built.env["KEV_GEN_BASE_URL"] == "http://g"
+    assert built.env["KEV_GEN_MODEL"] == "m"
+    assert built.env["KEV_GEN_API_KEYS"] == "sk-x"
+    assert "--daily-limit" in built.argv and built.argv[built.argv.index("--daily-limit") + 1] == "7"
+
+
+def test_distill_build_rejects_unknown_provider():
+    with pytest.raises(Invalid, match="未知蒸馏配置"):
+        d.distill.preview(req({"provider_id": "nope", "category": "critical-value",
+                                "skip_exists_check": True}))
