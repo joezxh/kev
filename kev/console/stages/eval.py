@@ -129,20 +129,25 @@ baseline = StageSpec("baseline", "benchmark", "基线打分（零样本对照）
 
 def _compare(request: JobRequest) -> BuiltCommand:
     params = request.params
+    public = params.get("public") == "1"
     candidate = params.get("candidate") or f"runs/{request.run_name}-eval"
     reference = params.get("reference") or f"runs/{request.run_name}-baseline-eval"
     if candidate == reference:
         raise Invalid("candidate 与 reference 不能是同一个目录", field="candidate",
                       hint="G4 需要真实的两次打分对比")
-    out = params.get("out") or f"runs/{request.run_name}-compare"
+    # public=1 是公开套件上的回归对比（G6 的证据）：产物走独立的 regression 类型，
+    # 与 workload compare（G4 证据）互不覆盖。
+    out = params.get("out") or (f"runs/{request.run_name}-compare-public" if public
+                                else f"runs/{request.run_name}-compare")
+    artifact = f"regression:{request.run_name}" if public else f"comparison:{request.run_name}"
     argv = ["-m", "kev.compare", "--candidate", candidate, "--reference", reference, "--out", out]
     return BuiltCommand(argv=[_python()] + argv, cwd=str(paths.ROOT),
                         artifacts_in=[f"eval:{request.run_name}", f"eval:{request.run_name}-baseline"],
-                        artifacts_out=[f"comparison:{request.run_name}"])
+                        artifacts_out=[artifact])
 
 
 compare = StageSpec("compare", "compare", "配对 bootstrap 对比", _compare,
-                    outcome="G4/G5 的证据来源；接着跑 calibrate")
+                    outcome="G4/G5 的证据来源；public=1 产出 G6 的回归证据；接着跑 calibrate")
 
 
 def _calibrate(request: JobRequest) -> BuiltCommand:

@@ -46,8 +46,11 @@ def build(request: JobRequest) -> BuiltCommand:
     # KEV_SERVE_SECRET / KEV_HF_SECRET 是 Modal secret 名，由 SECRET_ENV 注入子进程；
     # 这里只放非敏感的部署配置（ALLOWED_ENV 白名单）。
     argv = ["modal", "deploy", str(SCRIPT)]
+    # 端点产物：Modal 的 URL 由其控制台按 workspace/app 给出、本机探不了活，
+    # 但注册一条 endpoint:modal-{run} 让部署页至少能看到「部署过什么」（meta.modal=True）。
     return BuiltCommand(argv=argv, cwd=str(paths.ROOT), env=env,
-                        artifacts_in=[f"run:{run}"], artifacts_out=[])
+                        artifacts_in=[f"run:{run}"],
+                        artifacts_out=[f"endpoint:modal-{run}"])
 
 
 modal = StageSpec("modal", STAGE, "Modal 部署", build,

@@ -36,7 +36,7 @@ RESERVED_ENV = ("KEV_DTYPE", "KEV_MERGE", "KEV_ATTN", "KEV_LORA_SCALE",
 
 ALL_KINDS = {
     "plan_size", "generate", "distill", "distill_daemon", "goldset", "goldset_audit",
-    "split", "precheck",
+    "split", "precheck", "make_examples",
     "train", "baseline", "benchmark", "compare", "calibrate",
     "image", "deploy", "smoke",
     "publish", "modal",
@@ -79,7 +79,7 @@ def test_console_never_reads_reserved_environment_variables():
                     "它只能经 kev.checkpoint.LoadOptions.from_env 读取")
 
 
-def test_all_fourteen_kinds_are_registered_and_no_more():
+def test_all_stage_kinds_are_registered_and_no_more():
     from kev.console.stages import REGISTRY
     assert set(REGISTRY) == ALL_KINDS
 
@@ -96,6 +96,7 @@ def _minimal_params(kind: str) -> dict:
         "modal": {"run": "x"},
         "goldset_audit": {"a": "x", "b": "y"},
         "distill_daemon": {"schedule": "03:00"},
+        "make_examples": {"data": "data/cv.jsonl"},
     }.get(kind, {"temperature": "2.35"} if kind in {"image", "deploy"} else {})
     return {**base, "skip_exists_check": True}
 

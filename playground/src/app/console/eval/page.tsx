@@ -22,16 +22,22 @@ import { CoverageCurve, type SelectiveBin } from "@/components/console/CoverageC
 const KINDS: Record<string, { kind: string; fields: FieldSpec[] }> = {
   baseline: { kind: "baseline", fields: [
     { key: "baseline", label: "--run", hint: "零样本对照的 checkpoint" },
+    { key: "data", label: "--data",
+      hint: "数据目录前缀；默认 data/<scenario>（读 development.jsonl）。与 benchmark 必须同源" },
     { key: "device", kind: "select", label: "--device",
       options: ["cuda", "cpu", "mps"].map((v) => ({ value: v, label: v })) },
   ] },
   benchmark: { kind: "benchmark", fields: [
+    { key: "run", label: "--run",
+      hint: "要打分的 checkpoint 目录；留空用 runs/<run_name>。公开套件回归时用它分别打 candidate 与 baseline" },
+    { key: "data", label: "--data",
+      hint: "数据目录前缀；默认 data/<scenario>（读 development.jsonl）。蒸馏链路需与 split 的 data 对齐" },
     { key: "device", kind: "select", label: "--device",
       options: ["cuda", "cpu", "mps"].map((v) => ({ value: v, label: v })) },
     { key: "remote", label: "--remote", hint: "远程端点 URL；填了则不打本地 checkpoint" },
     { key: "remote_model", label: "--remote-model", hint: "默认 kev-latest" },
     { key: "remote_concurrency", label: "--remote-concurrency", hint: "默认 1" },
-    { key: "suite", label: "--suite", hint: "冻结 suite；填了则替代 --data" },
+    { key: "suite", label: "--suite", hint: "冻结 suite（如 evals/v7/decision-v7）；填了则替代 --data —— 这是 G6 的证据来源" },
     { key: "split", label: "--split", hint: "development / calibration / train（suite 模式下生效）" },
     { key: "allow_test", kind: "select", label: "--allow-test",
       options: [{ value: "0", label: "0" }, { value: "1", label: "1" }],
@@ -41,7 +47,13 @@ const KINDS: Record<string, { kind: string; fields: FieldSpec[] }> = {
       hint: "打分前对 state 套 with_date_facts" },
     { key: "rotations", label: "--rotations", hint: "选项循环旋转平均次数，默认 1" },
   ] },
-  compare: { kind: "compare", fields: [] },
+  compare: { kind: "compare", fields: [
+    { key: "public", kind: "select", label: "public",
+      options: [{ value: "0", label: "0（workload 增益，G4）" }, { value: "1", label: "1（公开套件回归，G6）" }],
+      hint: "public=1 产出独立的 regression 产物，与 G4 的 comparison 互不覆盖" },
+    { key: "candidate", label: "--candidate", hint: "留空用 runs/<run_name>-eval；公开套件对比时指向 candidate 在 suite 上的打分目录" },
+    { key: "reference", label: "--reference", hint: "留空用 runs/<run_name>-baseline-eval" },
+  ] },
   calibrate: { kind: "calibrate", fields: [] },
 };
 

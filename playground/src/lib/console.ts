@@ -200,7 +200,21 @@ export const api = {
   saveScenarioSpec: (slug: string, content: string) =>
     call<{ slug: string; saved: boolean }>(`scenarios/${encodeURIComponent(slug)}/spec`,
       { method: "PUT", body: JSON.stringify({ content }) }),
+  specHistory: (slug: string) =>
+    call<{ ts: string }[]>(`scenarios/${encodeURIComponent(slug)}/spec/history`),
+  specHistoryVersion: (slug: string, ts: string) =>
+    call<{ slug: string; ts: string; content: string }>(
+      `scenarios/${encodeURIComponent(slug)}/spec/history/${encodeURIComponent(ts)}`),
+
+  distillUsageTotals: (from?: string, to?: string) => {
+    const q = new URLSearchParams();
+    if (from) q.set("from_day", from);
+    if (to) q.set("to_day", to);
+    return call<DistillUsageTotal[]>(`distill-usage/totals${q.toString() ? `?${q}` : ""}`);
+  },
 };
+
+export type DistillUsageTotal = { day: string; tokens: number };
 
 export type Scenario = {
   id: string; slug: string; label: string; label_zh: string; label_en: string;

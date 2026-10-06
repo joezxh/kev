@@ -88,9 +88,15 @@ def _gate_products(store: Store, request: JobRequest) -> dict:
     return {
         "precheck": load("precheck", f"{name}/train"),
         "summary": load("dataset", f"{name}/summary"),
-        "plan": request.params.get("plan"),
+        # plan 证据：优先按 data_dir 推导的 dataset 名（蒸馏链路 data/scenario/category），
+        # 回退到场景 slug（plan_size 注册时只知道场景名）。
+        "plan": (request.params.get("plan")
+                 or load("plan", name) or load("plan", request.scenario)),
         "report": load("eval", request.run_name),
+        # G4（workload 增益）与 G6（公开套件回归）证据分离：regression 是
+        # compare --public 产出的第二份 comparison，见 gates.STAGE_GATES。
         "comparison": load("comparison", request.run_name),
+        "comparison_public": load("regression", request.run_name),
         "calibration": load("calibration", request.run_name),
     }
 
@@ -113,12 +119,31 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
         job = app.state.store.get_job(job_id)
         if job is None or exit_code != 0:
             return
+        if job["kind"] == "plan_size":
+            # plan_size.py 只写 stdout：把日志里的计划解析落盘成 plan 产物文件，
+            # 否则 artifacts.register 找不到文件、G2 的 plan 证据永远缺失。
+            try:
+                _persist_plan(app.state.store, job)
+            except Exception as error:
+                app.state.store.append_events(
+                    job_id, [("system", f"计划落盘失败：{error!r}（G2 将无法读到 plan）")])
         try:
             artifacts.register(app.state.store, job)
         except Exception as error:
             app.state.store.append_events(
                 job_id, [("system", f"产物注册失败：{error!r}（重跑该作业即可重新注册）")])
             raise
+
+    def _persist_plan(store: Store, job: dict) -> None:
+        log = Path(job["log_path"])
+        if not log.is_file():
+            return
+        plan = data_stages.parse_plan_size(log.read_text(encoding="utf-8", errors="replace"))
+        if not plan.get("total_records"):
+            return
+        target = Path(paths.ROOT) / artifacts.resolve(f"plan:{job['scenario']}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
 
     app.state.executor = executor or LocalExecutor(app.state.store,
                                                   on_finished=register_finished)
@@ -279,6 +304,22 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
             return _error("validation", str(error), status=404, field="spec_path",
                           hint="先在控制台为该场景配置有效的 spec_path")
         return {"slug": slug, "content": content}
+
+    @app.get("/console/api/scenarios/{slug}/spec/history")
+    def get_spec_history(slug: str):
+        if store().get_scenario_by_slug(slug) is None:
+            return _error("validation", f"未知场景 {slug}", status=404)
+        return store().list_spec_history(slug)
+
+    @app.get("/console/api/scenarios/{slug}/spec/history/{ts}")
+    def get_spec_history_version(slug: str, ts: str):
+        if store().get_scenario_by_slug(slug) is None:
+            return _error("validation", f"未知场景 {slug}", status=404)
+        try:
+            content = store().read_spec_history(slug, ts)
+        except FileNotFoundError as error:
+            return _error("validation", str(error), status=404)
+        return {"slug": slug, "ts": ts, "content": content}
 
     @app.put("/console/api/scenarios/{slug}/spec")
     def put_scenario_spec(slug: str, payload: dict):
@@ -625,5 +666,9 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
     def distill_usage(provider_id: str | None = None, from_day: str | None = None,
                       to_day: str | None = None) -> list:
         return store().distill_usage_by_provider(provider_id, from_day, to_day)
+
+    @app.get("/console/api/distill-usage/totals")
+    def distill_usage_totals(from_day: str | None = None, to_day: str | None = None) -> list:
+        return store().distill_usage_totals(from_day, to_day)
 
     return app

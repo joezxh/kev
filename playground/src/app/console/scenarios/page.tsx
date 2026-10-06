@@ -39,6 +39,7 @@ export default function ScenariosPage() {
   const [specContent, setSpecContent] = useState("");
   const [specDirty, setSpecDirty] = useState(false);
   const [specError, setSpecError] = useState<string | null>(null);
+  const [specHistory, setSpecHistory] = useState<{ ts: string }[]>([]);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -82,6 +83,7 @@ export default function ScenariosPage() {
       .then((res) => { setSpecContent(res.content); setSpecDirty(false); setSpecError(null); })
       .catch(() => { setSpecContent(""); setSpecError(t("console.scenarios.specLoadFailed")); })
       .finally(() => setBusy(false));
+    api.specHistory(scenario.slug).then(setSpecHistory).catch(() => setSpecHistory([]));
   };
 
   const newDomain = () => {
@@ -173,6 +175,22 @@ export default function ScenariosPage() {
       await api.saveScenarioSpec(selected.slug, specContent);
       setSpecDirty(false);
       toast.success(t("console.scenarios.specSaved"));
+      api.specHistory(selected.slug).then(setSpecHistory).catch(() => setSpecHistory([]));
+    } catch (e) {
+      toast.error((e as { message: string }).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadHistoryVersion = async (ts: string) => {
+    if (selected?.type !== "scenario" || !ts) return;
+    setBusy(true);
+    try {
+      const res = await api.specHistoryVersion(selected.slug, ts);
+      setSpecContent(res.content);
+      setSpecDirty(true);   // 回滚内容需再点「保存配置」才会写回源文件
+      setSpecError(null);
     } catch (e) {
       toast.error((e as { message: string }).message);
     } finally {
@@ -308,11 +326,23 @@ export default function ScenariosPage() {
                   placeholder="{}"
                 />
                 {specError && <p className="text-xs text-destructive">{specError}</p>}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button onClick={() => void saveScenario()} disabled={busy}>{t("console.scenarios.save")}</Button>
                   <Button onClick={() => void saveSpec()} disabled={busy || !specDirty} variant="outline">
                     {t("console.scenarios.specSave")}
                   </Button>
+                  {specHistory.length > 0 && (
+                    <Select value="" onValueChange={(v) => v && void loadHistoryVersion(v)}>
+                      <SelectTrigger className="w-56">
+                        <SelectValue placeholder={lang === "zh" ? "历史版本（覆盖当前编辑）" : "History (loads into editor)"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {specHistory.map((version) => (
+                          <SelectItem key={version.ts} value={version.ts}>{version.ts}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   {scenarioDraft.id !== "__new__" && (
                     <Button variant="destructive" onClick={() => void removeScenario()}>{t("console.scenarios.delete")}</Button>
                   )}

@@ -45,6 +45,10 @@ export default function TrainPage() {
       title={t("console.nav.train")}
       initial={{ method: "a1" }}
       fields={[
+        { key: "data", label: "--data",
+          hint: lang === "zh"
+            ? "训练分区 JSONL；默认 data/<scenario>/train.jsonl。蒸馏链路（split 时传了 data）必须在这里对齐同一目录"
+            : "train partition JSONL; defaults to data/<scenario>/train.jsonl. For the distill route, align it with the split's data dir" },
         { key: "method", kind: "select", label: "method",
           options: [
             { value: "a1", label: t("console.method.a1") },

@@ -38,15 +38,15 @@ def flag(argv, name):
 SAMPLES = {"generate": {}, "distill": {}, "goldset": {}, "split": {}, "precheck": {},
            "train": {}, "baseline": {}, "benchmark": {}, "compare": {}, "calibrate": {},
            "image": {"temperature": "2.35"}, "deploy": {"temperature": "2.35"},
-           "smoke": {}}
+           "smoke": {}, "make_examples": {"data": "data/cv.jsonl"}}
 
 
-# ---- 契约：14 种作业齐备 -------------------------------------------------
+# ---- 契约：作业类型齐备 -------------------------------------------------
 
-def test_all_fourteen_kinds_are_registered():
+def test_all_stage_kinds_are_registered():
     assert set(REGISTRY) == {
         "plan_size", "generate", "distill", "distill_daemon", "goldset", "goldset_audit",
-        "split", "precheck",
+        "split", "precheck", "make_examples",
         "train", "baseline", "benchmark", "compare", "calibrate",
         "image", "deploy", "smoke",
         "publish", "modal"}
@@ -61,6 +61,7 @@ def test_every_kind_that_declares_artifacts_has_a_relation():
         "modal": {"run": "x"},
         "goldset_audit": {"a": "x", "b": "y"},
         "distill_daemon": {"schedule": "03:00", "skip_exists_check": True},
+        "make_examples": {"data": "data/cv.jsonl"},
     }
 
     def preview_of(kind):
@@ -220,6 +221,7 @@ def test_every_script_the_stages_spawn_actually_exists():
         "split": console_paths.SKILL_SCRIPTS / "split_data.py",
         "precheck": Path(d.precheck.preview(req({"data": "data/cv"})).argv[1]),
         "smoke": dp.SMOKE_SCRIPT,
+        "make_examples": Path(d.make_examples.preview(req({"data": "data/cv.jsonl"})).argv[1]),
     }
     missing = {kind: str(p) for kind, p in scripts.items() if not p.exists()}
     assert missing == {}, f"stage 要 spawn 的脚本不存在，作业一起就 FileNotFoundError：{missing}"

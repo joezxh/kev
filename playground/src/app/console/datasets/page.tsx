@@ -21,7 +21,7 @@ const KINDS: Record<string, { kind: string; fields: FieldSpec[] }> = {
     { key: "provider_id", label: "provider", kind: "select", optionsUrl: "/console/api/distill-providers",
       hint: "蒸馏配置（模型/Base URL/Key/每日阈值）在「蒸馏配置」页创建" },
     { key: "examples", label: "--examples",
-      hint: "可选：真实标注记录的 JSONL，作为 few-shot 风格范例（每批最多取 --n-examples 条）。强烈建议提供" },
+      hint: "可选：真实标注记录的 JSONL，作为 few-shot 风格范例（每批最多取 --n-examples 条）。可先用本页 make_examples 从已有数据生成" },
     { key: "n_examples", label: "--n-examples" },
     { key: "concurrency", label: "--concurrency" },
     { key: "n", label: "--n" },
@@ -54,6 +54,13 @@ const KINDS: Record<string, { kind: string; fields: FieldSpec[] }> = {
     { key: "init_from", label: "--init-from", hint: "A1 用 kev-0.8b；A2/B 用裸基座的 tokenizer" },
     { key: "split", kind: "select", label: "--split",
       options: ["train", "calibration", "development"].map((v) => ({ value: v, label: v })) },
+  ] },
+  make_examples: { kind: "make_examples", fields: [
+    { key: "data", label: "--data",
+      hint: "已标注 JSONL（generate/distill 原始池或 goldset），如 data/critical-value.jsonl" },
+    { key: "n", label: "--n", hint: "范例条数，默认 8；按第一题标签分层均衡抽样" },
+    { key: "seed", label: "--seed" },
+    { key: "out", label: "--out", hint: "默认 <data 同目录>/examples.jsonl；把该路径填进 distill 的 --examples" },
   ] },
 };
 

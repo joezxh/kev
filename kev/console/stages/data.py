@@ -113,7 +113,10 @@ def _exists(relative: str, params: dict) -> None:
 def _plan_size(request: JobRequest) -> BuiltCommand:
     argv = [_python(), str(SKILL_SCRIPTS / "plan_size.py"), str(_spec(request.scenario)),
             "--baseline-acc", "0.75", "--json"]
-    return BuiltCommand(argv=argv, cwd=str(paths.ROOT))
+    # plan 产物：G2 的证据来源（gates.g2 把 split 的 summary.records 与计划比对）。
+    # plan_size.py 只写 stdout，所以由 app.register_finished 在作业成功后解析日志落盘。
+    return BuiltCommand(argv=argv, cwd=str(paths.ROOT),
+                        artifacts_out=[f"plan:{request.scenario}"])
 
 
 plan_size = StageSpec("plan_size", "data", "算记录数", _plan_size,
@@ -121,15 +124,28 @@ plan_size = StageSpec("plan_size", "data", "算记录数", _plan_size,
 
 
 def parse_plan_size(stdout: str) -> dict:
-    """解析 plan_size 的输出：`--json` 的 JSON，或文本形式的 'generate at least 787 records'。"""
+    """解析 plan_size 的输出：`--json` 的 JSON，或文本形式的 'generate at least 787 records'。
+
+    作业日志里可能混有其他行（argv 回显、事件帧），所以 JSON 优先整段、其次**从后往前**
+    找含 total_records 的 JSON 行，正则取**最后一个**命中 —— 保证拿到的是最终计划。
+    """
     text = stdout.strip()
     if text.startswith("{"):
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
-    match = PLAN_RE.search(text)
-    return {"total_records": int(match.group(1))} if match else {}
+    for line in reversed(text.splitlines()):
+        line = line.strip()
+        if line.startswith("{") and "total_records" in line:
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(data, dict) and data.get("total_records") is not None:
+                return data
+    matches = list(PLAN_RE.finditer(text))
+    return {"total_records": int(matches[-1].group(1))} if matches else {}
 
 
 # ---- generate ----------------------------------------------------------
@@ -350,10 +366,39 @@ precheck = StageSpec("precheck", "data", "token 超限预检", _precheck,
                      outcome="over_limit 必须为 0 才能训练（闸门 G1）")
 
 
+# ---- make_examples -----------------------------------------------------
+
+def _make_examples(request: JobRequest) -> BuiltCommand:
+    """从已标注 JSONL 抽 few-shot 范例（generate_data.py --examples 的输入）。
+
+    闭环：generate/distill 产出 → 本阶段均衡抽样 → distill 的 examples 参数直接引用产物路径。
+    """
+    params = request.params
+    data = (params.get("data") or "").strip()
+    if not data:
+        raise Invalid("make_examples 需要 --data 指向一份已标注的 JSONL", field="data",
+                      hint="如 data/critical-value.jsonl（generate/distill 的原始池）")
+    # 与 goldset/split 同口径：builder 只拼 argv，源文件缺失由脚本在运行时以退出码 2 报错。
+    base = str(Path(data).with_suffix("")).replace("\\", "/")   # data/cv/critical-value
+    out = params.get("out") or f"{base}/examples.jsonl"
+    _exists(out, params)
+    argv = [_python(), str(paths.CONSOLE_SCRIPTS / "make_examples.py"),
+            "--data", data,
+            "--n", str(_int(params, "n", 8)),
+            "--seed", str(_int(params, "seed", 0)),
+            "--out", out]
+    return BuiltCommand(argv=argv, cwd=str(paths.ROOT),
+                        artifacts_in=[f"dataset:{_dataset_id(base)}"],
+                        artifacts_out=[f"dataset:{_dataset_id(base)}/examples"])
+
+
+make_examples = StageSpec("make_examples", "data", "抽 few-shot 范例", _make_examples,
+                          outcome="把产物路径填进 distill 的 --examples")
+
 DATA_STAGES = (plan_size, generate, distill, distill_daemon, goldset, goldset_audit,
-               split, precheck)
+               split, precheck, make_examples)
 
 __all__ = ["SCENARIOS", "SPLITS", "DEFAULT_INIT", "PLANNED_RECORDS", "MAX_DISTILL_KEYS",
            "plan_size", "generate", "distill", "distill_daemon", "goldset", "goldset_audit",
-           "split", "precheck",
+           "split", "precheck", "make_examples",
            "parse_plan_size", "check_name", "DATA_STAGES"]

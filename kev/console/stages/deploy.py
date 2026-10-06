@@ -102,17 +102,29 @@ image = StageSpec("image", "image", "构建部署镜像", _image, outcome="接�
 
 def _deploy(request: JobRequest) -> BuiltCommand:
     temperature = _temperature(request.params)
+    # 端口可配（默认 8008 不变）：双端点共存时换端口，比手改 rewrite 再部署更直接。
+    port = _int_port(request.params)
     if request.params.get("busy_port"):
-        raise Invalid(f"端口 {SERVE_PORT} 已被占用；先停掉当前端点"
+        raise Invalid(f"端口 {port} 已被占用；先停掉当前端点"
                       "（回滚或取消它的 deploy 作业）", field="port",
                       hint="双端点共存要换端口，并同步改 playground 的 rewrite")
     run = request.params.get("run") or f"runs/{request.run_name}"
     argv = [_python(), "-m", "kev.serve", "--run", run,
-            "--port", str(SERVE_PORT), "--temperature", temperature]
+            "--port", str(port), "--temperature", temperature]
     return BuiltCommand(argv=argv, cwd=str(paths.ROOT),
                         env={"KEV_SERVE_RUN": request.run_name},
                         artifacts_in=[f"run:{request.run_name}"],
-                        artifacts_out=[f"endpoint:{SERVE_PORT}"])
+                        artifacts_out=[f"endpoint:{port}"])
+
+
+def _int_port(params: dict) -> int:
+    try:
+        port = int(params.get("port") or SERVE_PORT)
+    except (TypeError, ValueError):
+        raise Invalid(f"端口必须是整数，收到 {params.get('port')!r}", field="port") from None
+    if not 1 <= port <= 65535:
+        raise Invalid(f"端口必须在 1-65535 内，收到 {port}", field="port")
+    return port
 
 
 # persist=START：kev.serve 是长驻进程，永远不会「自然完成」，产物必须在 spawn 之后

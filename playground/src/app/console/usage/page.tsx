@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { api, type UsageRow, type UsageDay, type DistillUsageRow, type DistillProvider } from "@/lib/console";
+import { api, type UsageRow, type UsageDay, type DistillUsageRow, type DistillProvider, type DistillUsageTotal } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
 import { usePoll } from "@/components/console/usePoll";
 import { formatNumber } from "@/components/console/format";
@@ -33,6 +33,18 @@ export default function UsagePage() {
     api.distillUsage(provFilter || undefined, from).then(setDistill).catch(() => setDistill([]));
   }, [provFilter, days]);
   const provName = (id: string) => providers.find((p) => p.id === id)?.name ?? id;
+
+  // ---- 按日汇总 + 预算告警（P2-2）：预算存 localStorage，前端告警不进后端 ----
+  const [totals, setTotals] = useState<DistillUsageTotal[]>([]);
+  useEffect(() => {
+    api.distillUsageTotals(from).then(setTotals).catch(() => setTotals([]));
+  }, [days]);
+  const [budget, setBudget] = useState<string>(
+    () => (typeof window !== "undefined" ? window.localStorage.getItem("kev-distill-budget") ?? "" : ""));
+  const today = new Date().toISOString().slice(0, 10);
+  const todayTokens = totals.find((row) => row.day === today)?.tokens ?? 0;
+  const budgetNum = Number(budget);
+  const overBudget = budget !== "" && Number.isFinite(budgetNum) && budgetNum > 0 && todayTokens > budgetNum;
 
   return (
     <div className="space-y-4">
@@ -106,6 +118,44 @@ export default function UsagePage() {
             ))}
           </TableBody>
         </Table>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-medium">
+              {lang === "zh" ? "按日汇总" : "Daily totals"}
+            </h3>
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {lang === "zh" ? "每日预算 (tokens)" : "Daily budget (tokens)"}
+              <input
+                type="number"
+                value={budget}
+                onChange={(e) => {
+                  setBudget(e.target.value);
+                  window.localStorage.setItem("kev-distill-budget", e.target.value);
+                }}
+                className="h-7 w-32 rounded-md border border-input bg-transparent px-2 text-xs outline-none focus-visible:border-ring"
+              />
+            </label>
+            <span className={`text-xs ${overBudget ? "font-medium text-destructive" : "text-muted-foreground"}`}>
+              {lang === "zh" ? "今日 " : "today "}
+              {formatNumber(todayTokens, 0)}
+              {overBudget && (lang === "zh" ? " — 已超预算 ⚠" : " — over budget ⚠")}
+            </span>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow><TableHead>day</TableHead><TableHead>tokens</TableHead></TableRow>
+            </TableHeader>
+            <TableBody>
+              {(totals ?? []).map((row) => (
+                <TableRow key={row.day}>
+                  <TableCell className="font-mono text-xs">{row.day}</TableCell>
+                  <TableCell className="text-xs">{formatNumber(row.tokens, 0)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   );

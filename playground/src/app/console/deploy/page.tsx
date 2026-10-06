@@ -17,6 +17,12 @@ export default function DeployPage() {
   const loadSmoke = useCallback(() => api.artifacts("smoke"), []);
   const endpoints = usePoll(loadEndpoints, { endpoints: [] });
   const smoke = usePoll(loadSmoke, []);
+  // 温度自动带出（与 image 页同源）：最近一次 calibrate 的 workload_temperature。
+  const loadCal = useCallback(() => api.artifacts("calibration"), []);
+  const calibrations = usePoll(loadCal, []);
+  const latestCal = calibrations.value[0];
+  const temperature = latestCal ? String(latestCal.meta?.workload_temperature ?? "") : "";
+  const calRun = latestCal ? String(latestCal.id).split(":")[1] ?? "" : "";
 
   return (
     <div className="space-y-6">
@@ -40,13 +46,21 @@ export default function DeployPage() {
 
       {action === "deploy" ? (
         <JobStagePage
+          key={latestCal?.id ?? "no-calibration"}
           kind="deploy"
           gateStage="deploy"
           title={t("console.nav.deploy")}
+          initial={{ temperature }}
           fields={[
             { key: "temperature", label: "TEMPERATURE",
-              hint: lang === "zh" ? "必填，来自 calibration.json" : "Required, from calibration.json" },
+              hint: lang === "zh"
+                ? `必填，来自 calibration.json${temperature ? `（已自动填入：${calRun} → ${temperature}）` : "；先跑 calibrate"}` 
+                : "Required, from calibration.json (pre-filled from the latest calibrate when available)" },
             { key: "run", label: "--run", hint: "留空则用 runs/<run_name>" },
+            { key: "port", label: "--port",
+              hint: lang === "zh"
+                ? "默认 8008。双端点共存时换端口，并同步改 playground 的 /kev rewrite"
+                : "Defaults to 8008. Use another port to coexist with a running endpoint" },
           ]}
         />
       ) : (
@@ -85,6 +99,9 @@ export default function DeployPage() {
               {endpoints.value.endpoints.map((artifact) => (
                 <TableRow key={artifact.id}>
                   <TableCell className="font-mono text-xs">
+                    {artifact.meta.modal
+                      ? <span className="mr-1 rounded bg-secondary px-1 py-0.5 text-[10px]">Modal</span>
+                      : null}
                     {String(artifact.meta.run ?? "—")}
                   </TableCell>
                   <TableCell className="font-mono text-xs">

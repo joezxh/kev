@@ -645,6 +645,19 @@ class Store:
             " GROUP BY provider_id, key_hint, model ORDER BY tokens DESC", params).fetchall()
         return [dict(r) for r in rows]
 
+    def distill_usage_totals(self, from_day=None, to_day=None) -> list[dict]:
+        """全 provider 按日 token 汇总 —— 预算告警的依据（P2-2）。"""
+        where, params = [], []
+        if from_day:
+            where.append("day >= ?"); params.append(from_day)
+        if to_day:
+            where.append("day <= ?"); params.append(to_day)
+        w = (" WHERE " + " AND ".join(where)) if where else ""
+        rows = self.connect().execute(
+            "SELECT day, SUM(tokens) AS tokens FROM distill_usage" + w +
+            " GROUP BY day ORDER BY day DESC", params).fetchall()
+        return [dict(r) for r in rows]
+
     def distill_usage_by_job(self, job_id, from_day=None, to_day=None) -> list[dict]:
         where, params = ["job_id=?"], [job_id]
         if from_day:
@@ -835,7 +848,11 @@ class Store:
         return path.read_text(encoding="utf-8")
 
     def write_spec_file(self, slug: str, content: str) -> None:
-        """写回场景 spec 文件。校验 JSON 合法性与必要字段，并限制路径在仓库根内。"""
+        """写回场景 spec 文件。校验 JSON 合法性与必要字段，并限制路径在仓库根内。
+
+        覆盖已存在文件前先留档到 data/console/spec-history/<slug>/（保留最近 20 版）——
+        spec 在线编辑直接写回源文件，没有版本管理等于没有撤销。
+        """
         path = self.resolve_spec_path(slug)
         root = paths.ROOT.resolve()
         if path != root and root not in path.parents:
@@ -851,4 +868,33 @@ class Store:
                 raise ValueError(f"spec 缺少必要字段 {field!r}")
         if not isinstance(data.get("questions"), dict) or not data["questions"]:
             raise ValueError("spec.questions 必须是非空对象")
+        if path.is_file():
+            self._snapshot_spec(slug, path.read_text(encoding="utf-8"))
         path.write_text(content, encoding="utf-8")
+
+    SPEC_HISTORY_LIMIT = 20
+
+    def _spec_history_dir(self, slug: str) -> Path:
+        return Path(paths.ROOT) / paths.CONSOLE_REL / "spec-history" / slug
+
+    def _snapshot_spec(self, slug: str, previous: str) -> None:
+        directory = self._spec_history_dir(slug)
+        directory.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        (directory / f"{stamp}.json").write_text(previous, encoding="utf-8")
+        versions = sorted(directory.glob("*.json"))
+        for stale in versions[:-self.SPEC_HISTORY_LIMIT]:
+            stale.unlink(missing_ok=True)
+
+    def list_spec_history(self, slug: str) -> list[dict]:
+        """历史版本列表，新的在前。只报版本号，内容按需拉取（spec 可能很大）。"""
+        directory = self._spec_history_dir(slug)
+        if not directory.is_dir():
+            return []
+        return [{"ts": item.stem} for item in sorted(directory.glob("*.json"), reverse=True)]
+
+    def read_spec_history(self, slug: str, ts: str) -> str:
+        target = self._spec_history_dir(slug) / f"{Path(ts).stem}.json"
+        if not target.is_file():
+            raise FileNotFoundError(f"没有这个历史版本：{ts}")
+        return target.read_text(encoding="utf-8")

@@ -207,13 +207,15 @@ def g7(calibration) -> Gate:
 
 
 # 每个闸读哪些产物键。BUILDERS 的 lambda 签名因此统一是 (**products)。
+# G4 读 workload compare（comparison），G6 读公开套件 compare（regression）——
+# 两者语义不同，绝不能共用同一份产物（否则后跑的 compare 会覆盖前者的证据）。
 _BUILDERS = {
     "G1": lambda p: g1(p.get("precheck")),
     "G2": lambda p: g2(p.get("summary"), p.get("plan")),
     "G3": lambda p: g3(p.get("summary")),
     "G4": lambda p: g4(p.get("comparison")),
     "G5": lambda p: g5(p.get("report"), p.get("comparison")),
-    "G6": lambda p: g6(p.get("comparison")),
+    "G6": lambda p: g6(p.get("comparison_public")),
     "G7": lambda p: g7(p.get("calibration")),
 }
 

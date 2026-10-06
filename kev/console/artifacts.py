@@ -31,7 +31,8 @@ RELATION = {
     "split": "split_into", "precheck": "checked_from", "train": "trained_on",
     "benchmark": "evaluated_on", "baseline": "evaluated_on", "compare": "compared_from",
     "calibrate": "calibrated_from", "image": "built_from", "deploy": "deployed_as",
-    "smoke": "smoked",
+    "smoke": "smoked", "plan_size": "planned_for", "modal": "deployed_as",
+    "make_examples": "sampled_from",
 }
 
 
@@ -42,17 +43,25 @@ def resolve(artifact_id: str) -> str:
         tail = name.rpartition("/")[2]
         if tail == "summary":
             return f"{DATA_DIR}/{name}.json"
-        if tail in SPLITS:
+        if tail in SPLITS or tail == "examples":
+            return f"{DATA_DIR}/{name}.jsonl"
+        # generate / distill 的原始池是 .jsonl 文件；文件存在则指向文件本身
+        # （注册时才有 bytes/meta），否则保留目录语义（兼容历史产物 id）。
+        if (Path(paths.ROOT) / DATA_DIR / f"{name}.jsonl").is_file():
             return f"{DATA_DIR}/{name}.jsonl"
         return f"{DATA_DIR}/{name}"                     # 数据集目录本身
     if kind == "precheck":
         return f"{CONSOLE_LOG_DIR}/precheck-" + name.replace("/", "-") + ".json"
+    if kind == "plan":
+        return f"{CONSOLE_LOG_DIR}/plan-" + name.replace("/", "-") + ".json"
     if kind == "run":
         return f"{RUNS_DIR}/{name}"
     if kind == "eval":
         return f"{RUNS_DIR}/{name}-eval"
     if kind == "comparison":
         return f"{RUNS_DIR}/{name}-compare"
+    if kind == "regression":
+        return f"{RUNS_DIR}/{name}-compare-public"
     if kind == "calibration":
         return f"{RUNS_DIR}/{name}-eval/calibration.json"
     if kind == "smoke":
@@ -60,6 +69,9 @@ def resolve(artifact_id: str) -> str:
     if kind == "image":
         return name
     if kind == "endpoint":
+        if name.startswith("modal-"):
+            # Modal 端点不在本地端口上；URL 由 Modal 控制台按 app 名给出。
+            return f"modal app '{name[len('modal-')]}'（在线状态见 Modal 控制台）"
         return f"http://127.0.0.1:{name}"
     raise ValueError(f"未知产物类型 {kind!r}（id={artifact_id!r}）")
 
@@ -89,7 +101,10 @@ def summarize(artifact_id: str, path: str) -> dict:
             key: payload[key] for key in ("records", "invalid_lines", "over_limit")
             if key in payload
         }
-    if kind == "comparison":
+    if kind == "plan":
+        payload = _load(path)
+        return {} if payload is None else {"total_records": payload.get("total_records")}
+    if kind in {"comparison", "regression"}:
         payload = _load(path)
         if payload is None:
             return {}
@@ -111,6 +126,9 @@ def summarize(artifact_id: str, path: str) -> dict:
     if kind == "run":
         payload = _load(f"{path}/training_config.json")
         return {} if payload is None else {"init_source": (payload.get("init_source") or {}).get("init_from")}
+    if kind == "endpoint" and artifact_id.partition(":")[2].startswith("modal-"):
+        # Modal 端点：本机探不了活，把部署参数带出来供部署页展示。
+        return {"run": artifact_id.partition(":")[2][len("modal-"):], "modal": True}
     return {}
 
 
