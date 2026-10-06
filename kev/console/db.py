@@ -554,12 +554,21 @@ class Store:
     def list_distill_providers(self) -> list[dict]:
         rows = self.connect().execute(
             "SELECT * FROM distill_providers WHERE active=1 ORDER BY created_at DESC").fetchall()
-        return [dict(r) for r in rows]
+        return [self._distill_row(r) for r in rows]
 
     def get_distill_provider(self, provider_id) -> dict | None:
         row = self.connect().execute(
             "SELECT * FROM distill_providers WHERE id=?", (provider_id,)).fetchone()
-        return dict(row) if row else None
+        return self._distill_row(row) if row else None
+
+    @staticmethod
+    def _distill_row(row) -> dict:
+        out = dict(row)
+        try:
+            out["key_hints"] = json.loads(out["key_hints"]) if out["key_hints"] else []
+        except (ValueError, TypeError):
+            out["key_hints"] = []
+        return out
 
     def deactivate_distill_provider(self, provider_id) -> bool:
         cursor = self.connect().execute(
