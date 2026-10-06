@@ -50,7 +50,7 @@ flowchart LR
 |---|---|---|---|---|
 | 1 | `plan_size` | data | 算计划记录数 | **无注册**（见 L1） |
 | 2a | `generate` | data | 程序化规则合成 | `dataset:{dir}` |
-| 2b | `distill` / `distill_daemon` | data | LLM 蒸馏 | **无产物注册**（见 L7） |
+| 2b | `distill` / `distill_daemon` | data | LLM 蒸馏 | `dataset:{dir}/{category}`（resolve 优先指向 `.jsonl` 文件本身） |
 | 3 | `goldset` | data | 金标抽样 | `dataset:{dir}.gold` |
 | 3b | `goldset_audit` | data | A/B 分歧审计 | 无 |
 | 4 | `split` | data | 切分 train/calibration/development | `dataset:{dir}/{split}`、`dataset:{dir}/summary` |
@@ -275,52 +275,62 @@ Every phase has a form + argv preview + gate preflight; contract consistency is 
 
 ## 4.2 局限性 Limitations（按严重度排序，均含证据）
 
-**Key Point:** 蒸馏→训练的主链存在三处硬断链（L1–L3），当前配置下「纯蒸馏路径走不到部署」。
-Three hard breaks (L1–L3) in the distill→train path: with current config, the pure-distillation route cannot reach deployment.
+> **落地状态（2026-10-06）**：L1–L8 已全部按 `docs/enhancement-plan.md` 修复，各项原始差距与修复方式保留在下文，状态以 ✅ 标注。
 
-### L1 · G2 的 plan 证据链断开（阻断 train 提交）Blocking
+**Key Point（修复前）:** 蒸馏→训练的主链存在三处硬断链（L1–L3），纯蒸馏路径走不到部署。
+Three hard breaks (L1–L3) in the distill→train path existed before the enhancement batch.
+
+### L1 · G2 的 plan 证据链断开（阻断 train 提交）Blocking — ✅ 已修复
 
 - `plan_size` 无 `artifacts_out`（`data.py:113-116`）；`parse_plan_size` 导出但**全仓库无消费方**（仅测试引用）
 - G2 的 plan 来自 `request.params.get("plan")`（`app.py:91`），而前端无任何页面声明 `plan` 字段（`datasets/page.tsx:14` 为空字段表）
 - 后果：G2 恒失败（`gates.py:89-90`「缺少…plan_size 的计划」）→ train 提交被 422 拦（`app.py:356-362`）
+- **✅ 修复**：`plan_size` 声明 `plan:{scenario}` 产物（`data.py`）；作业成功后 `app.register_finished` 解析日志落盘 `data/console/plan-<scenario>.json`（`parse_plan_size` 支持含噪日志取最后命中）；`_gate_products` 按 dataset 名查找、回退场景 slug
 
-### L2 · train / benchmark 的 `data` 参数 UI 不可设（蒸馏链路断链）Blocking
+### L2 · train / benchmark 的 `data` 参数 UI 不可设（蒸馏链路断链）Blocking — ✅ 已修复
 
 - `JobStagePage` 参数过滤只放行 fields 声明的键（`JobStagePage.tsx:89-94`）
 - train 页无 `data` 字段（`train/page.tsx:47-71`），默认 `data/{scenario}/train.jsonl`（`train.py:111`）
 - benchmark 页无 `data` 字段（`eval/page.tsx:22-46`），默认 `data/{scenario}/development.jsonl`（`eval.py:36-43`）
 - 而 distill 产物在 `data/{scenario}/{category}.jsonl`（`data.py:180-182`）→ split 显式传 data 后产出 `data/{scenario}/{category}/train.jsonl`，**train 无法指向它**
 - 后果：蒸馏数据的训练/评测必须手改默认目录约定或走 API，UI 内蒸馏→训练不通
+- **✅ 修复**：train 页与 eval 页（baseline/benchmark）均暴露 `data` 字段；benchmark 另暴露 `run`（公开套件回归时分别打 candidate 与 baseline）
 
-### L3 · G4 与 G6 共用同一 comparison 产物（语义冲突）Blocking
+### L3 · G4 与 G6 共用同一 comparison 产物（语义冲突）Blocking — ✅ 已修复
 
 - `_gate_products` 只装配一个 `comparison: load("comparison", request.run_name)`（`app.py:93`）
 - G4 与 G6 都读 `p.get("comparison")`（`gates.py:211-216`），但 G4 需要 **workload** compare、G6 需要**公开套件** compare——语义上应两份产物
 - 后果：两次 compare 后者覆盖前者（同 `comparison:{run_name}` id），G4/G6 不可能同时以正确语义通过
+- **✅ 修复**：`compare` 增加 `public=1` 模式，产出独立 `regression:{run}` 产物（resolve → `runs/{run}-compare-public`）；G6 改读 `comparison_public`；eval 页 compare 暴露 `public/candidate/reference`
 
-### L4 · 温度需手工搬运（可自动化而未自动化）High
+### L4 · 温度需手工搬运（可自动化而未自动化）High — ✅ 已修复
 
 - `calibration` 产物 meta 已含 `workload_temperature`（`artifacts.py:98-103`），数据已在库
 - 但 image/deploy 表单为手填必填项（`images/page.tsx:22-27`、`deploy/page.tsx:46-50`），无自动带出/校验「与最近一次 calibrate 一致」
+- **✅ 修复**：image/deploy 页自动带出最近 calibrate 产物的 `workload_temperature` 并标注来源 run；无产物时给出引导
 
-### L5 · few-shot 范例无生产闭环 High
+### L5 · few-shot 范例无生产闭环 High — ✅ 已修复
 
 - `--examples` 已接入（`data.py:201-206`）但需**手工准备**标注 JSONL
 - 没有「从已有合法数据/金标抽样生成范例文件」的作业，冷启动时该参数形同虚设
+- **✅ 修复**：新增 `make_examples` 作业（按第一题标签分层轮询抽样，`docs/medical/console/make_examples.py`），datasets 页可发起，产物 `dataset:{dir}/examples` 路径直接填进 distill 的 `--examples`
 
-### L6 · Modal 端点状态分叉 Medium
+### L6 · Modal 端点状态分叉 Medium — ✅ 已修复
 
 - Modal 部署的端点不在本地 `endpoint:` 产物（`modal.py:52-54`），部署页端点表只渲染本地产物（`deploy/page.tsx:69-103`）——Modal 在线状态在 UI 无处可见
+- **✅ 修复**：modal 部署注册 `endpoint:modal-{run}`（meta 带 `modal=True` 与 run 名），部署页端点表以「Modal」徽标区分
 
-### L7 · distill 产物未注册为 dataset 产物 Medium
+### L7 · distill 产物解析不到真实文件 Medium — ✅ 已修复（含原文更正）
 
 - generate 经 `artifacts_out=[f"dataset:{_dataset_id(data_dir)}"]` 注册（`data.py:150`），distill 的 BuiltCommand 无对应产物声明——蒸馏产物的血缘在产物页断头，只能看 job 记录
+- **✅ 更正与修复**：复核后确认 distill **本就声明** `dataset:{dir}/{category}`（`data.py:243-244`），原判断有误；真实缺口是 `artifacts.resolve` 把它解析到**不存在的目录**（无扩展名，bytes/meta 恒空）。已在 resolve 增加 `.jsonl` 存在性回退：文件存在则指向文件本身，不存在保留目录语义
 
-### L8 · 其他 Low
+### L8 · 其他 Low — ✅ 已修复
 
 - deploy 端口固定 8008，双端点需手改 playground rewrite（`deploy.py:18, 105-108`）
 - 蒸馏 `daily_limit` 为 per-key 软上限，无全局预算/成本预估/告警
 - spec 在线编辑直接写回文件，无版本/回滚（依赖 git）
+- **✅ 修复**：deploy `--port` 可配（默认 8008 不变，产物 `endpoint:{port}`）；用量页增加按日汇总与每日预算告警（`GET /console/api/distill-usage/totals`）；spec 保存前自动留档到 `data/console/spec-history/<slug>/`（保留 20 版），场景管理页可载入历史版本回滚
 
 ---
 

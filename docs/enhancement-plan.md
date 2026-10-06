@@ -5,6 +5,8 @@
 >
 > 优先级定义：**P0** = 主链断链（不修则某条端到端路径无法走通）；**P1** = 高摩擦（能用但显著增加人工/易错）；**P2** = 体验与运营增强。
 > Priority: P0 breaks a path end-to-end; P1 = high friction; P2 = operational polish.
+>
+> **落地状态（2026-10-06）：P0-1/2/3、P1-1/2/3/4、P2-1/2/3 全部已实现并通过测试**；P1-3 在实施中更正了原文（distill 本就声明产物，缺口在 resolve 映射，详见 pipeline.md L7）。
 
 ---
 
