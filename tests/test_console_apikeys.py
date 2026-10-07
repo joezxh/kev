@@ -21,7 +21,7 @@ def test_create_api_key_returns_raw_once_and_hashes(store):
     assert meta["active"] == 1   # SQLite 以 INTEGER 存 active; 前端按真值使用
     assert meta["key_hash"] == hashlib.sha256(raw.encode()).hexdigest()
     # 库里查不到明文
-    row = store.connect().execute("SELECT key_hash FROM api_keys WHERE id=?", (meta["id"],)).fetchone()
+    row = store.get_key_by_hash(hashlib.sha256(raw.encode()).hexdigest())
     assert row["key_hash"] != raw
 
 

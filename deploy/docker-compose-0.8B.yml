@@ -24,6 +24,11 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.0.8B
+      # Override PYTHON_IMAGE with a registry mirror when Docker Hub is unreachable,
+      # e.g. PYTHON_IMAGE=docker.m.daocloud.io/library/python:3.13-slim-bookworm
+      args:
+        PYTHON_IMAGE: "${PYTHON_IMAGE:-python:3.13-slim-bookworm}"
+        PIP_INDEX_URL: "${PIP_INDEX_URL:-}"
     image: kev-0.8b-server:latest
     container_name: kev-server
 
@@ -40,8 +45,8 @@ services:
       # - KEV_PREFIX_MIN_TOKENS=               # default: model's prefix_min_tokens
       # - KEV_PREFIX_MAX_TOKENS=65536
       # - KEV_BACKEND=torch                    # auto (MLX on Apple Silicon, torch elsewhere)
-      # - KEV_CUDA_GRAPHS=0                    # default on for cuda
-      # - KEV_FUSED=0                          # fused Qwen3.5 kernels (needs fla)
+      - KEV_CUDA_GRAPHS=${KEV_CUDA_GRAPHS:-}  # default on for cuda; 0 disables (Blackwell GPUs may hang)
+      - KEV_FUSED=${KEV_FUSED:-}              # fused Qwen3.5 kernels (needs fla); 0 disables
       # ===== behaviour =====
       - KEV_DATE_FACTS=${KEV_DATE_FACTS:-0}         # 1 = date preprocessing
       - KEV_TRUNCATE_STATES=${KEV_TRUNCATE_STATES:-0} # 1 = truncate over-length states instead of 422
@@ -97,11 +102,16 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.playground
+      # Override NPM_REGISTRY with a mirror (e.g. https://registry.npmmirror.com)
+      # when the public npm registry is unreachable. Default to the npmmirror so
+      # builds work behind the GFW without an explicit override.
+      args:
+        NPM_REGISTRY: "${NPM_REGISTRY:-https://registry.npmmirror.com}"
     image: kev-0.8b-playground:latest
     container_name: kev-playground
 
     ports:
-      - "3000:3000"
+      - "3030:3000"
 
     environment:
       # The Next.js server-side proxy (/kev/* -> KEV_API) targets the server by its
@@ -110,6 +120,11 @@ services:
       - HOSTNAME=0.0.0.0
       - PORT=3000
       - KEV_API=http://kev-server:8008
+      # The console (kev.console) runs on the host (WSL2, binds 0.0.0.0:8790) — not in this
+      # stack. The playground's model calls and /console UI proxy through it, so point the
+      # container at the host via host.docker.internal (Docker Desktop WSL2 localhostForwarding).
+      # Runtime env (read per request in route.ts), so no image rebuild is needed after editing.
+      - KEV_CONSOLE_API=${KEV_CONSOLE_API:-http://host.docker.internal:8790/console/api}
 
     # Mount the repo's repowiki export so the /docs viewer has content at runtime.
     # (docsRoot resolves to <cwd>/../.qoder/repowiki; the playground cwd is /app.)

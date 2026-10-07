@@ -12,11 +12,11 @@ import asyncio
 import hashlib
 import json
 import os
-import sqlite3
 import uuid
 from pathlib import Path
 
 import requests
+import sqlalchemy as sa
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -103,7 +103,7 @@ def _gate_products(store: Store, request: JobRequest) -> dict:
 
 def create_app(*, store: Store | None = None, executor: LocalExecutor | None = None) -> FastAPI:
     app = FastAPI(title="kev-console")
-    app.state.store = store or Store(Path(os.environ.get(DB_ENV, paths.DB_PATH)))
+    app.state.store = store or Store()
     # 让 stage 模块（data.py 等）在运行时能解析场景 spec_path。
     set_store(app.state.store)
     # 崩溃恢复：WSL2 会自动回收内存，服务重启是常态。必须在**建 app 时**调用，而不是放进
@@ -198,17 +198,20 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
     @app.get("/console/api/scenarios")
     def get_scenarios() -> list:
         out = []
-        for name in store().list_scenario_slugs():
-            spec_path = data_stages._resolve_spec_path(name)
-            if spec_path is None or not spec_path.is_file():
-                out.append({"name": name, "questions": 0, "exists": False})
-                continue
-            try:
-                spec = json.loads(spec_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                out.append({"name": name, "questions": 0, "exists": False})
-                continue
-            out.append({"name": name, "questions": len(spec.get("questions", {})), "exists": True})
+        for slug in store().list_scenario_slugs():
+            row = store().get_scenario_by_slug(slug)
+            spec_json = row.get("spec_json") if row else None
+            if spec_json:
+                try:
+                    spec = json.loads(spec_json)
+                    questions = len(spec.get("questions", {}))
+                except ValueError:
+                    questions, exists = 0, False
+                else:
+                    exists = True
+            else:
+                questions, exists = 0, False
+            out.append({"name": slug, "questions": questions, "exists": exists})
         return out
 
     # ---- scenario domains & scenarios (two-level, bilingual) -------------
@@ -229,7 +232,7 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
         try:
             domain_id = store().create_domain(
                 slug=slug, label_zh=label_zh, label_en=label_en, sort=int(payload.get("sort", 0)))
-        except sqlite3.IntegrityError:
+        except sa.exc.IntegrityError:
             return _error("conflict", f"域 slug 已存在：{slug}", status=409, field="slug")
         return JSONResponse(status_code=201, content=store().get_domain(domain_id))
 
@@ -260,20 +263,16 @@ def create_app(*, store: Store | None = None, executor: LocalExecutor | None = N
             return _error("validation", "场景 slug 必填", status=400, field="slug")
         if not label_zh or not label_en:
             return _error("validation", "中英文标签均必填", status=400, field="label_zh")
-        if not spec_path:
-            return _error("validation", "spec 路径必填", status=400, field="spec_path")
-        resolved = (paths.ROOT / spec_path).resolve()
-        if not str(spec_path).endswith(".json"):
+        # spec 内容存数据库（scenarios.spec_json），spec_path 仅作可选参考/生成器回退路径，
+        # 不再强制要求本地文件存在。提供了就校验是 .json。
+        if spec_path and not str(spec_path).endswith(".json"):
             return _error("validation", "spec_path 必须是 .json 文件", status=400, field="spec_path")
-        if not resolved.is_file():
-            # 缺失仅告警不阻断：允许用户先建场景后补 spec 文件
-            pass
         category = (payload.get("category") or "medical").strip()
         try:
             scenario_id = store().create_scenario(
                 domain_id=domain_id, slug=slug, label_zh=label_zh, label_en=label_en,
                 spec_path=spec_path, category=category, sort=int(payload.get("sort", 0)))
-        except sqlite3.IntegrityError:
+        except sa.exc.IntegrityError:
             return _error("conflict", f"场景 slug 已存在：{slug}", status=409, field="slug")
         return JSONResponse(status_code=201, content=store().get_scenario_by_slug(slug))
 

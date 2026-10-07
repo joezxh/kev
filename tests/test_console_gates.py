@@ -82,9 +82,11 @@ def test_g5_needs_calibration_to_improve_and_confident_errors_to_hold():
 
 
 def test_g6_tolerates_two_points_of_regression():
-    assert ok("G6", comparison=comparison(0.0, 0.04)).ok is True
-    assert ok("G6", comparison=comparison(-0.01, 0.02)).ok is True
-    too_much = ok("G6", comparison=comparison(-0.05, 0.01))
+    # G6 读公开套件 compare（comparison_public），与 G4 的 workload compare（comparison）分离，
+    # 见 gates.STAGE_GATES 与 app._gate_products。
+    assert ok("G6", comparison_public=comparison(0.0, 0.04)).ok is True
+    assert ok("G6", comparison_public=comparison(-0.01, 0.02)).ok is True
+    too_much = ok("G6", comparison_public=comparison(-0.05, 0.01))
     assert too_much.ok is False
     assert "2" in too_much.detail
 

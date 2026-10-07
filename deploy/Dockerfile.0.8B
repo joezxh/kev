@@ -14,13 +14,21 @@
 # server service MUST keep the service name `kev-server` in the compose files.
 # ============================================================================
 
-FROM python:3.13-slim-bookworm
+# PYTHON_IMAGE is overridable at build time (e.g. a registry mirror) without editing
+# this file; the default keeps the image portable (Docker Hub).
+ARG PYTHON_IMAGE=python:3.13-slim-bookworm
+FROM ${PYTHON_IMAGE}
 
 LABEL description="Kev decision model server (kev.serve) for Kev-0.8B"
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
+
+# Overridable PyPI index (set a mirror when pypi.org is slow/unreachable),
+# e.g. PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG PIP_INDEX_URL=
+ENV PIP_INDEX_URL=$PIP_INDEX_URL
 
 WORKDIR /kev
 

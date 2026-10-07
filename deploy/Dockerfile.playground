@@ -6,15 +6,22 @@
 # in-network URL of the server (http://kev-server:8008 in docker-compose).
 # ============================================================================
 
+# npm registry for dependency install. Default is the public registry; override
+# with a faster mirror (e.g. https://registry.npmmirror.com) when needed.
+# NOTE: a build ARG declared before FROM is NOT visible inside a build stage, so it
+# must be re-declared after FROM (below) for RUN npm ci to receive it.
+ARG NPM_REGISTRY=https://registry.npmjs.org
+
 # ---- 1. deps (cached layer) ----
-FROM node:22-slim AS deps
+FROM crpi-c762f77rjuytqer9.cn-hangzhou.personal.cr.aliyuncs.com/llm-basic/node:22-slim AS deps
+ARG NPM_REGISTRY=https://registry.npmjs.org
 WORKDIR /app
 # Build context is the repo root; the app lives in ./playground
 COPY playground/package.json playground/package-lock.json ./
-RUN npm ci
+RUN npm ci --registry=${NPM_REGISTRY}
 
 # ---- 2. builder ----
-FROM node:22-slim AS builder
+FROM crpi-c762f77rjuytqer9.cn-hangzhou.personal.cr.aliyuncs.com/llm-basic/node:22-slim AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 # Next.js rewrites() are evaluated at BUILD time and baked into the routes manifest,
@@ -26,7 +33,7 @@ COPY playground/ ./
 RUN npm run build
 
 # ---- 3. runner (standalone) ----
-FROM node:22-slim AS runner
+FROM crpi-c762f77rjuytqer9.cn-hangzhou.personal.cr.aliyuncs.com/llm-basic/node:22-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

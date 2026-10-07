@@ -25,6 +25,10 @@ RUNS = ROOT / RUNS_REL
 JOB_LOGS = ROOT / CONSOLE_REL / "jobs"
 DB_PATH = ROOT / CONSOLE_REL / "kev-console.db"
 
+# 运行时从数据库 spec_json 物化出来的 spec 文件目录（供 generate_data.py / plan_size.py 等
+# 冻结脚本按路径读取；不再是仓库内 docs/medical/specs 的真相源，仅是 DB 的投影）。
+CONSOLE_SPECS = ROOT / CONSOLE_REL / "specs"
+
 # 蒸馏用量状态目录的缺省落点（generate_data.py 写 <dir>/usage_<date>.json，控制台
 # _ingest_distill_usage 读同一目录）。作业未显式传 --state-dir 时统一落这里，保证用量
 # 采集端到端可通（spec §9）；与 secrets（data/console/secrets）同归 data/console 之下。

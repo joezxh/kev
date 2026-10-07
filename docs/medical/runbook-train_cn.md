@@ -640,6 +640,31 @@ PyCharm 里把该后端配成 **Run/Debug → Module name = `kev.console`**、�
 （必须用 `-m` 模块方式，不能用 `--file`，否则相对导入 `from . import paths` 报错）。前端 `/console` 下有 8 个标签页：
 **1·Data / 2·Train / 3·Evaluate / 4·Image / 5·Deploy / 6·Goldset / 7·Publish / 8·Modal**，与下面各操作一一对应。
 
+### 7.0 数据库后端切换（sqlite / postgresql）
+
+控制台的持久化层（`kev/console/db.py`）用 **SQLAlchemy Core** 统一访问两种后端，通过环境变量在启动前切换，**运行期不可改**：
+
+```bash
+# 默认 sqlite（开发/单机，文件在 data/console/kev-console.db，可用 KEV_CONSOLE_DB_PATH 改路径）
+uv run python -m kev.console
+
+# postgresql（多实例共享 / 生产）
+export KEV_CONSOLE_DB_BACKEND=postgres
+export KEV_CONSOLE_DB_HOST=127.0.0.1
+export KEV_CONSOLE_DB_PORT=5432
+export KEV_CONSOLE_DB_USER=kev
+export KEV_CONSOLE_DB_PASSWORD=******
+export KEV_CONSOLE_DB_NAME=kev_console
+# 可选：export KEV_CONSOLE_DB_SCHEMA=public
+uv run python -m kev.console
+```
+
+- 场景 spec 配置（7 个 `docs/medical/specs/*.json` 的内容与历史版本）**全部存数据库**，运行时不再依赖本地 spec 文件；`scenarios.spec_json` 存当前内容，`scenario_spec_history` 存最近 20 版。
+- 初始化数据库（建表 + 初始数据，含 spec 内容）：`uv run python -m kev.console initdb`。它会按当前后端执行 `deploy/console/schema.<backend>.sql`（sqlite / postgresql 两套由 `scripts/gen_console_schema.py` 单源生成）；文件缺失时回退到 `Store()` 的建库 + 种子逻辑。
+- 改了表结构后重新生成初始化 SQL：`uv run python scripts/gen_console_schema.py`（改了 `kev/console/db.py` 的 `_ddl` 也应重跑，避免两份 DDL 漂移）。
+
+> 兼容旧变量 `KEV_CONSOLE_DB`（仅 sqlite，作为路径兜底）；sqlite 旧库首次打开会做一次性迁移（补 `spec_json` 列并回填本地 spec 内容）。
+
 ### 7.1 总览映射表
 
 | 本手册步骤 | 操作 | Console 作业类型 (`kind`) | 控制台标签页 | 状态 |

@@ -15,10 +15,16 @@ async function proxy(request: NextRequest, path: string[]) {
     ? undefined : await request.text();
   const lastEventId = request.headers.get("last-event-id");
 
+  // 透传鉴权头：浏览器把用户选中的明文 key 放在 Authorization: Bearer <key> 里，
+  // 编排层(kev.console)据此校验并注入管理 key 转发给 kev.serve。薄代理必须原样转发，
+  // 否则控制台收到的是无 Authorization 的请求，会返回 401「缺少 API Key」。
+  const auth = request.headers.get("authorization");
+
   const upstream = await fetch(target, {
     method: request.method,
     headers: {
       "Content-Type": "application/json",
+      ...(auth ? { Authorization: auth } : {}),
       // 透传断点续传游标：EventSource 重连时浏览器把它放在 Last-Event-ID 头里，
       // 编排层优先读它。只读查询参数会让重连从 0 全量重放（Task 2 评审发现）。
       ...(lastEventId ? { "Last-Event-ID": lastEventId } : {}),

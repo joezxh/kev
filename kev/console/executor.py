@@ -19,6 +19,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy import text
+
 from .db import TERMINAL, Store
 from .events import DEFAULT_BUFFER, MetricBuffer, parse_step
 
@@ -114,7 +116,10 @@ class LocalExecutor:
         payload = json.dumps({key: str(value) for key, value in overlay.items()},
                              ensure_ascii=False, allow_nan=False)
         with self.store.tx() as connection:
-            connection.execute("UPDATE jobs SET env_overlay = ? WHERE id = ?", (payload, job_id))
+            connection.execute(
+                text("UPDATE jobs SET env_overlay = :overlay WHERE id = :jid"),
+                {"overlay": payload, "jid": job_id},
+            )
 
     def _pump(self, job_id, popen, log_path) -> None:
         """reader 线程。**绝不能带着未捕获异常死掉** —— 作业卡在 running 就意味着
