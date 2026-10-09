@@ -48,11 +48,16 @@ export function ScenarioCascade({
         if (first) onChange(first.slug);
       }}>
         <SelectTrigger className="w-40">
-          <SelectValue placeholder={t("console.cascade.domain")} />
+          <SelectValue placeholder={t("console.cascade.domain")}>
+            {(value: string) => {
+              const d = tree.find((o) => o.slug === value);
+              return d ? `${d.label_zh}[${d.label_en}]` : t("console.cascade.domain");
+            }}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {tree.map((domain) => (
-            <SelectItem key={domain.slug} value={domain.slug}>{domain.label}</SelectItem>
+            <SelectItem key={domain.slug} value={domain.slug}>{domain.label_zh}[{domain.label_en}]</SelectItem>
           ))}
         </SelectContent>
       </Select>

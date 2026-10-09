@@ -48,7 +48,10 @@ export default function ScenariosPage() {
   }, [lang, t]);
   useEffect(load, [load]);
 
-  const domainOptions = useMemo(() => tree.map((d) => ({ slug: d.slug, label: d.label })), [tree]);
+  const domainOptions = useMemo(
+    () => tree.map((d) => ({ id: d.id, label_zh: d.label_zh, label_en: d.label_en })),
+    [tree],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -287,32 +290,81 @@ export default function ScenariosPage() {
 
           {selected?.type === "scenario" && (
             <>
-              <h2 className="text-sm font-medium">{t("console.scenarios.newScenario")}</h2>
+              <h2 className="text-sm font-medium">
+                {scenarioDraft.id === "__new__" ? t("console.scenarios.newScenario") : t("console.scenarios.editScenario")}
+              </h2>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label={t("console.scenarios.domain")}>
+                <Field label={t("console.scenarios.domain")} hint="该场景归属的一级域（域的中/英文标签）。">
                   <Select value={scenarioDraft.domain_id} onValueChange={(v) => v && setScenarioDraft({ ...scenarioDraft, domain_id: v })}>
-                    <SelectTrigger><SelectValue placeholder={t("console.cascade.domain")} /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue placeholder={t("console.cascade.domain")}>
+                        {(value: string) => {
+                          const d = domainOptions.find((o) => o.id === value);
+                          return d ? `${d.label_zh}[${d.label_en}]` : t("console.cascade.domain");
+                        }}
+                      </SelectValue>
+                    </SelectTrigger>
                     <SelectContent>
-                      {domainOptions.map((d) => <SelectItem key={d.slug} value={d.slug}>{d.label}</SelectItem>)}
+                      {domainOptions.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>{d.label_zh}[{d.label_en}]</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field label={t("console.scenarios.slug")}>
+                <Field label={t("console.scenarios.slug")} hint="场景英文短标识，全局唯一，作为生成数据与训练的内部 key。">
                   <Input value={scenarioDraft.slug} onChange={(e) => setScenarioDraft({ ...scenarioDraft, slug: e.target.value })} />
                 </Field>
-                <Field label={t("console.scenarios.labelZh")}>
+                <Field label={t("console.scenarios.labelZh")} hint="场景的中文显示名。">
                   <Input value={scenarioDraft.label_zh} onChange={(e) => setScenarioDraft({ ...scenarioDraft, label_zh: e.target.value })} />
                 </Field>
-                <Field label={t("console.scenarios.labelEn")}>
+                <Field label={t("console.scenarios.labelEn")} hint="场景的英文显示名。">
                   <Input value={scenarioDraft.label_en} onChange={(e) => setScenarioDraft({ ...scenarioDraft, label_en: e.target.value })} />
                 </Field>
-                <Field label={t("console.scenarios.specPath")}>
+                <Field label={t("console.scenarios.specPath")} hint="spec 配置文件相对仓库根的路径，例如 docs/medical/specs/triage.json。">
                   <Input value={scenarioDraft.spec_path} onChange={(e) => setScenarioDraft({ ...scenarioDraft, spec_path: e.target.value })} />
                 </Field>
-                <Field label={t("console.scenarios.category")}>
+                <Field label={t("console.scenarios.category")} hint="场景分类标签（如 medical），用于分组与过滤。">
                   <Input value={scenarioDraft.category} onChange={(e) => setScenarioDraft({ ...scenarioDraft, category: e.target.value })} />
                 </Field>
               </div>
+
+              <details className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+                <summary className="cursor-pointer select-none font-medium text-foreground">{t("console.scenarios.specFieldHelp")}</summary>
+                <dl className="mt-3 space-y-3">
+                  <div>
+                    <dt className="font-mono font-medium text-foreground">name</dt>
+                    <dd className="mt-0.5 leading-relaxed">场景短标识（小写英文/下划线），如 &quot;triage&quot;，与场景 slug 对应，是生成数据与训练时的内部 key。</dd>
+                  </div>
+                  <div>
+                    <dt className="font-mono font-medium text-foreground">domain</dt>
+                    <dd className="mt-0.5 leading-relaxed">场景域描述：说明该场景解决什么问题、覆盖哪些主诉/情况，用于约束生成数据的范围。</dd>
+                  </div>
+                  <div>
+                    <dt className="font-mono font-medium text-foreground">state</dt>
+                    <dd className="mt-0.5 leading-relaxed">「状态」字段的语义定义：描述模型每次只读一次的状态应包含哪些信息、语言与格式要求。</dd>
+                  </div>
+                  <div>
+                    <dt className="font-mono font-medium text-foreground">state_example</dt>
+                    <dd className="mt-0.5 leading-relaxed">状态的一个具体示例对象，展示 state 的真实结构，供数据生成器参考。</dd>
+                  </div>
+                  <div>
+                    <dt className="font-mono font-medium text-foreground">questions</dt>
+                    <dd className="mt-0.5 leading-relaxed">问题集合：键为问题 id，值含以下子字段：
+                      <span className="mt-1 block"><span className="font-mono text-foreground">type</span> — 题型：choice（选项概率）/ noul（是否、真值）/ score（整数打分档）。</span>
+                      <span className="mt-1 block"><span className="font-mono text-foreground">instructions</span> — 该问题的指令文本（问什么、为何问）。</span>
+                      <span className="mt-1 block"><span className="font-mono text-foreground">criteria</span> — 判据：choice 为 {"{选项key: 中文说明}"}，noul 为 {"{true/false: 说明}"}，score 为字符串数组（每项为「分数 = 描述」）。</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-mono font-medium text-foreground">guidance</dt>
+                    <dd className="mt-0.5 leading-relaxed">全局指导规则：说明多症状/多科室如何仲裁、字段间的联动约束（如红旗征象→急诊），是生成器与标注的裁决依据。</dd>
+                  </div>
+                  <div>
+                    <dt className="font-mono font-medium text-foreground">variety</dt>
+                    <dd className="mt-0.5 leading-relaxed">多样性清单（字符串数组）：列举生成数据需覆盖的维度（科室、人群、渠道、红旗征象等），保证训练数据均衡、避免过拟合。</dd>
+                  </div>
+                </dl>
+              </details>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -356,11 +408,12 @@ export default function ScenariosPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
       <Label className="text-xs text-muted-foreground">{label}</Label>
       {children}
+      {hint && <p className="text-[11px] leading-relaxed text-muted-foreground/80">{hint}</p>}
     </div>
   );
 }

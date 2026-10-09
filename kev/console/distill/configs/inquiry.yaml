@@ -8,7 +8,7 @@
 #  这个配置只产出生成式 SFT 样本。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，不经过本流水线 ——
 #  标签不来自 LLM。
 #
-#  用法: easydistill --config docs/medical/distill/configs/inquiry.yaml
+#  用法: easydistill --config kev/console/distill/configs/inquiry.yaml
 job_type: advanced_instruct_distill
 
 backend:

@@ -107,9 +107,6 @@ export function Playground() {
           <Link href={`/docs/${lang}`} className="text-muted-foreground hover:text-foreground">{lang === "zh" ? "kev文档" : "docs"}</Link>
         </nav>
         <div className="flex shrink-0 items-center gap-3">
-          <p className="hidden text-[13px] text-muted-foreground sm:block">
-            {model === null ? t("kev.connecting") : "error" in model ? t("kev.backendUnavailable", { error: model.error }) : <><span className="font-mono">{model.base}</span> · <span className="font-mono">{model.run}</span></>}
-          </p>
           <LangToggle />
           <ApiKeyPicker />
         </div>
@@ -248,6 +245,11 @@ export function Playground() {
               </Button>
             ))}
           </div>
+          {/* kev 状态/调用问题统一在底部展示：后端不可用时红字，正常时灰字提示模型 */}
+          {model === null && <p className="text-[13px] text-muted-foreground">{t("kev.connecting")}</p>}
+          {model !== null && ("error" in model
+            ? <p className="text-[13px] text-destructive">{t("kev.backendUnavailable", { error: model.error })}</p>
+            : <p className="text-[13px] text-muted-foreground"><span className="font-mono">{model.base}</span> · <span className="font-mono">{model.run}</span></p>)}
           {error && <pre className="whitespace-pre-wrap text-[13px] text-destructive">{error}</pre>}
         </div>
       </div>

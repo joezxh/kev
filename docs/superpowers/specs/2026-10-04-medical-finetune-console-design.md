@@ -40,11 +40,11 @@
 | 阶段 | 作业 kind | 底层命令 | 产物 |
 | --- | --- | --- | --- |
 | **1 数据蒸馏与合成** | `plan_size` | `skills/kev-finetune/scripts/plan_size.py` | — |
-| | `generate` | `docs/medical/generators/gen_<scenario>.py` | `dataset:<sc>` |
+| | `generate` | `kev/console/generators/gen_<scenario>.py` | `dataset:<sc>` |
 | | `distill` | `skills/kev-finetune/scripts/generate_data.py` | `dataset:<sc>/<cat>` |
-| | `goldset` | `docs/medical/generators/make_goldset.py` | `dataset:<sc>.gold` |
+| | `goldset` | `kev/console/generators/make_goldset.py` | `dataset:<sc>.gold` |
 | | `split` | `skills/kev-finetune/scripts/split_data.py` | `dataset:<sc>/{train,calibration,development}` |
-| | `precheck` | `docs/medical/console/precheck.py`（新增） | — |
+| | `precheck` | `kev/console/precheck.py`（新增） | — |
 | **2 模型微调训练** | `train` | `python -m kev.train` | `run:<name>` |
 | **3 效果评测评估** | `benchmark` | `python -m kev.benchmark` | `eval:<name>` |
 | | `baseline` | `python -m kev.benchmark --run <baseline>` | `eval:<name>-baseline` |
@@ -86,7 +86,7 @@
 
 ### 3.2.1 `run_matrix.steps()` 的复用边界（实测核对后的修正）
 
-初稿打算直接用 `docs/medical/generators/run_matrix.py::steps()` 展开作业 DAG。**实测后发现它只对纯本地前三步有效**：
+初稿打算直接用 `kev/console/generators/run_matrix.py::steps()` 展开作业 DAG。**实测后发现它只对纯本地前三步有效**：
 
 `steps(scenario, sizes, data, version, python, secret)`（`run_matrix.py:51-79`）返回的 `(name, argv, env)` 里：
 
@@ -310,7 +310,7 @@ class StageSpec:
         """纯函数，供 UI 实时显示 argv。不 spawn、不写库。"""
 ```
 
-**处理器只组装 argv，不含业务逻辑。** 阈值表、标签规则、指标算法全部仍在 `docs/medical/generators/` 与 `kev/` 里。控制台是编排者，不是规则引擎的第二个实现 —— 这是 `tests/test_conventions.py` 单一归属规则的核心诉求。
+**处理器只组装 argv，不含业务逻辑。** 阈值表、标签规则、指标算法全部仍在 `kev/console/generators/` 与 `kev/` 里。控制台是编排者，不是规则引擎的第二个实现 —— 这是 `tests/test_conventions.py` 单一归属规则的核心诉求。
 
 ### 6.3 训练方式三选一（`train` 的参数映射）
 
@@ -331,12 +331,12 @@ class StageSpec:
 
 **默认值直接取自 runbook 的建议**（方式 A1 起步，只在数据量大且证明 LoRA 触顶时升级到 B）。
 
-### 6.4 新增脚本 `docs/medical/console/precheck.py`
+### 6.4 新增脚本 `kev/console/precheck.py`
 
 runbook 步骤 5 是内联 `python -c` 片段，控制台需要可复用的脚本。它**只 import，不重写**：
 
 ```python
-# docs/medical/console/precheck.py
+# kev/console/precheck.py
 """Token 超限预检（runbook-train_cn.md 步骤 5）。
 
 以 tokenizer 实测为准，不以字符数估算：split_data.STATE_CHARS_WARN=1400 是英文口径，

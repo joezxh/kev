@@ -4,10 +4,10 @@
 
 ```bash
 # 生成五个场景各 500 条种子（Tier A 建议规模）
-python3 docs/medical/distill/make_seeds.py --all --n 500 --out-dir data/seeds
+python3 kev/console/distill/make_seeds.py --all --n 500 --out-dir data/seeds
 
 # 单场景
-python3 docs/medical/distill/make_seeds.py --scenario inquiry --n 2000 --out-dir data/seeds
+python3 kev/console/distill/make_seeds.py --scenario inquiry --n 2000 --out-dir data/seeds
 ```
 
 每个场景产出两个文件：

@@ -24,13 +24,13 @@
 
 ```bash
 # 单场景生成（787 条是 4 问题的规划规模，见 ../data-format.md）
-python3 docs/medical/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
+python3 kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
 
 # 校验（0 problems 才继续）
 python3 skills/kev-finetune/scripts/split_data.py data/cv.jsonl
 
 # 双尺寸全链路（生成 → 划分 → validate×2 → train×2 → compare → 双端点部署）
-python3 docs/medical/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --dry-run
+python3 kev/console/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --dry-run
 ```
 
 ## 三条设计约定

@@ -346,10 +346,10 @@ medical/generators/
 
 ```bash
 # 先打印完整命令序列 —— 花钱之前先审阅
-python3 docs/medical/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --dry-run
+python3 kev/console/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --dry-run
 
 # 执行（fail-fast；用 --start-from <step> 续跑）
-python3 docs/medical/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --secret kev-serve-key
+python3 kev/console/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --secret kev-serve-key
 ```
 
 步骤顺序：`plan_size → 生成 → 划分 → validate ×2 → train(0.8B) → train(4B) → compare → 部署两个端点`。
@@ -366,10 +366,10 @@ modal run $S/kev_modal.py::evaluate --data data/cv --name base-4b --run jaredpal
 python3 $S/plan_size.py docs/medical/specs/critical-value.json --baseline-acc 0.75
 
 # 2. 只生成一次
-python3 docs/medical/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
+python3 kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
 
 # 3. 抽金标池 → 人工审校 → 带 --holdout 划分
-python3 docs/medical/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl
+python3 kev/console/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl
 python3 $S/split_data.py data/cv.jsonl --out data/cv --holdout data/cv.gold.jsonl
 
 # 4. 中文 token 预算的 CPU 预检 —— 两个尺寸各一次
@@ -605,14 +605,14 @@ KEV_APP_NAME=kev-cv-4b KEV_SERVE_SECRET=kev-serve-key KEV_SERVE_RUN=cv-4b-v1 mod
 | `docs/medical/specs/nursing-quality.json` | 5,408 B | 护理质控 spec |
 | `docs/medical/specs/triage.json` | 5,085 B | 导诊分诊 spec |
 | `docs/medical/specs/icd-coding.json` | 5,842 B | 病历编码 spec（仅 4B） |
-| `docs/medical/generators/README.md` | 5,276 B | 生成器总览与如何新增场景 |
-| `docs/medical/generators/common.py` | 9,089 B | 共用底座，尺寸无关 |
-| `docs/medical/generators/gen_critical_value.py` | 18,152 B | 危急值生成器 |
-| `docs/medical/generators/gen_medication_review.py` | 11,507 B | 用药审核生成器 |
-| `docs/medical/generators/gen_nursing_quality.py` | 9,895 B | 护理质控生成器 |
-| `docs/medical/generators/gen_triage.py` | 9,364 B | 导诊生成器 |
-| `docs/medical/generators/make_goldset.py` | 7,619 B | 金标抽样与分歧审计 |
-| `docs/medical/generators/run_matrix.py` | 7,461 B | 双尺寸编排器 |
+| `kev/console/generators/README.md` | 5,276 B | 生成器总览与如何新增场景 |
+| `kev/console/generators/common.py` | 9,089 B | 共用底座，尺寸无关 |
+| `kev/console/generators/gen_critical_value.py` | 18,152 B | 危急值生成器 |
+| `kev/console/generators/gen_medication_review.py` | 11,507 B | 用药审核生成器 |
+| `kev/console/generators/gen_nursing_quality.py` | 9,895 B | 护理质控生成器 |
+| `kev/console/generators/gen_triage.py` | 9,364 B | 导诊生成器 |
+| `kev/console/generators/make_goldset.py` | 7,619 B | 金标抽样与分歧审计 |
+| `kev/console/generators/run_matrix.py` | 7,461 B | 双尺寸编排器 |
 | `tests/test_medical_generators.py` | 16 项测试 | 生成器、spec 与编排器测试 |
 | `.github/workflows/ci.yml` | 一行 | 已加入 CI unit job |
 

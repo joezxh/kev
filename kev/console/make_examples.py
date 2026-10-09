@@ -6,7 +6,7 @@
 合法数据（generate/distill 原始池、goldset、人工标注）按**第一题标签**分层轮询抽样，
 保证范例覆盖各标签形态 —— 与 batch_targets 的配额均衡同思路，但不依赖 spec。
 
-Run: python docs/medical/console/make_examples.py --data data/critical-value.jsonl --n 8 --out data/critical-value/examples.jsonl
+Run: python kev/console/make_examples.py --data data/critical-value.jsonl --n 8 --out data/critical-value/examples.jsonl
 """
 import argparse
 import json

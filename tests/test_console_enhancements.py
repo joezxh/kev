@@ -85,7 +85,7 @@ def test_g6_reads_the_public_comparison_not_the_workload_one():
 def test_make_examples_samples_balanced_by_first_question_label():
     from importlib import util
     spec = util.spec_from_file_location(
-        "make_examples", "docs/medical/console/make_examples.py")
+        "make_examples", "kev/console/make_examples.py")
     module = util.module_from_spec(spec)
     spec.loader.exec_module(module)
 

@@ -369,10 +369,10 @@ mechanics.
 
 ```bash
 # Print the full command sequence first — review before spending anything
-python3 docs/medical/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --dry-run
+python3 kev/console/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --dry-run
 
 # Execute (fail-fast; resume with --start-from <step>)
-python3 docs/medical/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --secret kev-serve-key
+python3 kev/console/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --secret kev-serve-key
 ```
 
 Steps, in order: `plan_size → generate → split → validate ×2 → train(0.8B) → train(4B) → compare → deploy both`.
@@ -389,10 +389,10 @@ modal run $S/kev_modal.py::evaluate --data data/cv --name base-4b --run jaredpal
 python3 $S/plan_size.py docs/medical/specs/critical-value.json --baseline-acc 0.75
 
 # 2. generate once
-python3 docs/medical/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
+python3 kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
 
 # 3. draw the gold pool, have it adjudicated, then split with --holdout
-python3 docs/medical/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl
+python3 kev/console/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl
 python3 $S/split_data.py data/cv.jsonl --out data/cv --holdout data/cv.gold.jsonl
 
 # 4. CPU pre-flight for the Chinese token budget — both sizes
@@ -644,14 +644,14 @@ repository.
 | `docs/medical/specs/nursing-quality.json` | 5,408 B | Nursing quality spec |
 | `docs/medical/specs/triage.json` | 5,085 B | Triage routing spec |
 | `docs/medical/specs/icd-coding.json` | 5,842 B | ICD coding spec (4B only) |
-| `docs/medical/generators/README.md` | 5,276 B | Generator overview and how to add a scenario |
-| `docs/medical/generators/common.py` | 9,089 B | Shared base, size-independent |
-| `docs/medical/generators/gen_critical_value.py` | 18,152 B | Critical-value generator |
-| `docs/medical/generators/gen_medication_review.py` | 11,507 B | Medication review generator |
-| `docs/medical/generators/gen_nursing_quality.py` | 9,895 B | Nursing quality generator |
-| `docs/medical/generators/gen_triage.py` | 9,364 B | Triage generator |
-| `docs/medical/generators/make_goldset.py` | 7,619 B | Gold sampling and disagreement audit |
-| `docs/medical/generators/run_matrix.py` | 7,461 B | Dual-size orchestrator |
+| `kev/console/generators/README.md` | 5,276 B | Generator overview and how to add a scenario |
+| `kev/console/generators/common.py` | 9,089 B | Shared base, size-independent |
+| `kev/console/generators/gen_critical_value.py` | 18,152 B | Critical-value generator |
+| `kev/console/generators/gen_medication_review.py` | 11,507 B | Medication review generator |
+| `kev/console/generators/gen_nursing_quality.py` | 9,895 B | Nursing quality generator |
+| `kev/console/generators/gen_triage.py` | 9,364 B | Triage generator |
+| `kev/console/generators/make_goldset.py` | 7,619 B | Gold sampling and disagreement audit |
+| `kev/console/generators/run_matrix.py` | 7,461 B | Dual-size orchestrator |
 | `tests/test_medical_generators.py` | 16 tests | Generator, spec and orchestrator tests |
 | `.github/workflows/ci.yml` | one line | Added to the CI unit job |
 

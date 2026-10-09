@@ -10,7 +10,7 @@
 逐条命令、预期输出、判读要点、失败处置。方案与设计见[双语方案文档](../sft-distill_CN.md)。
 
 ```bash
-D=docs/medical/distill
+D=kev/console/distill
 ```
 
 ---

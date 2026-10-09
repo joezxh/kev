@@ -5,7 +5,7 @@
 探针的 state 字段名与 docs/medical/data-format.md 的 state_example 对齐 —— 字段名对模型可见，
 改字段名等于换了一个任务。
 
-Run: python docs/medical/console/smoke.py --base-url http://127.0.0.1:8008 --out runs/x-smoke.json
+Run: python kev/console/smoke.py --base-url http://127.0.0.1:8008 --out runs/x-smoke.json
 """
 import argparse
 import json
@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 

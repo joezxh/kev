@@ -1,7 +1,7 @@
 """双尺寸编排驱动器：一个场景、一份数据、两个模型。
 
-    python3 docs/medical/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --dry-run
-    python3 docs/medical/generators/run_matrix.py --scenario critical-value --sizes 8b,4b
+    python3 kev/console/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --dry-run
+    python3 kev/console/generators/run_matrix.py --scenario critical-value --sizes 8b,4b
 
 为什么可以一份数据喂两个模型：skills/kev-finetune/scripts/split_data.py 按 **state 哈希**（大小写与空白归一
 后的 sha256）分组划分，与模型无关，所以同一份 {train,calibration,development}.jsonl 可以直接喂给
@@ -53,7 +53,7 @@ def steps(scenario, sizes, data, version, python, secret=""):
     spec = SPECS / f"{scenario}.json"
     out = [
         ("plan_size", [python, str(SKILL_SCRIPTS / "plan_size.py"), str(spec), "--baseline-acc", "0.75"], None),
-        ("generate", [python, str(ROOT / "docs/medical/generators" / f"gen_{scenario.replace('-', '_')}.py"),
+        ("generate", [python, str(Path(__file__).resolve().parent / f"gen_{scenario.replace('-', '_')}.py"),
                       "--n", "787", "--out", f"{data}.jsonl", "--seed", "0"], None),
         ("split", [python, str(SKILL_SCRIPTS / "split_data.py"), f"{data}.jsonl", "--out", data], None),
     ]

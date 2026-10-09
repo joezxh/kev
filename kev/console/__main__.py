@@ -6,6 +6,10 @@ WSL2 的 localhostForwarding 访问这个端口.
 编排服务跑在 WSL2 内（与 torch 同环境）—— 这样拉起 kev.train 就是普通本地子进程，
 不需要在 Windows 上 spawn('wsl.exe', ...) 去处理路径转义、shell 引号与 stdio 转发。
 
+端口：默认 8790，**不能是 8008**。8008 是推理端点（kev.serve）的端口，而控制台已经
+被挂在那个进程的 /console/api 下；独立跑在 8008 上会让 8008 只剩 /console/api/*，
+/v1/systemone 全部 404。见 _refuse_serve_port()。
+
 子命令：
   serve    默认；启动 FastAPI（uvicorn）。后端由 KEV_CONSOLE_DB_BACKEND 决定。
   initdb   按当前后端执行 deploy/console/schema.<backend>.sql 建表 + 初始数据；
@@ -23,8 +27,25 @@ from sqlalchemy import text
 from . import paths
 from .app import create_app
 from .db import backend_url
+from .stages.deploy import SERVE_PORT
 
 DEFAULT_PORT = 8790
+
+
+def _refuse_serve_port(port: int) -> None:
+    """8008 归 kev.serve 所有：绑上去以后那个端口只剩 /console/api/*，/v1/* 全 404，
+    而且控制台的 kev 代理（KEV_SERVE_URL 默认 http://127.0.0.1:8008）会代理回它自己。
+    独立跑控制台请用 8790（或任意非 8008 端口）；真要拆成两个进程，设
+    KEV_CONSOLE_ALLOW_SERVE_PORT=1 并把 KEV_SERVE_URL 指向真正的推理端点。"""
+    if port != SERVE_PORT or os.environ.get("KEV_CONSOLE_ALLOW_SERVE_PORT") == "1":
+        return
+    raise SystemExit(
+        f"拒绝把编排服务绑到 {port}：那是推理端点（kev.serve）的端口，绑上去 8008 上就只剩 /console/api/*，"
+        f"/v1/systemone 会全部 404。控制台已经由 kev.serve 挂在同一进程的 /console/api 下，"
+        f"独立跑它用默认的 {DEFAULT_PORT}：\n"
+        f"  KEV_CONSOLE_PORT={DEFAULT_PORT} python -m kev.console\n"
+        f"（确实要拆成两个进程：设 KEV_CONSOLE_ALLOW_SERVE_PORT=1，并把 KEV_SERVE_URL 指向真正的推理端点，"
+        f"否则 /console/api/kev/* 会代理回本进程。）")
 
 
 def _initdb() -> None:
@@ -63,8 +84,9 @@ def main() -> None:
         return
 
     paths.JOB_LOGS.mkdir(parents=True, exist_ok=True)
-    uvicorn.run(create_app(), host="0.0.0.0",
-                port=int(os.environ.get("KEV_CONSOLE_PORT", DEFAULT_PORT)), log_level="info")
+    port = int(os.environ.get("KEV_CONSOLE_PORT", DEFAULT_PORT))
+    _refuse_serve_port(port)
+    uvicorn.run(create_app(), host="0.0.0.0", port=port, log_level="info")
 
 
 ROOT = Path(__file__).resolve().parents[2]

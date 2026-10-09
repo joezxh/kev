@@ -1,7 +1,7 @@
 """三个阶段处理器的 argv 组装（Task 5-7）。
 
 三条主线：
-1. **golden argv**：每个 kind 的 argv 必须与 docs/medical/generators/run_matrix.py::steps()
+1. **golden argv**：每个 kind 的 argv 必须与 kev/console/generators/run_matrix.py::steps()
    的前三步（plan_size / generate / split，那是纯本地的）逐字一致，避免第二套参数语义。
 2. **契约**：产物 id 必须能被 artifacts.resolve 解析、关系名必须能在 artifacts.RELATION
    里查到，否则产物注册会抛。

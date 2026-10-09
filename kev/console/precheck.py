@@ -11,13 +11,13 @@
   kev.suite.write_json
 退出码非 0 表示有超限记录，编排层据此判 G1 失败。
 
-Run: python docs/medical/console/precheck.py --data data/cv --init-from jaredpalmer/kev-0.8b
+Run: python kev/console/precheck.py --data data/cv --init-from jaredpalmer/kev-0.8b
 """
 import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from kev.data import load_records, materialize              # noqa: E402

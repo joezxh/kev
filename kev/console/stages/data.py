@@ -1,6 +1,6 @@
 """数据阶段：plan_size / generate / distill / goldset / split / precheck。
 
-argv 与 `docs/medical/generators/run_matrix.py::steps()` 的**前三步**逐字一致 ——
+argv 与 `kev/console/generators/run_matrix.py::steps()` 的**前三步**逐字一致 ——
 那三步是纯本地的，可直接复用；后四步（validate/train/compare/deploy）它发的是 Modal
 命令，而本设计走本地路径（spec §3.2.1），所以训练/评测/部署各自在 train.py /
 eval.py / deploy.py 里自建 argv。
@@ -22,7 +22,7 @@ from .. import artifacts, paths
 from ..paths import SKILL_SCRIPTS, SPECS
 from .base import BuiltCommand, Conflict, Invalid, JobRequest, StageSpec
 
-paths.ensure_medical_on_path()
+paths.ensure_generators_on_path()
 from run_matrix import FOUR_B_ONLY, SCENARIOS as _SCENARIOS, SIZES, check_name  # noqa: E402
 
 from .. import db as _db

@@ -1,4 +1,4 @@
-"""Shared base for the medical record generators (docs/medical/generators).
+"""Shared base for the medical record generators (kev/console/generators).
 
 Every generator turns a **rule**, not a language model, into a label: sample structured fields, apply the
 authoritative threshold table or rule engine, emit a Kev record whose labels cannot drift. That is what makes the

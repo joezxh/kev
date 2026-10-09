@@ -9,9 +9,14 @@ comparison). KEV_PREFIX_CACHE / KEV_PREFIX_MIN_TOKENS / KEV_PREFIX_MAX_TOKENS si
 date preprocessing (api.with_date_facts). A state over kev.model.SERVE_MAX_STATE tokens is refused with a 422 (kev.model.admit);
 KEV_TRUNCATE_STATES=1 reads its first SERVE_MAX_STATE tokens instead, and then every response says whether it did. Backend
 and precision follow LoadOptions (KEV_BACKEND, KEV_DTYPE, ...): on Apple Silicon the hybrid Qwen3.5 checkpoints run on MLX
-by default, elsewhere on torch in bf16.
+by default, elsewhere on torch in bf16. --temperature serves at a temperature other than the checkpoint's own (the
+console's deploy job passes the one it fitted; KEV_TEMPERATURE is the library channel, LoadOptions.from_env).
+
+The port belongs to this server: /v1/* is the inference surface, and the console is mounted into this same app at
+/console/api. A process that answers on the port before us is not us, so startup refuses rather than losing every /v1
+route to a squatter (a standalone `python -m kev.console` with KEV_CONSOLE_PORT=8008 serves /console/api/* only).
 """
-import argparse, asyncio, atexit, hmac, os, queue, random, sys, threading, time, traceback, uuid
+import argparse, asyncio, atexit, hmac, os, queue, random, socket, sys, threading, time, traceback, uuid
 from concurrent.futures import Future
 import torch
 from dataclasses import dataclass, field, replace
@@ -228,6 +233,25 @@ def prepare(req):
 app = FastAPI(title="kev")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"], expose_headers=["x-typesafe-request-id", "server-timing"])
 
+# ---------------------------------------------------------------------------
+# Console orchestration surface (kev.console) mounted on the SAME 8008 port, so
+# the deployed playground reaches it as http://kev-server:8008/console/api — no
+# separate container, no host 8790. It shares this app's router and OpenAPI doc:
+# kev.console.app.console_router is the single source of truth, also used by the
+# standalone `python -m kev.console` (8790). Its kev proxy defaults to
+# 127.0.0.1:8008, which inside this container is kev.serve itself. Guarded so a
+# console failure can never take down the inference server.
+# ---------------------------------------------------------------------------
+try:
+    from .console import paths as _console_paths
+    _console_paths.ensure_generators_on_path()  # make kev/console/generators (run_matrix) importable
+    from .console.app import console_router as _console_router, wire_console_state as _wire_console_state
+    app.include_router(_console_router)          # same router the standalone console uses
+    _wire_console_state(app)                    # store + executor live on this app's state
+    print("kev-console orchestration mounted at /console/api")
+except Exception as _console_err:  # noqa: BLE001 - keep inference alive at all costs
+    print(f"kev-console orchestration NOT mounted (inference still up): {_console_err!r}")
+
 
 @app.middleware("http")
 async def typesafe(request, call_next):
@@ -312,17 +336,37 @@ def models():
     return {"models": [{"name": name, **card} for name in MODEL_NAMES]}
 
 
+def _already_serving(host, port):
+    """Whether something already answers on this port. A connect probe, not a bind: SO_REUSEADDR lets a second bind
+    succeed on Windows, so binding would not be the test. Probed on loopback, where the squatter would be."""
+    probe = "127.0.0.1" if host in ("", "0.0.0.0", "::") else host
+    try:
+        with socket.create_connection((probe, port), timeout=0.5): return True
+    except OSError:
+        return False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", default="runs/kev")
     ap.add_argument("--fallback", default="runs/smoke")
     ap.add_argument("--host", default="127.0.0.1", help="interface to bind; 0.0.0.0 to serve beyond this machine (a container, a VM behind a proxy)")
     ap.add_argument("--port", type=int, default=8008)
+    ap.add_argument("--temperature", type=float, default=None, help="serve at this temperature instead of the one the checkpoint carries (what the console's deploy job passes)")
     a = ap.parse_args()
+    if a.temperature is not None and a.temperature <= 0: ap.error("--temperature must be > 0")
+    # Before the checkpoint resolves and loads (minutes on a big one): a port already answered by something else is
+    # the reason every /v1 route is missing, and uvicorn's own "address already in use" says nothing about what.
+    if _already_serving(a.host, a.port):
+        raise SystemExit(f"{a.host}:{a.port} already answers, refusing to start: /v1/* is this server's surface and whatever "
+                         f"holds the port is not it — most often `python -m kev.console` with KEV_CONSOLE_PORT={a.port}, "
+                         f"which serves /console/api/* only and never /v1/systemone. Put that KEV_CONSOLE_PORT back on 8790 "
+                         f"(or stop it outright: this process already mounts the console at /console/api), then start kev.serve.")
     run = a.run if is_hub_id(a.run) or os.path.exists(f"{a.run}/head.pt") else a.fallback
     if run != a.run: print(f"{a.run} not found, falling back to {run}")
     dev = default_device()
     opts = LoadOptions.from_env()
+    if a.temperature is not None: opts = replace(opts, temperature=a.temperature)   # the fitted workload temperature, overriding the checkpoint's own
     if dev == "mps" and opts.attn is None: opts = replace(opts, attn="sdpa")   # serving default on Apple GPUs (parity measured)
     if dev != "cpu" and opts.dtype is None: opts = replace(opts, dtype=torch.bfloat16)   # serving default: 2-4.5x faster than fp32 on an L4, same answers (LoadOptions.dtype); KEV_DTYPE=fp32 for the exact path
     if dev == "cuda" and opts.cuda_graphs is None: opts = replace(opts, cuda_graphs=True)   # serving default: a pass is ~2,000 kernel launches, so replaying graphs cuts warm latency several-fold (kev.cuda_graphs); KEV_CUDA_GRAPHS=0 to decline

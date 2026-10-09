@@ -5,10 +5,10 @@
 
 用法::
 
-    python3 docs/medical/distill/make_seeds.py --scenario inquiry --n 500 --out-dir data/seeds
-    python3 docs/medical/distill/make_seeds.py --all --n 500 --out-dir data/seeds
+    python3 kev/console/distill/make_seeds.py --scenario inquiry --n 500 --out-dir data/seeds
+    python3 kev/console/distill/make_seeds.py --all --n 500 --out-dir data/seeds
 
-标准库 only，与 docs/medical/generators/ 的其余脚本一致。
+标准库 only，与 kev/console/generators/ 的其余脚本一致。
 """
 import argparse
 import json
@@ -191,7 +191,7 @@ def main(argv=None):
         print(f"{scenario}: {len(seed_rows)} seeds -> {out / f'{scenario}.seed.jsonl'}")
         print(f"{scenario}: {len(state_rows)} states -> {out / f'{scenario}.state.jsonl'}"
               f"  (Kev 轨: {'有' if has_kev else '无，纯生成式'})")
-    print(f"\nnext: easydistill --config docs/medical/distill/configs/{scenarios[0]}.yaml"
+    print(f"\nnext: easydistill --config kev/console/distill/configs/{scenarios[0]}.yaml"
           f"   (把 config 里的 dataset 路径指向 {out})")
     return 0
 

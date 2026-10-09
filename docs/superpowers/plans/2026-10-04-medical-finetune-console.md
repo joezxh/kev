@@ -57,7 +57,7 @@
 
 **`run_matrix` 复用边界（实测核对）**
 
-`docs/medical/generators/run_matrix.py::steps()` 的 `plan_size` / `generate` / `split` 三步是纯本地 argv，可原样复用；`validate_*` / `train_*` / `compare` / `deploy_*` 发的是 **Modal** 命令，本地路径必须自建。
+`kev/console/generators/run_matrix.py::steps()` 的 `plan_size` / `generate` / `split` 三步是纯本地 argv，可原样复用；`validate_*` / `train_*` / `compare` / `deploy_*` 发的是 **Modal** 命令，本地路径必须自建。
 
 **真正要 import 的是它的常量与校验器**（运行名规范的唯一归属）：
 
@@ -125,7 +125,7 @@ data/console/kev-console.db                                              ← SQL
 | --- | --- |
 | `kev/console/__init__.py` | 包标记 |
 | `kev/console/__main__.py` | `python -m kev.console` → uvicorn 起在 `127.0.0.1:8790` |
-| `kev/console/paths.py` | 仓库目录布局的唯一归属；把 `docs/medical/generators` 加进 `sys.path` |
+| `kev/console/paths.py` | 仓库目录布局的唯一归属；把 `kev/console/generators` 加进 `sys.path` |
 | `kev/console/db.py` | SQLite schema、作业状态机、产物、血缘、事件、崩溃恢复 |
 | `kev/console/artifacts.py` | 产物 id ↔ 路径的唯一真相源；产物注册与血缘写入（`on_finished` 回调触发） |
 | `kev/console/events.py` | 日志行 → 结构化事件（`STEP_RE` 与它同源） |
@@ -138,7 +138,7 @@ data/console/kev-console.db                                              ← SQL
 | `kev/console/stages/eval.py` | `baseline` `benchmark` `compare` `calibrate` |
 | `kev/console/stages/deploy.py` | `image` `deploy` `smoke` |
 | `kev/console/app.py` | FastAPI 路由 + SSE |
-| `docs/medical/console/precheck.py` | token 超限预检（只 import `kev.*`，不重写逻辑） |
+| `kev/console/precheck.py` | token 超限预检（只 import `kev.*`，不重写逻辑） |
 | `deploy/kev-serve/Dockerfile` | 服务镜像模板 |
 
 ### 前端（新增，全部在 `playground/`）
@@ -189,7 +189,7 @@ data/console/kev-console.db                                              ← SQL
 **Interfaces:**
 - Consumes: `kev.suite.read_json` / `write_json`（仅测试夹具用）
 - Produces:
-  - `paths.ROOT` / `paths.SKILL_SCRIPTS` / `paths.SPECS` / `paths.GENERATORS` / `paths.CONSOLE_SCRIPTS` / `paths.DATA` / `paths.RUNS` / `paths.JOB_LOGS` / `paths.DB_PATH` / `paths.ensure_medical_on_path()`
+  - `paths.ROOT` / `paths.SKILL_SCRIPTS` / `paths.SPECS` / `paths.GENERATORS` / `paths.CONSOLE_SCRIPTS` / `paths.DATA` / `paths.RUNS` / `paths.JOB_LOGS` / `paths.DB_PATH` / `paths.ensure_generators_on_path()`
   - `db.SCHEMA_VERSION` / `db.TERMINAL` / `db.Store(path: Path)`
   - `Store.create_job(**kw) -> str`（job id）
   - `Store.get_job(job_id) -> dict | None`
@@ -492,19 +492,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SKILL_SCRIPTS = ROOT / "skills/kev-finetune/scripts"
 SPECS = ROOT / "docs/medical/specs"
-GENERATORS = ROOT / "docs/medical/generators"
-CONSOLE_SCRIPTS = ROOT / "docs/medical/console"
+GENERATORS = ROOT / "kev/console/generators"
+CONSOLE_SCRIPTS = ROOT / "kev/console"
 DATA = ROOT / "data"
 RUNS = ROOT / "runs"
 JOB_LOGS = DATA / "console/jobs"
 DB_PATH = DATA / "console/kev-console.db"
 
 
-def ensure_medical_on_path() -> None:
-    """把 docs/medical/generators 与 skills/kev-finetune/scripts 加进 sys.path。
+def ensure_generators_on_path() -> None:
+    """把 kev/console/generators 与 skills/kev-finetune/scripts 加进 sys.path。
 
     运行名规范（NAME_RE / check_name / SIZES / SCENARIOS / FOUR_B_ONLY）的唯一归属是
-    docs/medical/generators/run_matrix.py，医疗测试（tests/test_medical_generators.py:21-22）
+    kev/console/generators/run_matrix.py，医疗测试（tests/test_medical_generators.py:21-22）
     用同样的 sys.path.insert 方式引用它。这里沿用该做法而不是复制常量。
     """
     for directory in (GENERATORS, SKILL_SCRIPTS):
@@ -1855,7 +1855,7 @@ git commit -m "feat(console): G1-G7 验收闸门（G4 走 compare 的配对 CI�
 - Create: `kev/console/stages/__init__.py`
 - Create: `kev/console/stages/base.py`
 - Create: `kev/console/stages/data.py`
-- Create: `docs/medical/console/precheck.py`
+- Create: `kev/console/precheck.py`
 - Test: `tests/test_console_stages_data.py`
 
 **Interfaces:**
@@ -1877,7 +1877,7 @@ git commit -m "feat(console): G1-G7 验收闸门（G4 走 compare 的配对 CI�
 # tests/test_console_stages_data.py
 """数据阶段的 6 种作业：argv 组装的 golden 快照 + 运行名校验。
 
-argv 必须与 docs/medical/generators/run_matrix.py::steps() 的前三步逐字一致
+argv 必须与 kev/console/generators/run_matrix.py::steps() 的前三步逐字一致
 （plan_size / generate / split 是纯本地步骤，可直接复用），否则就是第二套参数语义。
 
 Run: uv run python -m pytest tests/test_console_stages_data.py -q
@@ -2003,7 +2003,7 @@ Expected: FAIL —— `ModuleNotFoundError: No module named 'kev.console.stages'
 """阶段处理器的公共形状。
 
 处理器只组装 argv，不含业务逻辑：阈值表、标签规则、指标算法全部仍在
-docs/medical/generators/ 与 kev/ 里。控制台是编排者，不是规则引擎的第二个实现
+kev/console/generators/ 与 kev/ 里。控制台是编排者，不是规则引擎的第二个实现
 （这是 tests/test_conventions.py 单一归属规则的核心诉求）。
 """
 from __future__ import annotations
@@ -2064,7 +2064,7 @@ class StageSpec:
 # kev/console/stages/data.py
 """数据阶段：plan_size / generate / distill / goldset / split / precheck。
 
-argv 与 docs/medical/generators/run_matrix.py::steps() 的前三步逐字一致
+argv 与 kev/console/generators/run_matrix.py::steps() 的前三步逐字一致
 （那三步是纯本地的，可直接复用）；后四步 run_matrix 发的是 Modal 命令，
 本设计走本地路径，所以 train/eval/deploy 各自自建 argv（spec §3.2.1）。
 """
@@ -2078,7 +2078,7 @@ from .. import paths
 from ..paths import SKILL_SCRIPTS, SPECS
 from .base import BuiltCommand, Conflict, Invalid, JobRequest, StageSpec
 
-paths.ensure_medical_on_path()
+paths.ensure_generators_on_path()
 from run_matrix import FOUR_B_ONLY, SCENARIOS as _SCENARIOS, SIZES, check_name  # noqa: E402
 
 SCENARIOS = tuple(_SCENARIOS)
@@ -2271,7 +2271,7 @@ precheck = StageSpec("precheck", "data", "token 超限预检", _precheck)
 DATA_STAGES = (plan_size, generate, distill, goldset, split, precheck)
 ```
 
-- [x] **Step 5: 写 `docs/medical/console/precheck.py`**
+- [x] **Step 5: 写 `kev/console/precheck.py`**
 
 ```python
 #!/usr/bin/env python3
@@ -2287,7 +2287,7 @@ DATA_STAGES = (plan_size, generate, distill, goldset, split, precheck)
   kev.suite.write_json
 退出码非 0 表示有超限记录，编排层据此判 G1 失败。
 
-Run: python docs/medical/console/precheck.py --data data/cv --init-from jaredpalmer/kev-0.8b
+Run: python kev/console/precheck.py --data data/cv --init-from jaredpalmer/kev-0.8b
 """
 import argparse
 import sys
@@ -2362,7 +2362,7 @@ Expected: PASS —— 约 14 passed
 - [ ] **Step 8: 提交**
 
 ```bash
-git add kev/console/stages/__init__.py kev/console/stages/base.py kev/console/stages/data.py docs/medical/console/precheck.py tests/test_console_stages_data.py
+git add kev/console/stages/__init__.py kev/console/stages/base.py kev/console/stages/data.py kev/console/precheck.py tests/test_console_stages_data.py
 git commit -m "feat(console): 数据阶段 6 种作业 + token 预检脚本"
 ```
 
@@ -2526,7 +2526,7 @@ from pathlib import Path
 from .. import paths
 from .base import BuiltCommand, Conflict, Invalid, JobRequest, StageSpec
 
-paths.ensure_medical_on_path()
+paths.ensure_generators_on_path()
 from run_matrix import FOUR_B_ONLY, SIZES, check_name  # noqa: E402
 
 BASE = "Qwen/Qwen3.5-0.8B-Base"
@@ -2989,7 +2989,7 @@ smoke = StageSpec("smoke", "deploy", "冒烟测试", _smoke)
 DEPLOY_STAGES = (image, deploy, smoke)
 ```
 
-- [x] **Step 4: 写 `deploy/kev-serve/Dockerfile` 与 `docs/medical/console/smoke.py`**
+- [x] **Step 4: 写 `deploy/kev-serve/Dockerfile` 与 `kev/console/smoke.py`**
 
 ```dockerfile
 # deploy/kev-serve/Dockerfile
@@ -3034,7 +3034,7 @@ CMD ["sh", "-c", "python -m kev.serve --run runs/${KEV_SERVE_RUN} --port 8008 --
 探针的 state 字段名与 docs/medical/data-format.md 的 state_example 对齐 —— 字段名对模型可见，
 改字段名等于换了一个任务。
 
-Run: python docs/medical/console/smoke.py --base-url http://127.0.0.1:8008 --out runs/x-smoke.json
+Run: python kev/console/smoke.py --base-url http://127.0.0.1:8008 --out runs/x-smoke.json
 """
 import argparse
 import json
@@ -3044,8 +3044,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 import sys
-sys.path.insert(0, str(ROOT / "docs/medical/generators"))
-sys.path.insert(0, str(ROOT / "docs/medical/console"))
+sys.path.insert(0, str(ROOT / "kev/console/generators"))
+sys.path.insert(0, str(ROOT / "kev/console"))
 
 from kev.suite import write_json          # noqa: E402
 import deploy as dp                        # noqa: E402  (kev.console.stages.deploy)
@@ -3111,7 +3111,7 @@ Expected: PASS —— 7 passed
 - [ ] **Step 6: 提交**
 
 ```bash
-git add kev/console/stages/deploy.py deploy/kev-serve/Dockerfile docs/medical/console/smoke.py tests/test_console_stages_deploy.py
+git add kev/console/stages/deploy.py deploy/kev-serve/Dockerfile kev/console/smoke.py tests/test_console_stages_deploy.py
 git commit -m "feat(console): 镜像与部署阶段 3 种作业 + 5 场景冒烟探针"
 ```
 
@@ -4875,7 +4875,7 @@ def test_console_never_reads_reserved_environment_variables():
 
 def test_every_stage_kind_is_registered():
     """14 种作业全部有 StageSpec，且没有多余。"""
-    sys.path.insert(0, str(ROOT / "docs/medical/generators"))
+    sys.path.insert(0, str(ROOT / "kev/console/generators"))
     from kev.console.stages import REGISTRY
     assert set(REGISTRY) == {
         "plan_size", "generate", "distill", "goldset", "split", "precheck",
@@ -4934,7 +4934,7 @@ playground/.next/
 uv run python -m pytest tests/ -q
 ```
 
-Expected: 与改动前基线一致 —— 不得新增失败。特别关注 `tests/test_conventions.py`（扫描新增的 `kev/console/*.py`）与 `tests/test_medical_generators.py`（`docs/medical/generators` 未被改动，应仍通过）。
+Expected: 与改动前基线一致 —— 不得新增失败。特别关注 `tests/test_conventions.py`（扫描新增的 `kev/console/*.py`）与 `tests/test_medical_generators.py`（`kev/console/generators` 未被改动，应仍通过）。
 
 - [ ] **Step 5: 跑 spec §14.1 的九项人工验收**
 
@@ -4944,7 +4944,7 @@ Expected: 与改动前基线一致 —— 不得新增失败。特别关注 `tes
    ```bash
    uv run python -m kev.console      # 终端 1
    # 终端 2 或 UI：依次提交 plan_size → generate(n=787) → split → precheck
-   uv run python docs/medical/console/precheck.py --data data/cv \
+   uv run python kev/console/precheck.py --data data/cv \
      --init-from jaredpalmer/kev-0.8b --split train --out /tmp/pc.json
    ```
    期望：`generate at least 787 records`；`split` 产出 551/118/118；`over_limit 0`
@@ -5138,7 +5138,7 @@ FROZEN 列表里，改动合法；`tests/test_skill_scripts.py` 只断言 `recor
 
 ```powershell
 $env:HF_HUB_OFFLINE = 1; $env:TRANSFORMERS_OFFLINE = 1
-python docs/medical/console/precheck.py --data data/cv --split train `
+python kev/console/precheck.py --data data/cv --split train `
        --init-from Qwen/Qwen3.5-0.8B-Base --out data/console/precheck-cv-train.json
 python skills/kev-finetune/scripts/split_data.py data/cv.jsonl --out data/cv --seed 0
 ```

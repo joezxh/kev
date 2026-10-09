@@ -1,72 +1,26 @@
-# Git 和版本控制
-.git
-.gitignore
-.svn
-
-# IDE 配置
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# Python 缓存
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
+# Keep build contexts small and offline-friendly.
 .venv/
 venv/
-ENV/
-
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
-
-# 测试文件
-tests/
-.pytest_cache/
-.coverage
-htmlcov/
-*.cover
-
-# 模型数据和权重（避免重复下载）
 runs/
-checkpoints/
-data/
-datasets/
-
-# 文档（注意：仅排除仓库根目录的 docs/，不要写成 docs/ 否则会误伤 playground/src/app/docs 路由）
-*.md
-/docs/
-!README.md
-
-# Jupyter Notebook
-.ipynb_checkpoints/
-
-# 临时文件
-*.log
-tmp/
-temp/
-
-# Node 模块（前端无关）
+.git/
+.gitignore
+.qoder/
+.codebuddy/
 node_modules/
-
-# Frontend (playground) — built as its own image; exclude only local build artifacts
-playground/node_modules/
-playground/.next/
-playground/.env*.local
-
-# HuggingFace 缓存
-.huggingface/
-transformers/
-torch/
-
-# 其他
+**/node_modules/
+.next/
+dist/
+build/
 *.db
 *.sqlite
-.env.local
-.env.*
-!env.example
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+Dockerfile*
+docker-compose*.yml
+.up.ps1
+up.sh

@@ -166,23 +166,23 @@ behaviour. `id` is the only join key and the files are written in the same order
 
 ```bash
 # 1. seeds (zero tokens)
-python3 docs/medical/distill/make_seeds.py --all --n 500 --out-dir data/seeds
+python3 kev/console/distill/make_seeds.py --all --n 500 --out-dir data/seeds
 
 # 2. SFT track (the only step that spends tokens)
 $env:KEV_GEN_API_KEY = "..."; $env:KEV_GEN_BASE_URL = "https://<official base URL>/v1"
-easydistill --config docs/medical/distill/configs/inquiry.yaml
+easydistill --config kev/console/distill/configs/inquiry.yaml
 
 # 3. Kev track (zero tokens; labels never touch the LLM)
-python3 docs/medical/distill/seed_to_kev.py --scenario inquiry \
+python3 kev/console/distill/seed_to_kev.py --scenario inquiry \
   --seed-file data/seeds/inquiry.seed.jsonl --state-file data/seeds/inquiry.state.jsonl \
   --out data/inquiry.jsonl
 
 # 4. reconcile the teacher against the rules (reporting only)
-python3 docs/medical/distill/seed_to_kev.py --scenario inquiry --from-sft data/sft/inquiry/inquiry.sft.jsonl \
+python3 kev/console/distill/seed_to_kev.py --scenario inquiry --from-sft data/sft/inquiry/inquiry.sft.jsonl \
   --report data/inquiry.reconcile.json
 
 # 5. volume and budget gate
-python3 docs/medical/distill/check_volume.py --scenario inquiry --records data/inquiry.jsonl \
+python3 kev/console/distill/check_volume.py --scenario inquiry --records data/inquiry.jsonl \
   --from-sft data/sft/inquiry/inquiry.sft.jsonl --budget 8000000
 ```
 
@@ -488,17 +488,17 @@ change to an upstream generator** and needs separate authorization; this layer d
 | --- | --- |
 | `docs/sft-distill.md` | This document |
 | `docs/sft-distill_CN.md` | Complete Chinese translation, matched section by section |
-| `docs/medical/distill.md` / `_CN.md` | Command reference and troubleshooting |
-| `docs/medical/distill/README.md` | Layer overview, seed contract, adding a scenario |
-| `docs/medical/distill/make_seeds.py` | Seed generator; writes both files |
-| `docs/medical/distill/seed_to_kev.py` | Converter; `--from-sft` reconciliation |
-| `docs/medical/distill/check_volume.py` | Distribution and budget gate |
-| `docs/medical/distill/configs/*.yaml` | Five EasyDistill configs |
-| `docs/medical/distill/seeds/README.md` | Seed directory notes |
+| `kev/console/distill.md` / `_CN.md` | Command reference and troubleshooting |
+| `kev/console/distill/README.md` | Layer overview, seed contract, adding a scenario |
+| `kev/console/distill/make_seeds.py` | Seed generator; writes both files |
+| `kev/console/distill/seed_to_kev.py` | Converter; `--from-sft` reconciliation |
+| `kev/console/distill/check_volume.py` | Distribution and budget gate |
+| `kev/console/distill/configs/*.yaml` | Five EasyDistill configs |
+| `kev/console/distill/seeds/README.md` | Seed directory notes |
 | `docs/medical/specs/diagnosis.json` | New: diagnosis suggestion spec |
 | `docs/medical/specs/record-summary.json` | New: record summary spec |
-| `docs/medical/generators/gen_diagnosis.py` | New: diagnosis generator |
-| `docs/medical/generators/gen_record_summary.py` | New: record summary generator |
+| `kev/console/generators/gen_diagnosis.py` | New: diagnosis generator |
+| `kev/console/generators/gen_record_summary.py` | New: record summary generator |
 | `tests/test_medical_distill.py` | Seed, converter, invariance, volume and config tests |
 | `.gitignore` | Added `data/`, `medical-data/` |
 

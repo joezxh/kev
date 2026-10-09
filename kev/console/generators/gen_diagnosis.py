@@ -8,7 +8,7 @@
 
 用法::
 
-    python3 docs/medical/generators/gen_diagnosis.py --n 787 --out data/diag.jsonl --seed 0
+    python3 kev/console/generators/gen_diagnosis.py --n 787 --out data/diag.jsonl --seed 0
 """
 import random
 import sys

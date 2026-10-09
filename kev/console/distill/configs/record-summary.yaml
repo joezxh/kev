@@ -1,4 +1,4 @@
-# 医学知识问答 —— 生成式 SFT 轨
+# 病历摘要核对 —— 生成式 SFT 轨
 #
 #  teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
 #    $env:KEV_GEN_API_KEY = "..."
@@ -6,11 +6,8 @@
 #
 #  这个配置只产出生成式 SFT 样本。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，不经过本流水线。
 #
-#  用法: easydistill --config docs/medical/distill/configs/knowledge-qa.yaml
-
-#  注意：这是**唯一没有 Kev 轨**的场景。Kev 是 pointer-readout 模型，只在预声明选项集上输出
-#  概率、一个 token 都不生成，因此开放式医学问答在结构上无法成为 Kev 任务。
-#  若强行做成 Kev 任务，只能退化为 4 选 1 的知识判断题，失去问答轨的全部价值。
+#  用法: easydistill --config kev/console/distill/configs/record-summary.yaml
+#  （Kev 轨：复用 record-summary spec，标签由 gen_record_summary.derive() 派生）
 job_type: advanced_instruct_distill
 
 backend:
@@ -24,29 +21,29 @@ backend:
 
 dataset:
   instruction_key: instruction
-  input_file: data/seeds/knowledge-qa.seed.jsonl
-  output_dir: data/sft/knowledge-qa
+  input_file: data/seeds/record-summary.seed.jsonl
+  output_dir: data/sft/record-summary
 
 system_prompt: >-
-  你是一位医学知识助手。回答要准确、简洁，注明适用范围与时效性，并在涉及诊疗决策时提示以临床判断与最新指南为准。不得编造文献或指南出处。
+  你是一位病历质控助手。回答要按主诉、现病史要点、查体、诊断、用药、诊疗计划六要素核对摘要，指出缺失项与是否需要编码员复核。不补写病历中不存在的要素。
 
 pipeline:
   - stage: instruction_expansion
-    output: data/sft/knowledge-qa/expanded.jsonl
+    output: data/sft/record-summary/expanded.jsonl
     params:
       num_per_seed: 3
   - stage: generate
-    output: data/sft/knowledge-qa/generated.jsonl
+    output: data/sft/record-summary/generated.jsonl
   - stage: judge
-    output: data/sft/knowledge-qa/judged.jsonl
+    output: data/sft/record-summary/judged.jsonl
     params:
       dimensions: [correctness, helpfulness, informativeness, generalization]
       pass_score: 7
   - stage: filter
-    output: data/sft/knowledge-qa/filtered.jsonl
+    output: data/sft/record-summary/filtered.jsonl
     params:
       require_correctness: true
   - stage: build_sft
-    output: data/sft/knowledge-qa/knowledge-qa.sft.jsonl
+    output: data/sft/record-summary/record-summary.sft.jsonl
 
 resume: true                   # 每阶段落盘，中断后重跑不会重复消耗额度

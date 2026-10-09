@@ -8,7 +8,7 @@ reportable=true 且 severity=3；其余按流程/记录/沟通/设备缺陷分�
 
 用法::
 
-    python3 docs/medical/generators/gen_nursing_quality.py --n 787 --out data/nq.jsonl --seed 0
+    python3 kev/console/generators/gen_nursing_quality.py --n 787 --out data/nq.jsonl --seed 0
 """
 import random
 import sys

@@ -223,7 +223,7 @@ modal run $S/kev_modal.py::validate --data data/cv --init-from jaredpalmer/kev-0
 modal run $S/kev_modal.py::validate --data data/cv --init-from jaredpalmer/kev-4b
 
 # 2. 数据生成（程序化优先；LLM 蒸馏补语义多样性）——只做一次，两尺寸共用
-python3 docs/medical/generators/gen_critical_value.py --n 627 --out data/cv.jsonl --seed 0
+python3 kev/console/generators/gen_critical_value.py --n 627 --out data/cv.jsonl --seed 0
 # 或：python3 $S/generate_data.py docs/medical/specs/critical-value.json \
 #       --n 627 --out data/cv.jsonl --model gpt-4.1-mini --examples data/cv.gold.jsonl
 

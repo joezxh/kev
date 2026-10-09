@@ -42,7 +42,7 @@ python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/<name>.json -
 
 **程序化（阈值表零漂移，危急值等）**：
 ```bash
-python docs/medical/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
+python kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
 ```
 
 **LLM 蒸馏（6 大类任选其一，用 `--category`）**：
@@ -76,7 +76,7 @@ python skills/kev-finetune/scripts/generate_data.py --category triage --n 787 --
 ## 步骤 3 · 抽金标 + 人工审校
 
 ```bash
-python docs/medical/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
+python kev/console/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
 ```
 **判读**：金标 ≥150 条；临床/药学按 `guidance` 逐条核对，**只用于最后一次终评**。
 

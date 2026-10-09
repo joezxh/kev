@@ -136,13 +136,13 @@ To detect a +5% accuracy gain over a 75% baseline at 80% power (paired, 95% two-
 - **Purpose**: obtain 787 Kev records with zero-drift labels (System One request shape).
 - **Input**: scenario spec + rule tables (programmatic path); or an LLM endpoint (distillation path).
 - **Environment**:
-  - Programmatic generators: **pure standard library, no network, reproducible seeds** (`docs/medical/generators/`).
+  - Programmatic generators: **pure standard library, no network, reproducible seeds** (`kev/console/generators/`).
   - Distillation generative track (optional, needs a Bailian/OpenAI-compatible endpoint): `generate_data.py` needs an OpenAI-compatible endpoint (`KEV_GEN_API_KEY` / `KEV_GEN_BASE_URL`, can point to local Ollama).
 
 **Programmatic (critical value / medication / nursing quality / record summary — labels derived from rules, preferred):**
 
 ```bash
-python docs/medical/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
+python kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
 ```
 
 - **Expected output** (measured on this machine):
@@ -238,9 +238,9 @@ python skills/kev-finetune/scripts/generate_data.py --category triage \
 - **Command**:
 
 ```bash
-python docs/medical/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
+python kev/console/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
 # optional: two-model disagreement audit
-python docs/medical/generators/make_goldset.py audit data/cv.jsonl --out data/cv.audit.jsonl
+python kev/console/generators/make_goldset.py audit data/cv.jsonl --out data/cv.audit.jsonl
 ```
 
 - **Expected output**: after stratified sampling, rare labels also have samples; prints label coverage.
@@ -497,13 +497,13 @@ uv sync
 # 1. compute volume
 python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-value.json --baseline-acc 0.75
 # 2. generate (programmatic rule synthesis / optional LLM distillation generative track)
-python docs/medical/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
+python kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
 # 2b. LLM distill one category (6 categories use --category; multi-key 500k/day, --schedule daemon or hand to cron/Task Scheduler)
 export KEV_GEN_BASE_URL=https://api.ant-ling.com/v1
 python skills/kev-finetune/scripts/generate_data.py --category triage --n 787 --model Ling-3.0-tiny --out data/cv/triage.jsonl
 #     multi-key: export KEV_GEN_API_KEYS="sk-...1,sk-...2"   # each key 500k tokens/day, auto-rotate when exhausted
 # 3. gold set (optional but strongly recommended)
-python docs/medical/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
+python kev/console/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
 # 4. split (serial, not in parallel with generation)
 python skills/kev-finetune/scripts/split_data.py data/cv.jsonl --out data/cv --holdout data/cv.gold.jsonl
 # 5. token pre-check (see the python snippet in Step 5)

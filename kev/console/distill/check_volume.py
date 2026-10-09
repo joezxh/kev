@@ -11,9 +11,9 @@
 
 用法::
 
-    python3 docs/medical/distill/check_volume.py --scenario inquiry --records data/inquiry.jsonl
-    python3 docs/medical/distill/check_volume.py --all --records-dir data --budget 8000000
-    python3 docs/medical/distill/check_volume.py --scenario inquiry --from-sft data/sft/inquiry.sft.jsonl
+    python3 kev/console/distill/check_volume.py --scenario inquiry --records data/inquiry.jsonl
+    python3 kev/console/distill/check_volume.py --all --records-dir data --budget 8000000
+    python3 kev/console/distill/check_volume.py --scenario inquiry --from-sft data/sft/inquiry.sft.jsonl
 
 标准库 only。
 """

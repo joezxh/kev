@@ -1,7 +1,7 @@
 """阶段处理器的公共形状。
 
 处理器**只组装 argv，不含业务逻辑**：阈值表、标签规则、指标算法全部仍在
-`docs/medical/generators/` 与 `kev/` 里。控制台是编排者，不是规则引擎的第二个实现
+`kev/console/generators/` 与 `kev/` 里。控制台是编排者，不是规则引擎的第二个实现
 —— 这是 `tests/test_conventions.py` 单一归属规则的核心诉求，也是本项目的既有约定。
 
 `StageSpec.preview()` 是纯函数：不 spawn、不写库。UI 用它实时显示将要执行的 argv

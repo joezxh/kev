@@ -10,8 +10,8 @@
 
 用法::
 
-    python3 docs/medical/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl
-    python3 docs/medical/generators/make_goldset.py audit data/a.jsonl data/b.jsonl
+    python3 kev/console/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl
+    python3 kev/console/generators/make_goldset.py audit data/a.jsonl data/b.jsonl
 """
 import argparse
 import json

@@ -18,7 +18,7 @@ from pathlib import Path
 from .. import paths
 from .base import BuiltCommand, Conflict, Invalid, JobRequest, StageSpec
 
-paths.ensure_medical_on_path()
+paths.ensure_generators_on_path()
 from run_matrix import FOUR_B_ONLY, SIZES, check_name  # noqa: E402
 
 BASE = "Qwen/Qwen3.5-0.8B-Base"

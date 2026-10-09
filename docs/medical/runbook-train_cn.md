@@ -137,13 +137,13 @@ To detect a +5% accuracy gain over a 75% baseline at 80% power (paired, 95% two-
 - **目的**：得到 787 条带零漂移标签的 Kev 记录（System One 请求形态）。
 - **输入**：场景 spec + 规则表（程序化路径）；或 LLM 端点（蒸馏路径）。
 - **环境**：
-  - 程序化生成器：**纯标准库、不联网、种子可复现**（`docs/medical/generators/`）。
+  - 程序化生成器：**纯标准库、不联网、种子可复现**（`kev/console/generators/`）。
   - 蒸馏生成式轨（可选，需百灵/OpenAI 兼容端点）：`generate_data.py` 需要 OpenAI 兼容端点（`KEV_GEN_API_KEY` / `KEV_GEN_BASE_URL`，可指向本地 Ollama）。
 
 **程序化（危急值 / 用药 / 护理质控 / 病历摘要 —— 标签由规则派生，首选）：**
 
 ```bash
-python docs/medical/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
+python kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
 ```
 
 - **预期输出**（本机实测）：
@@ -244,9 +244,9 @@ python skills/kev-finetune/scripts/generate_data.py --category triage \
 - **命令**：
 
 ```bash
-python docs/medical/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
+python kev/console/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
 # 可选：双模型分歧审计
-python docs/medical/generators/make_goldset.py audit data/cv.jsonl --out data/cv.audit.jsonl
+python kev/console/generators/make_goldset.py audit data/cv.jsonl --out data/cv.audit.jsonl
 ```
 
 - **预期输出**：分层抽样后稀有标签也有样本；打印标签覆盖。
@@ -312,7 +312,7 @@ print('over_limit', len(over))"
 - **预期输出**：`over_limit 0`。非 0 → 缩短 state 字段或精简 `state_example`，不要靠字符数估算。
 - **验证**：两个尺寸 tokenizer 对中文切分不同，理想情况下各自实测一次。
 
-**控制台执行**：Data → 「token 超限预检」(`precheck`)，填**场景** + **init_from**(默认 `jaredpalmer/kev-0.8b`) + **split**(默认 `train`)，走专用 `docs/medical/console/precheck.py --data data/<scenario> --init-from <init> --split <split> --out <按产物 id 解析>`；回显 `over_limit` 须为 0 才能训练（闸门 G1）。✅
+**控制台执行**：Data → 「token 超限预检」(`precheck`)，填**场景** + **init_from**(默认 `jaredpalmer/kev-0.8b`) + **split**(默认 `train`)，走专用 `kev/console/precheck.py --data data/<scenario> --init-from <init> --split <split> --out <按产物 id 解析>`；回显 `over_limit` 须为 0 才能训练（闸门 G1）。✅
 
 ---
 
@@ -537,13 +537,13 @@ uv sync
 # 1. 算量
 python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-value.json --baseline-acc 0.75
 # 2. 生成（程序化规则合成 / 可选 LLM 蒸馏生成式轨）
-python docs/medical/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
+python kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
 # 2b. LLM 蒸馏某一大类（6 类用 --category；多 key 每日 50w、--schedule 守护或交 cron/任务计划程序）
 export KEV_GEN_BASE_URL=https://api.ant-ling.com/v1
 python skills/kev-finetune/scripts/generate_data.py --category triage --n 787 --model Ling-3.0-tiny --out data/cv/triage.jsonl
 #    多 key：export KEV_GEN_API_KEYS="sk-...1,sk-...2"   # 每 key 每天 50w token，额度用尽自动轮换
 # 3. 金标（可选但强烈建议）
-python docs/medical/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
+python kev/console/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
 # 4. 划分（串行，勿与生成并行）
 python skills/kev-finetune/scripts/split_data.py data/cv.jsonl --out data/cv --holdout data/cv.gold.jsonl
 # 5. token 预检（见步骤 5 的 python 片段）
@@ -704,7 +704,7 @@ python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-valu
 #### 步骤 2 · 生成数据
 
 **程序化（Data → 「程序化规则合成」`generate`）**
-- **手动命令**：`python docs/medical/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0`
+- **手动命令**：`python kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0`
 - **控制台执行**：填 **场景** + **n**（默认 787）+ **seed**（默认 0）。后端：`python gen_<scenario>.py --n <n> --out data/<scenario>.jsonl --seed <seed>`。
   ⚠️ 控制台只支持各场景的 `gen_<scenario>.py`；`--out` 固定为 `data/<scenario>.jsonl`（不让你自定义路径，避免与产物注册 id 不一致）。✅
 
@@ -725,9 +725,9 @@ python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-valu
 
 - **手动命令**：
   ```bash
-  python docs/medical/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
+  python kev/console/generators/make_goldset.py sample data/cv.jsonl --n 200 --out data/cv.gold.jsonl --seed 0
   # 双模型分歧审计
-  python docs/medical/generators/make_goldset.py audit data/cv.jsonl --out data/cv.audit.jsonl
+  python kev/console/generators/make_goldset.py audit data/cv.jsonl --out data/cv.audit.jsonl
   ```
 - **控制台执行**：Data → 「抽金标」(`goldset`)。填 **场景** + **n**（默认 200）+ **seed**（默认 0）。
   后端：`python make_goldset.py sample data/<scenario>.jsonl --n <n> --seed <seed> --out data/<scenario>.gold.jsonl`。
@@ -749,7 +749,7 @@ python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-valu
 
 - **手动命令**（runbook 里的内联 `python -c` 片段，按 tokenizer 实测 `over_limit`）
 - **控制台执行**：Data → 「token 超限预检」(`precheck`)。填 **场景** + **init_from**（默认 `jaredpalmer/kev-0.8b`）+ **split**（默认 `train`）。
-  后端走**专用脚本** `docs/medical/console/precheck.py --data data/<scenario> --init-from <init> --split <split> --out <按产物 id 解析的路径>`
+  后端走**专用脚本** `kev/console/precheck.py --data data/<scenario> --init-from <init> --split <split> --out <按产物 id 解析的路径>`
   （`kev/console/stages/data.py:_precheck`）。功能等价但命令形态不同（不是内联 `python -c`），`over_limit` 必须为 0 才能训（闸门 G1）。✅
 
 #### 步骤 7 · 启动训练
@@ -813,7 +813,7 @@ python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-valu
   后端 `python -m kev.serve --run runs/<run> --port 8008 --temperature <temp>`（`persist=START` 长驻进程，spawn 后立刻注册端点）。部署完现有问答页 `/` 经 playground rewrite 即可打新模型。✅
 
 **冒烟（Deploy → 「冒烟测试」`smoke`）**
-- **手动命令**：`python docs/medical/console/smoke.py --base-url http://127.0.0.1:8008 --out runs/<run>-smoke.json`
+- **手动命令**：`python kev/console/smoke.py --base-url http://127.0.0.1:8008 --out runs/<run>-smoke.json`
 - **控制台执行**：Deploy → 「冒烟测试」(`smoke`)。后端同命令，5 个场景各 1 例探针（`deploy.py:SMOKE_PROBES`）。✅
 
 **构建镜像（Image → 「构建部署镜像」`image`）**

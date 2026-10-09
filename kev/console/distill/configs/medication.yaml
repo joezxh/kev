@@ -6,7 +6,7 @@
 #
 #  这个配置只产出生成式 SFT 样本。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，不经过本流水线。
 #
-#  用法: easydistill --config docs/medical/distill/configs/medication.yaml
+#  用法: easydistill --config kev/console/distill/configs/medication.yaml
 #  （Kev 轨：复用 medication-review spec，标签由 gen_medication_review.evaluate() 派生）
 job_type: advanced_instruct_distill
 

@@ -159,23 +159,23 @@ join 就永远不依赖它的字段透传行为。`id` 是唯一 join 键，两�
 
 ```bash
 # 1. 种子（零 token）
-python3 docs/medical/distill/make_seeds.py --all --n 500 --out-dir data/seeds
+python3 kev/console/distill/make_seeds.py --all --n 500 --out-dir data/seeds
 
 # 2. SFT 轨（唯一花 token 的一步）
 $env:KEV_GEN_API_KEY = "..."; $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
-easydistill --config docs/medical/distill/configs/inquiry.yaml
+easydistill --config kev/console/distill/configs/inquiry.yaml
 
 # 3. Kev 轨（零 token；标签不经 LLM）
-python3 docs/medical/distill/seed_to_kev.py --scenario inquiry \
+python3 kev/console/distill/seed_to_kev.py --scenario inquiry \
   --seed-file data/seeds/inquiry.seed.jsonl --state-file data/seeds/inquiry.state.jsonl \
   --out data/inquiry.jsonl
 
 # 4. 教师与规则对账（只报告）
-python3 docs/medical/distill/seed_to_kev.py --scenario inquiry --from-sft data/sft/inquiry/inquiry.sft.jsonl \
+python3 kev/console/distill/seed_to_kev.py --scenario inquiry --from-sft data/sft/inquiry/inquiry.sft.jsonl \
   --report data/inquiry.reconcile.json
 
 # 5. 量级与预算闸门
-python3 docs/medical/distill/check_volume.py --scenario inquiry --records data/inquiry.jsonl \
+python3 kev/console/distill/check_volume.py --scenario inquiry --records data/inquiry.jsonl \
   --from-sft data/sft/inquiry/inquiry.sft.jsonl --budget 8000000
 ```
 
@@ -471,17 +471,17 @@ EasyDistill 的标准 SFT 输出，LLaMA-Factory 与 ms-swift 可直接消费：
 | --- | --- |
 | `docs/sft-distill.md` | 英文主文档 |
 | `docs/sft-distill_CN.md` | 本文件：中文完整译本，章节一一对应 |
-| `docs/medical/distill.md` / `_CN.md` | 命令速查与排错 |
-| `docs/medical/distill/README.md` | 蒸馏层总览、种子契约、新增场景步骤 |
-| `docs/medical/distill/make_seeds.py` | 种子生成器，写出双文件 |
-| `docs/medical/distill/seed_to_kev.py` | 转换器；`--from-sft` 对账 |
-| `docs/medical/distill/check_volume.py` | 分布与预算闸门 |
-| `docs/medical/distill/configs/*.yaml` | 五份 EasyDistill 配置 |
-| `docs/medical/distill/seeds/README.md` | 种子目录说明 |
+| `kev/console/distill.md` / `_CN.md` | 命令速查与排错 |
+| `kev/console/distill/README.md` | 蒸馏层总览、种子契约、新增场景步骤 |
+| `kev/console/distill/make_seeds.py` | 种子生成器，写出双文件 |
+| `kev/console/distill/seed_to_kev.py` | 转换器；`--from-sft` 对账 |
+| `kev/console/distill/check_volume.py` | 分布与预算闸门 |
+| `kev/console/distill/configs/*.yaml` | 五份 EasyDistill 配置 |
+| `kev/console/distill/seeds/README.md` | 种子目录说明 |
 | `docs/medical/specs/diagnosis.json` | 新增：诊断建议 spec |
 | `docs/medical/specs/record-summary.json` | 新增：病历摘要 spec |
-| `docs/medical/generators/gen_diagnosis.py` | 新增：诊断建议生成器 |
-| `docs/medical/generators/gen_record_summary.py` | 新增：病历摘要生成器 |
+| `kev/console/generators/gen_diagnosis.py` | 新增：诊断建议生成器 |
+| `kev/console/generators/gen_record_summary.py` | 新增：病历摘要生成器 |
 | `tests/test_medical_distill.py` | 种子、转换器、不变性、量级与配置测试 |
 | `.gitignore` | 新增 `data/`、`medical-data/` |
 

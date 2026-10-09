@@ -1,0 +1,30 @@
+# ============================================================================
+# Local/derived kev-server build — for environments where docker.io is NOT
+# reachable. It builds FROM the prebuilt python+torch base in the Aliyun
+# registry (crpi-c762f77rjuytqer9.../llm-basic/python-torch:1.0, which already
+# has torch) and only:
+#   1. refreshes the local kev source (kev/serve.py now mounts kev.console on
+#      8008; kev/console/* is included), and
+#   2. installs the kev package + the non-torch deps (fastapi, uvicorn,
+#      transformers, peft, requests, ...) from the Tsinghua mirror — torch is
+#      already present in the base, so it is skipped (no multi-GB download).
+# Fully offline-friendly once the base image is pulled from the registry.
+# ============================================================================
+
+ARG BASE_IMAGE=crpi-c762f77rjuytqer9.cn-hangzhou.personal.cr.aliyuncs.com/llm-basic/python-torch:1.0
+FROM ${BASE_IMAGE}
+
+WORKDIR /kev
+
+# Refresh the local package (no deps re-download; torch etc. already present)
+COPY pyproject.toml ./
+COPY kev ./kev
+# Console orchestration depends on the generators pipeline (run_matrix) and the
+# kev-finetune skill scripts at runtime; bring them into the image.
+COPY docs/medical ./docs/medical
+COPY skills/kev-finetune ./skills/kev-finetune
+ENV PYTHONPATH=/kev:/kev/kev/console/generators:/kev/skills/kev-finetune/scripts
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple ".[serve]" \
+ && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple requests
+
+ENTRYPOINT ["sh", "-c", "mkdir -p /kev/data/console /kev/runs && exec python -m kev.serve --host 0.0.0.0 --port 8008 --run \"${KEV_RUN}\""]

@@ -6,7 +6,7 @@
 
 用法::
 
-    python3 docs/medical/generators/gen_triage.py --n 787 --out data/tri.jsonl --seed 0
+    python3 kev/console/generators/gen_triage.py --n 787 --out data/tri.jsonl --seed 0
 """
 import random
 import sys

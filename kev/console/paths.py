@@ -18,8 +18,8 @@ CONSOLE_REL = f"{DATA_REL}/console"
 
 SKILL_SCRIPTS = ROOT / "skills/kev-finetune/scripts"
 SPECS = ROOT / "docs/medical/specs"
-GENERATORS = ROOT / "docs/medical/generators"
-CONSOLE_SCRIPTS = ROOT / "docs/medical/console"
+GENERATORS = ROOT / "kev/console/generators"
+CONSOLE_SCRIPTS = ROOT / "kev/console"
 DATA = ROOT / DATA_REL
 RUNS = ROOT / RUNS_REL
 JOB_LOGS = ROOT / CONSOLE_REL / "jobs"
@@ -35,11 +35,11 @@ CONSOLE_SPECS = ROOT / CONSOLE_REL / "specs"
 DEFAULT_DISTILL_STATE_DIR = ROOT / CONSOLE_REL / "distill-state"
 
 
-def ensure_medical_on_path() -> None:
-    """把 docs/medical/generators 与 skills/kev-finetune/scripts 加进 sys.path。
+def ensure_generators_on_path() -> None:
+    """把 kev/console/generators 与 skills/kev-finetune/scripts 加进 sys.path。
 
     运行名规范（NAME_RE / check_name / SIZES / SCENARIOS / FOUR_B_ONLY）的唯一归属是
-    docs/medical/generators/run_matrix.py，医疗测试（tests/test_medical_generators.py:21-22）
+    kev/console/generators/run_matrix.py，医疗测试（tests/test_medical_generators.py:21-22）
     用同样的 sys.path.insert 方式引用它。这里沿用该做法而不是复制常量。
     """
     for directory in (GENERATORS, SKILL_SCRIPTS):

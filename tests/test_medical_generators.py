@@ -1,4 +1,4 @@
-"""The medical record generators (docs/medical/generators): rule-derived labels, minimal pairs, label quotas,
+"""The medical record generators (kev/console/generators): rule-derived labels, minimal pairs, label quotas,
 the dual-size run matrix and the gold-set audit. Standard library only, no network.
 
 These tests are the guardrail for a real risk in this project: a generator whose labels drift from its own
@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-GENERATORS = ROOT / "docs/medical/generators"
+GENERATORS = ROOT / "kev/console/generators"
 sys.path.insert(0, str(GENERATORS))
 sys.path.insert(0, str(ROOT / "skills/kev-finetune/scripts"))
 import common  # noqa: E402

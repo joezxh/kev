@@ -96,9 +96,21 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",
   });
-  const payload = await response.json();
+  // 先读原文再解析：上游空 body（如 405/204）直接 response.json() 会抛
+  // "Unexpected end of JSON input"，换成可读的错误。
+  const text = await response.text();
+  if (!text) {
+    if (response.ok) return {} as T;
+    throw new ApiError({
+      kind: "upstream",
+      message: `空响应 (HTTP ${response.status} ${response.statusText})`,
+      field: "", hint: "上游未返回 JSON；检查代理是否透传了该请求方法（如 DELETE/PUT）。",
+      stderr_tail: "",
+    });
+  }
+  const payload = JSON.parse(text);
   if (!response.ok) throw new ApiError(payload?.error ?? {
-    kind: "executor", message: response.statusText, field: "", hint: "", stderr_tail: "",
+    kind: "executor", message: `HTTP ${response.status} ${response.statusText}`, field: "", hint: "", stderr_tail: "",
   });
   return payload as T;
 }
@@ -140,10 +152,16 @@ export const api = {
                  (runName ? `&run_name=${encodeURIComponent(runName)}` : "")),
   endpoints: () => call<{ endpoints: Artifact[] }>("endpoints"),
 
-  apikeys: () => call<ApiKey[]>("apikeys"),
+  apikeys: (page = 1, page_size = 20) =>
+    call<{ items: ApiKey[]; total: number; page: number; page_size: number }>(
+      `apikeys?page=${page}&page_size=${page_size}`),
+  // 首页下拉需要全部启用 key：?all=1 返回全集。
+  apikeysAll: () => call<ApiKey[]>("apikeys?all=1"),
   createApiKey: (name: string) =>
     call<{ key: string } & ApiKey>("apikeys", { method: "POST", body: JSON.stringify({ name }) }),
   revokeApiKey: (id: string) => call<{ revoked: boolean }>(`apikeys/${id}`, { method: "DELETE" }),
+  reactivateApiKey: (id: string) =>
+    call<{ reactivated: boolean }>(`apikeys/${id}/reactivate`, { method: "POST" }),
   usageSummary: (from?: string, to?: string) => {
     const q = new URLSearchParams();
     if (from) q.set("from", from);
@@ -162,6 +180,8 @@ export const api = {
     call<DistillProvider>("distill-providers", { method: "POST", body: JSON.stringify(p) }),
   deactivateDistillProvider: (id: string) =>
     call<{ deactivated: boolean }>(`distill-providers/${id}`, { method: "DELETE" }),
+  updateDistillProvider: (id: string, p: { name?: string; base_url?: string; model?: string; daily_limit?: number; keys?: string[] }) =>
+    call<DistillProvider>(`distill-providers/${id}`, { method: "PUT", body: JSON.stringify(p) }),
   distillUsage: (providerId?: string, from?: string, to?: string) => {
     const q = new URLSearchParams();
     if (providerId) q.set("provider_id", providerId);

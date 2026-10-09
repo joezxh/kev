@@ -9,7 +9,7 @@
 
 用法::
 
-    python3 docs/medical/generators/gen_record_summary.py --n 787 --out data/rs.jsonl --seed 0
+    python3 kev/console/generators/gen_record_summary.py --n 787 --out data/rs.jsonl --seed 0
 """
 import random
 import sys

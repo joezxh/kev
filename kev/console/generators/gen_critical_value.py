@@ -8,7 +8,7 @@ docs/medical/specs/critical-value.json 的 guidance 必须逐项一致（以本�
 
 用法::
 
-    python3 docs/medical/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
+    python3 kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
 """
 import random
 import sys

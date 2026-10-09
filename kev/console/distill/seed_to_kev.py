@@ -9,12 +9,12 @@
 
 用法::
 
-    python3 docs/medical/distill/seed_to_kev.py --scenario inquiry \\
+    python3 kev/console/distill/seed_to_kev.py --scenario inquiry \\
         --seed-file data/seeds/inquiry.seed.jsonl \\
         --state-file data/seeds/inquiry.state.jsonl \\
         --out data/inquiry.jsonl
 
-    python3 docs/medical/distill/seed_to_kev.py --scenario inquiry --from-sft data/sft/inquiry.sft.jsonl
+    python3 kev/console/distill/seed_to_kev.py --scenario inquiry --from-sft data/sft/inquiry.sft.jsonl
 
 标准库 only。
 """

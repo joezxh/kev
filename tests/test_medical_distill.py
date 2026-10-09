@@ -1,4 +1,4 @@
-"""The medical distillation layer (docs/medical/distill/): seed contract, converter, label invariance,
+"""The medical distillation layer (kev/console/distill/): seed contract, converter, label invariance,
 volume gate and EasyDistill configs.
 
 The test this file exists for is `test_labels_survive_a_hostile_teacher_without_mixing`: it asserts the structural
@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-DISTILL = ROOT / "docs/medical/distill"
-GENERATORS = ROOT / "docs/medical/generators"
+DISTILL = ROOT / "kev/console/distill"
+GENERATORS = ROOT / "kev/console/generators"
 sys.path.insert(0, str(DISTILL))
 sys.path.insert(0, str(GENERATORS))
 

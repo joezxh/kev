@@ -11,7 +11,7 @@ Every command with its expected output, how to read it, and what to do on failur
 the [plan document](../sft-distill.md).
 
 ```bash
-D=docs/medical/distill
+D=kev/console/distill
 ```
 
 ---

@@ -41,6 +41,7 @@ serve = [
     "uvicorn>=0.30",
     "sqlalchemy>=2.0",
     "psycopg[binary]>=3.2",
+    "requests>=2.31",   # kev.console's kev.serve proxy (app.py _do_proxy) imports it
     "mlx-lm>=0.31.3,<0.32; sys_platform == 'darwin' and platform_machine == 'arm64'",   # the Apple Silicon backend (kev.mlx_model); a no-op elsewhere
 ]
 mlx = [

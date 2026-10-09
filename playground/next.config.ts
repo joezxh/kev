@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Next dev only trusts the hostname it was started with (localhost); without this,
   // opening the app via 127.0.0.1 renders the SSR HTML but never hydrates (no errors, buttons dead).
-  allowedDevOrigins: ["127.0.0.1"],
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   async rewrites() {
     return [{ source: "/kev/:path*", destination: `${KEV_API}/:path*` }];
   },

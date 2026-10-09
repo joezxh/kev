@@ -14,9 +14,12 @@
 # server service MUST keep the service name `kev-server` in the compose files.
 # ============================================================================
 
-# PYTHON_IMAGE is overridable at build time (e.g. a registry mirror) without editing
-# this file; the default keeps the image portable (Docker Hub).
-ARG PYTHON_IMAGE=python:3.13-slim-bookworm
+# PYTHON_IMAGE is overridable at build time without editing this file.
+# Default points at the prebuilt python+torch base in the Aliyun registry
+# (crpi-c762f77rjuytqer9.../llm-basic/python-torch:1.0) so builds work fully
+# offline / without docker.io. It already carries torch, so `pip install
+# ".[serve]"` skips the multi-GB torch download.
+ARG PYTHON_IMAGE=crpi-c762f77rjuytqer9.cn-hangzhou.personal.cr.aliyuncs.com/llm-basic/python-torch:1.0
 FROM ${PYTHON_IMAGE}
 
 LABEL description="Kev decision model server (kev.serve) for Kev-0.8B"
@@ -25,9 +28,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-# Overridable PyPI index (set a mirror when pypi.org is slow/unreachable),
-# e.g. PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-ARG PIP_INDEX_URL=
+# Overridable PyPI index; defaults to the Tsinghua mirror so the non-torch
+# kev deps (fastapi, uvicorn, transformers, peft, ...) pull without docker.io/pypi.org.
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ENV PIP_INDEX_URL=$PIP_INDEX_URL
 
 WORKDIR /kev
@@ -35,6 +38,11 @@ WORKDIR /kev
 # Install the local package with the serve extra (kev/pyproject.toml)
 COPY pyproject.toml README.md LICENSE ./
 COPY kev ./kev
+# Console orchestration depends on the generators pipeline (run_matrix) and the
+# kev-finetune skill scripts at runtime; bring them into the image.
+COPY docs/medical ./docs/medical
+COPY skills/kev-finetune ./skills/kev-finetune
+ENV PYTHONPATH=/kev:/kev/kev/console/generators:/kev/skills/kev-finetune/scripts
 RUN pip install --no-cache-dir ".[serve]"
 
 RUN mkdir -p /kev/runs
@@ -53,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
     CMD python -c "import urllib.request,os,sys; req=urllib.request.Request('http://127.0.0.1:8008/v1/models', headers={'Authorization': 'Bearer ' + os.environ.get('KEV_API_KEY','')}); sys.exit(0 if urllib.request.urlopen(req, timeout=5).status==200 else 1)" || exit 1
 
 # --run decides the checkpoint: a local dir (e.g. /kev/runs/<name>) or a Hub id
-ENTRYPOINT ["sh", "-c", "exec python -m kev.serve --host 0.0.0.0 --port 8008 --run \"${KEV_RUN}\""]
+ENTRYPOINT ["sh", "-c", "mkdir -p /kev/data/console /kev/runs && exec python -m kev.serve --host 0.0.0.0 --port 8008 --run \"${KEV_RUN}\""]

@@ -313,7 +313,7 @@ Three hard breaks (L1–L3) in the distill→train path existed before the enhan
 
 - `--examples` 已接入（`data.py:201-206`）但需**手工准备**标注 JSONL
 - 没有「从已有合法数据/金标抽样生成范例文件」的作业，冷启动时该参数形同虚设
-- **✅ 修复**：新增 `make_examples` 作业（按第一题标签分层轮询抽样，`docs/medical/console/make_examples.py`），datasets 页可发起，产物 `dataset:{dir}/examples` 路径直接填进 distill 的 `--examples`
+- **✅ 修复**：新增 `make_examples` 作业（按第一题标签分层轮询抽样，`kev/console/make_examples.py`），datasets 页可发起，产物 `dataset:{dir}/examples` 路径直接填进 distill 的 `--examples`
 
 ### L6 · Modal 端点状态分叉 Medium — ✅ 已修复
 

@@ -176,10 +176,10 @@ Qwen/Qwen3.5-0.8B-Base（冻结）        Qwen/Qwen3.5-4B-Base（冻结）
 
 ```bash
 # 打印将执行的完整命令序列（先审阅再花钱）
-python3 docs/medical/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --dry-run
+python3 kev/console/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --dry-run
 
 # 实际执行（fail-fast，中断后可用 --start-from <step> 续跑）
-python3 docs/medical/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --secret kev-serve-key
+python3 kev/console/generators/run_matrix.py --scenario critical-value --sizes 8b,4b --secret kev-serve-key
 ```
 
 它按顺序执行 `plan_size → 生成 → 划分 → validate×2 → train(0.8B) → train(4B) → compare → 双端点部署`。

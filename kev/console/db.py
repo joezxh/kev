@@ -293,13 +293,43 @@ class _Conn:
         object.__setattr__(self, "_store", store)
 
     def execute(self, stmt, params=None):
-        result = self._conn.execute(stmt, params)
+        proxy = self._store._conn()
+        try:
+            result = proxy._conn.execute(stmt, params)
+        except sa.exc.InternalError:
+            # 事务被服务端中止（常见：连接以 idle-in-transaction 挂起被超时中止，
+            # 或本连接上一条语句失败）。回滚并换新连接重试一次，避免毒连接一直 500。
+            if getattr(self._store._local, "in_tx", False):
+                raise  # 在显式事务里由 tx() 负责回滚，不要脱离事务自作主张
+            try:
+                proxy._conn.rollback()
+            except Exception:
+                pass
+            self._reset_conn()
+            proxy = self._store._conn()
+            result = proxy._conn.execute(stmt, params)
         if getattr(self._store._local, "in_tx", False):
             return result
         head = str(stmt).strip().upper()
-        if head.startswith(self._WRITE_PREFIXES) and self._conn.in_transaction:
-            self._conn.commit()
+        if head.startswith(self._WRITE_PREFIXES):
+            if proxy._conn.in_transaction:
+                proxy._conn.commit()
+        else:
+            # 读语句执行完显式结束事务：否则连接以 idle-in-transaction 挂起，
+            # Postgres 会因 idle_in_transaction_session_timeout 中止它，下次用就 500。
+            if proxy._conn.in_transaction:
+                proxy._conn.rollback()
         return result
+
+    def _reset_conn(self):
+        """丢弃本线程缓存的连接（出错/中止后恢复用），下次 _conn() 取新连接。"""
+        proxy = getattr(self._store._local, "proxy", None)
+        if proxy is not None:
+            try:
+                proxy._conn.close()
+            except Exception:
+                pass
+            self._store._local.proxy = None
 
     def exec_driver_sql(self, *args, **kwargs):
         return self._conn.exec_driver_sql(*args, **kwargs)
@@ -681,14 +711,25 @@ class Store:
         )
         row = self._conn().execute(
             text("SELECT * FROM api_keys WHERE id=:id"), {"id": key_id}).mappings().fetchone()
-        return raw, dict(row)
+        # 凭据即 key 的 id：前端从服务端列表拿到 id，选中后原样提交，
+        # 后端按 id 校验「存在且 active」即可用（见 app.proxy_kev），无需前端持有任何密钥。
+        return key_id, dict(row)
 
     def get_key_by_hash(self, key_hash: str) -> dict | None:
         row = self._conn().execute(
             text("SELECT * FROM api_keys WHERE key_hash=:h AND active=1"), {"h": key_hash}).mappings().fetchone()
         return dict(row) if row else None
 
-    def list_api_keys(self) -> list[dict]:
+    def get_key_by_id(self, key_id: str) -> dict | None:
+        row = self._conn().execute(
+            text("SELECT * FROM api_keys WHERE id=:id AND active=1"), {"id": key_id}).mappings().fetchone()
+        return dict(row) if row else None
+
+    def list_api_keys(self, page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
+        page = max(1, int(page))
+        page_size = max(1, min(int(page_size), 100000))
+        offset = (page - 1) * page_size
+        total = self._conn().execute(text("SELECT COUNT(*) AS n FROM api_keys")).scalar() or 0
         rows = self._conn().execute(
             text("SELECT a.id, a.name, a.prefix, a.active, a.created_at, a.revoked_at, "
                  "COALESCE(u.calls,0) AS calls, "
@@ -698,14 +739,24 @@ class Store:
                  "  SELECT key_id, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens, "
                  "  SUM(output_tokens) AS output_tokens, MAX(ts) AS last_used "
                  "  FROM usage_log GROUP BY key_id) u ON u.key_id=a.id "
-                 "ORDER BY a.created_at DESC")
+                 "ORDER BY a.created_at DESC "
+                 "LIMIT :limit OFFSET :offset"),
+            dict(limit=page_size, offset=offset),
         ).mappings().fetchall()
-        return [dict(r) for r in rows]
+        items = [{**dict(r), "active": bool(r["active"])} for r in rows]
+        return items, total
 
     def revoke_api_key(self, key_id: str) -> bool:
         cursor = self._conn().execute(
             text("UPDATE api_keys SET active=0, revoked_at=:rev WHERE id=:id AND active=1"),
             dict(rev=_now(), id=key_id),
+        )
+        return cursor.rowcount == 1
+
+    def reactivate_api_key(self, key_id: str) -> bool:
+        cursor = self._conn().execute(
+            text("UPDATE api_keys SET active=1, revoked_at=NULL WHERE id=:id AND active=0"),
+            dict(id=key_id),
         )
         return cursor.rowcount == 1
 
@@ -815,6 +866,29 @@ class Store:
             {"id": provider_id})
         return cursor.rowcount == 1
 
+    def update_distill_provider(self, provider_id, name=None, base_url=None, model=None,
+                                daily_limit=None, keys=None):
+        """部分更新蒸馏 provider。keys 仅当为非空列表时才替换（空列表表示保留现有密钥）。"""
+        import json as _json
+        updates, params = [], {"id": provider_id}
+        if name is not None:
+            updates.append("name=:name"); params["name"] = name
+        if base_url is not None:
+            updates.append("base_url=:base_url"); params["base_url"] = base_url
+        if model is not None:
+            updates.append("model=:model"); params["model"] = model
+        if daily_limit is not None:
+            updates.append("daily_limit=:daily_limit"); params["daily_limit"] = int(daily_limit)
+        if keys is not None and len(keys) > 0:
+            hints = _json.dumps([(k[:3] + "..." + k[-4:]) for k in keys], ensure_ascii=False)
+            updates.append("key_count=:key_count"); params["key_count"] = len(keys)
+            updates.append("key_hints=:key_hints"); params["key_hints"] = hints
+        if updates:
+            self._conn().execute(
+                text(f"UPDATE distill_providers SET {', '.join(updates)} WHERE id=:id AND active=1"),
+                params)
+        return self.get_distill_provider(provider_id)
+
     def upsert_distill_usage(self, *, job_id, provider_id, key_hash, key_hint,
                              model, base_url, day, tokens) -> None:
         # 两种方言都支持 ON CONFLICT ... DO UPDATE（sqlite 需 3.24+，环境满足）
@@ -881,7 +955,7 @@ class Store:
         后续对标签/ spec_path 的编辑。spec 内容（spec_json）由 _backfill_specs 在库内补全，
         使空库自包含、运行时不再强制要求 docs/medical/specs/*.json 存在。
         """
-        paths.ensure_medical_on_path()
+        paths.ensure_generators_on_path()
         from run_matrix import SCENARIOS as _RM_SCENARIOS
         labels = {
             "critical-value": ("危急值", "Critical Value"),
@@ -922,7 +996,7 @@ class Store:
         空库经此即自包含；旧库（迁移路径）也借由此把文件内容搬进 DB。文件缺失的行保持
         spec_json 为 NULL（运行时回退到文件，不影响启动）。
         """
-        paths.ensure_medical_on_path()
+        paths.ensure_generators_on_path()
         from run_matrix import SCENARIOS as _RM_SCENARIOS
         for name in _RM_SCENARIOS:
             row = self.get_scenario_by_slug(name)
