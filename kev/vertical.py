@@ -358,72 +358,24 @@ class IndustryRegistry:
 # that need medical inference are `high` (4B only). The other four are declared with scenarios and risk but no
 # adapters, which is the state a site is in on day one: the router routes, and a gateway answers 503 until the
 # scenario is trained. `tests/test_vertical.py` pins these risk levels.
-def _medical() -> Industry:
-    ind = Industry(name="medical", title="医疗健康 / Healthcare", note="危急值、用药审核、护理质控的标签可规则派生；病历编码与导诊需要医学知识推断。")
-    ind.add(Scenario("critical-value", "medical", risk="high", human_review=True, evidence_question="evidence_sufficient",
-                     note="漏报危急值 ≫ 误报：低置信必须升级 4B 并强制转人工，不取 argmax 自动处置。"))
-    ind.add(Scenario("medication-review", "medical", risk="low", human_review=True, evidence_question="evidence_sufficient",
-                     note="用药/医保审核规则封闭，0.8B 可作主力；仍需药师复核。"))
-    ind.add(Scenario("nursing-quality", "medical", risk="low", human_review=True,
-                     note="护理质控检查表逐项可判，0.8B 主力。"))
-    ind.add(Scenario("triage", "medical", risk="high", human_review=True,
-                     note="科室归属语义丰富、规则难穷举，4B 主力。"))
-    ind.add(Scenario("icd-coding", "medical", risk="high", human_review=True,
-                     note="长文本 + 大标签体系 + 罕见组合 + 需医学知识；仅 4B。"))
-    return ind
-
-
-def _finance() -> Industry:
-    ind = Industry(name="finance", title="金融风控 / Financial risk", note="规则明确、选项可控，与医疗的规则派生轨同构。")
-    ind.add(Scenario("credit-review", "finance", risk="low", human_review=True, evidence_question="evidence_sufficient",
-                     note="准入规则可穷举，0.8B 主力；额度与利率仍走规则引擎。"))
-    ind.add(Scenario("fraud-detection", "finance", risk="high", human_review=True, evidence_question="evidence_sufficient",
-                     note="欺诈模式需跨单据推理，4B 主力；命中即人工复核。"))
-    ind.add(Scenario("aml-alerting", "finance", risk="high", human_review=True,
-                     note="反洗钱名单匹配是规则问题（交给规则引擎），可疑交易判定是语义问题（交给模型）。"))
-    ind.add(Scenario("compliance-check", "finance", risk="low", human_review=True,
-                     note="合规检查表逐条对照，0.8B 主力。"))
-    return ind
-
-
-def _legal() -> Industry:
-    ind = Industry(name="legal", title="法律合规 / Legal", note="条款审查要求逐条引用与保守解释，误判代价高。")
-    ind.add(Scenario("contract-review", "legal", risk="high", human_review=True, evidence_question="evidence_sufficient",
-                     note="条款语义与上下文强相关，4B 主力；法务终审。"))
-    ind.add(Scenario("clause-classification", "legal", risk="low", human_review=True,
-                     note="条款类型标注是有限标签集，0.8B 可作主力。"))
-    ind.add(Scenario("compliance-screening", "legal", risk="high", human_review=True,
-                     note="合规筛查漏检代价高，4B 主力 + 人工。"))
-    return ind
-
-
-def _education() -> Industry:
-    ind = Industry(name="education", title="教育评估 / Education", note="评估结论影响学生，需要可解释的置信与人工复核。")
-    ind.add(Scenario("grading", "education", risk="low", human_review=False,
-                     note="作业批改按评分细则逐项对照；细则封闭时可由 0.8B 作主力。"))
-    ind.add(Scenario("knowledge-diagnosis", "education", risk="medium", human_review=False, evidence_question="evidence_sufficient",
-                     note="知识薄弱点诊断需要跨题推理，4B 更稳。"))
-    ind.add(Scenario("admission-screening", "education", risk="high", human_review=True,
-                     note="招生筛选取舍不可自动处置，4B + 人工。"))
-    return ind
-
-
-def _support() -> Industry:
-    ind = Industry(name="support", title="客服分流 / Support", note="与 playground 的五问示例同构，是最低风险的轨。")
-    ind.add(Scenario("ticket-triage", "support", risk="low", human_review=False,
-                     note="工单分类、优先级、情绪识别，0.8B 主力。"))
-    ind.add(Scenario("escalation-detection", "support", risk="low", human_review=False, evidence_question="evidence_sufficient",
-                     note="是否需要人工介入：选项集小，0.8B 主力；注意 0.8B 的工具路由弱项（When2Call 0.133）。"))
-    ind.add(Scenario("identity-release", "support", risk="high", human_review=True, evidence_question="evidence_sufficient",
-                     note="身份核验不足时是否放行账户信息：高风险，4B + 人工；放行错误不可撤回。"))
-    return ind
+#
+# NOTE: the 5 hardcoded builder functions (_medical / _finance / _legal / _education / _support) were
+# removed in Task 24 of docs/superpowers/plans/2026-10-09-dynamic-scenario-generators.md. The registry
+# is now built by kev.console.services.routing.sync_registry() from the DB-backed spec_json.routing
+# blocks. The 7 medical scenarios are still seeded with identical risk + human_review + note values
+# (see docs/medical/specs/*.json, committed in Task 22).
 
 
 def _default_registry() -> IndustryRegistry:
-    reg = IndustryRegistry()
-    for build in (_medical, _finance, _legal, _education, _support):
-        reg.add(build())
-    return reg
+    """The DB-projected IndustryRegistry (spec §3.6).
+
+    Replaces the legacy _medical / _finance / _legal / _education / _support hardcoded builders. The migration
+    is safe because (a) _OVERRIDE preserves the manual `IndustryRegistry.load(json)` path and (b) the 7 medical
+    scenarios are still seeded with identical risk + human_review + evidence_question + note values (see
+    docs/medical/specs/*.json routing blocks, committed in Task 22).
+    """
+    from kev.console.services.routing import sync_registry
+    return sync_registry()
 
 
 _DEFAULT: IndustryRegistry | None = None

@@ -19,6 +19,8 @@ import asyncio
 import hashlib
 import json
 import os
+import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -26,7 +28,7 @@ from pathlib import Path
 import requests
 import sqlalchemy as sa
 
-from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import artifacts, paths
@@ -132,11 +134,21 @@ def _ep(path: str) -> str:
 
 
 def _persist_plan(store: Store, job: dict) -> None:
+    """把 plan_size 日志里的计划落盘成 plan 产物文件。
+
+    任何「写不出来」的情况都必须留痕（system 事件）：这次排查的教训就是静默 return
+    让作业显示 succeeded 而文件根本不存在，用户无从下手。
+    """
     log = Path(job["log_path"])
     if not log.is_file():
+        store.append_events(job["id"], [
+            ("system", f"plan 落盘失败：日志文件不存在 {log}（plan 产物将缺失）")])
         return
     plan = data_stages.parse_plan_size(log.read_text(encoding="utf-8", errors="replace"))
     if not plan.get("total_records"):
+        store.append_events(job["id"], [
+            ("system", "plan 落盘失败：日志里没有可解析的 total_records（JSON 可能被调试器"
+                       "或其他输出污染，见 parse_plan_size）")])
         return
     target = Path(paths.ROOT) / artifacts.resolve(f"plan:{job['scenario']}")
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -168,17 +180,100 @@ def register_finished(store: Store, job_id: str, exit_code: int) -> None:
         raise
 
 
+def _resolve_service_callable(stage, request: JobRequest, store, cancel,
+                              gpu_lock=None, executor=None):
+    """If stage.service is set, build the in-process callable for it.
+
+    Returns a 2-tuple (fn, label) or None when the stage has no service binding.
+    `fn` mirrors a script's exit-code contract (returns int) and prints to
+    stdout so _CapturingStdout can tee it into the same log the subprocess path
+    would have written. The label is recorded as the events-table "meta" row,
+    e.g. "service:data.generate", so readers can tell an in-process call from
+    a Popen one without parsing argv.
+    """
+    method_name = getattr(stage, "service", None)
+    if not method_name:
+        return None
+    from .services import get_service
+    kwargs = {}
+    if gpu_lock is not None:
+        kwargs["gpu_lock"] = gpu_lock
+    if executor is not None:
+        kwargs["executor"] = executor
+    service = get_service(method_name, store=store, cancel=cancel, **kwargs)
+    method = getattr(service, method_name.split(".", 1)[1])
+    captured: dict = {}
+
+    def _fn() -> int:
+        try:
+            # TrainService.train takes on_log AND on_metric; DataService methods
+            # only take on_log. Probe via inspect so the right kwarg set is
+            # passed — keeps the call site agnostic to the method shape.
+            import inspect
+            sig = inspect.signature(method)
+            call_kwargs = {"on_log": lambda line: print(line)}
+            if "on_metric" in sig.parameters:
+                call_kwargs["on_metric"] = lambda _p: None
+            captured["result"] = method(request, **call_kwargs)
+        except Exception as error:  # noqa: BLE001 - mirrors subprocess exit codes
+            print(f"service:{method_name} 异常：{error!r}", file=sys.stderr)
+            return 1
+        rc = int(captured["result"].get("returncode", 0))
+        return rc
+
+    return _fn, f"service:{method_name}"
+
+
 def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, built,
-          *, attempt=1, parent_id=None) -> str:
+          *, attempt=1, parent_id=None, gpu_lock=None) -> str:
     log_path = paths.JOB_LOGS / f"{uuid.uuid4().hex}.log"
-    job_id = store.create_job(
-        kind=stage.kind, stage=stage.stage, scenario=request.scenario,
-        title=request.run_name or stage.title, request=request.params,
-        argv=[str(part) for part in built.argv], env_overlay=built.env,
-        cwd=built.cwd or str(paths.ROOT), log_path=str(log_path),
-        artifacts_in=built.artifacts_in, artifacts_out=built.artifacts_out,
-        attempt=attempt, parent_id=parent_id)
-    executor.spawn(job_id, built.argv, cwd=built.cwd or str(paths.ROOT),
+    service_binding = _resolve_service_callable(stage, request, store, executor.cancel,
+                                                gpu_lock=gpu_lock, executor=executor)
+    if service_binding is not None:
+        fn, label = service_binding
+        job_id = store.create_job(
+            kind=stage.kind, stage=stage.stage, scenario=request.scenario,
+            title=request.run_name or stage.title, request=request.params,
+            argv=[label], env_overlay=built.env,
+            cwd=str(paths.ROOT), log_path=str(log_path),
+            artifacts_in=built.artifacts_in, artifacts_out=built.artifacts_out,
+            attempt=attempt, parent_id=parent_id)
+        executor.spawn_callable(job_id, fn, label=label, log_path=str(log_path),
+                                env_overlay=built.env)
+        if stage.persist == "start":
+            artifacts.register(store, store.get_job(job_id))
+        return job_id
+
+    # Popen path (skill-script stages + distill_daemon daemon_runner wrapper).
+    # For distill_daemon: fill in the job_id / log_path placeholders that
+    # _distill_daemon couldn't know when it built the wrapped argv.
+    argv = [str(part) for part in built.argv]
+    if built.daemon_id is not None:
+        job_id = store.create_job(
+            kind=stage.kind, stage=stage.stage, scenario=request.scenario,
+            title=request.run_name or stage.title, request=request.params,
+            argv=argv, env_overlay=built.env,
+            cwd=built.cwd or str(paths.ROOT), log_path=str(log_path),
+            artifacts_in=built.artifacts_in, artifacts_out=built.artifacts_out,
+            attempt=attempt, parent_id=parent_id, daemon_id=built.daemon_id)
+        # Backfill placeholder argv values that _distill_daemon left as __placeholder__.
+        for i, part in enumerate(argv):
+            if part == "__placeholder__":
+                if "--job-id" in (argv[i - 1] if i > 0 else ""):
+                    argv[i] = job_id
+                elif "--log-path" in (argv[i - 1] if i > 0 else ""):
+                    argv[i] = str(log_path)
+        # Register the per-daemon cancel flag so cancel_job can signal it.
+        set_daemon_cancel(built.daemon_id)
+    else:
+        job_id = store.create_job(
+            kind=stage.kind, stage=stage.stage, scenario=request.scenario,
+            title=request.run_name or stage.title, request=request.params,
+            argv=argv, env_overlay=built.env,
+            cwd=built.cwd or str(paths.ROOT), log_path=str(log_path),
+            artifacts_in=built.artifacts_in, artifacts_out=built.artifacts_out,
+            attempt=attempt, parent_id=parent_id)
+    executor.spawn(job_id, argv, cwd=built.cwd or str(paths.ROOT),
                    log_path=str(log_path), env_overlay=built.env)
     if stage.persist == "start":
         # 长驻作业（kev.serve）永远不「完成」，产物必须在 spawn 之后立刻注册，
@@ -371,12 +466,85 @@ def create_scenario(payload: dict, store: Store = Depends(get_store)):
 def update_scenario(scenario_id: str, payload: dict, store: Store = Depends(get_store)):
     if store.get_scenario_by_id(scenario_id) is None:
         return _error("validation", f"未知场景 {scenario_id}", status=404)
+    # Step 2 of Task 28: validate routing + smoke_probe sub-fields
+    if "routing" in payload and payload["routing"]:
+        risk = (payload["routing"] or {}).get("risk")
+        if risk not in {"low", "medium", "high", "critical"}:
+            raise HTTPException(400, f"routing.risk must be one of low/medium/high/critical, got {risk!r}")
+        evidence_q = (payload["routing"] or {}).get("evidence_question", "")
+        spec_row = store.get_scenario_by_slug(scenario_id)
+        spec = json.loads(spec_row["spec_json"]) if spec_row and spec_row.get("spec_json") else {}
+        if evidence_q and evidence_q not in spec.get("questions", {}):
+            raise HTTPException(400, f"routing.evidence_question {evidence_q!r} is not a question in the spec")
+    if "smoke_probe" in payload and payload["smoke_probe"]:
+        spec_row = store.get_scenario_by_slug(scenario_id)
+        spec = json.loads(spec_row["spec_json"]) if spec_row and spec_row.get("spec_json") else {}
+        for q in payload["smoke_probe"].get("questions", []) or []:
+            if q["qid"] not in spec.get("questions", {}):
+                raise HTTPException(400, f"smoke_probe.questions[].qid {q['qid']!r} is not a question in the spec")
     ok = store.update_scenario(
         scenario_id, domain_id=payload.get("domain_id"), label_zh=payload.get("label_zh"),
         label_en=payload.get("label_en"), spec_path=payload.get("spec_path"),
         category=payload.get("category"), sort=payload.get("sort"))
     row = store.get_scenario_by_id(scenario_id)
     return row if ok and row else _error("validation", f"未知场景 {scenario_id}", status=404)
+
+
+# Step 1 of Task 28: 3 new generator API routes
+@console_router.post("/console/api/scenarios/{slug}/generator/preview")
+def generator_preview(slug: str, body: dict, store: Store = Depends(get_store)) -> dict:
+    from kev.console.generators.engine import run as engine_run
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        engine_run(["--scenario", slug, "--n", "1", "--out", str(tmp_path), "--seed", "0", "--pairs", "0"])
+        line = tmp_path.read_text(encoding="utf-8").splitlines()[0]
+        return {"record": json.loads(line)}
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+
+
+@console_router.post("/console/api/scenarios/{slug}/generator/dry-run")
+def generator_dry_run(slug: str, body: dict, store: Store = Depends(get_store)) -> dict:
+    n = body.get("n", 100)
+    seed = body.get("seed", 0)
+    from kev.console.generators.engine import run as engine_run
+    from common import label_table as _lt
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        engine_run(["--scenario", slug, "--n", str(n), "--out", str(tmp_path), "--seed", str(seed), "--pairs", "0"])
+        rows = [json.loads(line) for line in tmp_path.read_text(encoding="utf-8").splitlines()]
+        return {"rows": rows, "label_table": _lt(rows)}
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+
+
+@console_router.post("/console/api/scenarios/{slug}/generator/validate")
+def generator_validate(slug: str, body: dict, store: Store = Depends(get_store)) -> dict:
+    try:
+        from kev.console.generators.engine import run as engine_run
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        try:
+            engine_run(["--scenario", slug, "--n", "1", "--out", str(tmp_path), "--seed", "0", "--pairs", "0"])
+            return {"errors": []}
+        finally:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+    except Exception as e:
+        return {"errors": [{"rule_id": "<unknown>", "message": str(e)}]}
 
 
 @console_router.delete("/console/api/scenarios/{scenario_id}")
@@ -470,7 +638,7 @@ def preview_job(payload: dict, store: Store = Depends(get_store)):
 
 
 @console_router.post("/console/api/jobs")
-def submit_job(payload: dict, store: Store = Depends(get_store),
+def submit_job(payload: dict, request_: Request, store: Store = Depends(get_store),
                executor: LocalExecutor = Depends(get_executor)):
     prepared = _prepare(store, payload)
     if isinstance(prepared, JSONResponse):
@@ -503,6 +671,9 @@ def submit_job(payload: dict, store: Store = Depends(get_store),
             [{"id": g.id, "detail": g.detail, "actual": g.actual, "need": g.need}
              for g in failed], ensure_ascii=False))
 
+    return JSONResponse(status_code=201, content=store.get_job(
+        _spawn(store, executor, stage, request, built,
+               gpu_lock=request_.app.state.gpu_lock)))
     return JSONResponse(status_code=201, content=store.get_job(_spawn(store, executor, stage, request, built)))
 
 
@@ -534,11 +705,19 @@ def cancel_job(job_id: str, store: Store = Depends(get_store),
               executor: LocalExecutor = Depends(get_executor)):
     if store.get_job(job_id) is None:
         return _error("validation", f"未知作业 {job_id}", status=404)
-    return {"canceled": executor.cancel(job_id)}
+    job = store.get_job(job_id)
+    # distill_daemon runs as a separate daemon_runner process: in addition
+    # to sending SIGTERM to its Popen, set the loopback cancel flag so the
+    # daemon_runner can gracefully tear down its inner generate_data.py
+    # child (Popen) before exiting. The flag survives a brief blip when the
+    # daemon is between polls.
+    if job["stage"] == "distill_daemon" and job.get("daemon_id"):
+        set_daemon_cancel(job["daemon_id"])
+    return {"canceled": executor.cancel_job(job_id)}
 
 
 @console_router.post("/console/api/jobs/{job_id}/retry")
-def retry_job(job_id: str, store: Store = Depends(get_store),
+def retry_job(job_id: str, request_: Request, store: Store = Depends(get_store),
               executor: LocalExecutor = Depends(get_executor)):
     job = store.get_job(job_id)
     if job is None:
@@ -555,7 +734,9 @@ def retry_job(job_id: str, store: Store = Depends(get_store),
         return prepared
     stage, request, built = prepared
     return JSONResponse(status_code=201, content=store.get_job(
-        _spawn(store, executor, stage, request, built, attempt=attempt, parent_id=job_id)))
+        _spawn(store, executor, stage, request, built,
+               attempt=attempt, parent_id=job_id,
+               gpu_lock=request_.app.state.gpu_lock)))
 
 
 @console_router.get("/console/api/jobs/{job_id}/events")
@@ -597,6 +778,28 @@ async def stream_job(job_id: str, request: Request, after_id: int = 0,
                                       "X-Accel-Buffering": "no"})
 
 
+@console_router.get("/console/api/jobs/{job_id}/log")
+def get_job_log(job_id: str, tail: int = 200_000,
+                store: Store = Depends(get_store)) -> dict:
+    """读取 job.log 文件的尾部。
+
+    SSE 回放的是 events 表（UI 跟随输出的来源）；日志**文件**才是真相源，终态作业的
+    结果页用它展示完整日志。tail 截尾防止把几百 MB 的训练日志整份塞进响应。
+    """
+    job = store.get_job(job_id)
+    if job is None:
+        return _error("validation", f"未知作业 {job_id}", status=404)
+    log = Path(job["log_path"])
+    if not log.is_file():
+        return {"job_id": job_id, "log_path": job["log_path"], "name": log.name,
+                "exists": False, "content": "", "truncated": False}
+    text = log.read_text(encoding="utf-8", errors="replace")
+    truncated = len(text) > tail
+    return {"job_id": job_id, "log_path": job["log_path"], "name": log.name,
+            "exists": True, "content": text[-tail:] if truncated else text,
+            "truncated": truncated}
+
+
 # ---- artifacts / gates / endpoints ------------------------------------
 
 @console_router.get("/console/api/artifacts")
@@ -605,6 +808,26 @@ def get_artifacts(kind: str | None = None, store: Store = Depends(get_store)) ->
     for row in rows:
         row["lineage"] = store.lineage_of(row["id"])
     return rows
+
+
+@console_router.get("/console/api/artifacts/{artifact_id:path}/content")
+def get_artifact_content(artifact_id: str, tail: int = 200_000,
+                         store: Store = Depends(get_store)) -> dict:
+    """读取产物文件的文本内容（plan/comparison/calibration 等结果页直接展示用）。"""
+    artifact = store.get_artifact(artifact_id)
+    if artifact is None:
+        return _error("validation", f"未知产物 {artifact_id}", status=404)
+    target = Path(paths.ROOT) / artifact["path"]
+    if not target.is_file():
+        return _error("validation", f"产物文件不存在：{artifact['path']}", status=404)
+    try:
+        text = target.read_text(encoding="utf-8", errors="replace")
+    except (OSError, UnicodeError):
+        return _error("validation", f"产物不是可读文本：{artifact['path']}", status=415)
+    truncated = len(text) > tail
+    return {"id": artifact["id"], "kind": artifact["kind"], "path": artifact["path"],
+            "bytes": artifact.get("bytes"), "content": text[-tail:] if truncated else text,
+            "truncated": truncated}
 
 
 @console_router.get("/console/api/gates/{stage}")
@@ -676,6 +899,22 @@ def usage_timeseries(key_id: str, from_ts: str | None = None, to_ts: str | None 
 # ---- kev proxy ---------------------------------------------------------
 
 async def proxy_kev(path: str, request: Request, store: Store = Depends(get_store)):
+    # Inference demotion: while a TrainService.train (or future GPU eval) call
+    # is in flight on this process, the single GPU is in use and a concurrent
+    # /v1/* call would OOM. 503 + Retry-After so the SDK can back off. The
+    # gate reads the module-level Event (set by TrainService.train on entry,
+    # cleared in finally) so a long-running train doesn't permanently block
+    # the proxy.
+    from .services import is_training_active
+    if is_training_active():
+        return Response(
+            status_code=503,
+            content=json.dumps({"error": "training_in_progress",
+                                "detail": "训练占用 GPU，推理临时不可用；请稍后重试"},
+                               ensure_ascii=False),
+            media_type="application/json",
+            headers={"Retry-After": "30"},
+        )
     auth = request.headers.get("authorization", "")
     if not auth.startswith("Bearer "):
         return _error("auth", "缺少 API Key", status=401, hint="Authorization: Bearer <key>")
@@ -778,6 +1017,94 @@ def distill_usage_totals(from_day: str | None = None, to_day: str | None = None,
 
 
 # ---------------------------------------------------------------------------
+# 内部端点（127.0.0.1 only）— kev.console.daemon_runner 透过这两个端点跟主进程握手。
+#
+# 协议：
+#   - 子守护进程 -> 主：POST /console/api/_internal/distill-event
+#                   body: {daemon_id, job_id, kind, line, ts}
+#                   主进程把 line 写到 events 表里（与 Popen 路径同一张表），
+#                   让 Playground 的 job 日志能直接显示守护进程的输出。
+#   - 主 -> 子守护：GET /console/api/_internal/distill-cancel?daemon_id=...
+#                   主进程只在收到 cancel_job 请求时调用 set_daemon_cancel。
+#                   子守护每 2 秒轮询这个端点（见 data_daemon.CANCEL_POLL_SECONDS）。
+#
+# 127.0.0.1 限制：_assert_loopback 在每个端点入口检查 request.client.host。
+# 守护进程通过 KEV_CONSOLE_BASE_URL（默认 127.0.0.1:8790）连过来。
+# ---------------------------------------------------------------------------
+
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+def _assert_loopback(request: Request) -> JSONResponse | None:
+    """Return a 403 JSONResponse if the request didn't come from loopback.
+
+    None means "allow". The check is by `request.client.host`, which is the
+    immediate peer (so a reverse proxy on a public port can still be
+    blocked, unless it's also on 127.0.0.1 — which is the only deployment
+    we ship for this).
+    """
+    host = (request.client.host if request.client else "") or ""
+    if host in _LOOPBACK_HOSTS:
+        return None
+    return _error("forbidden", f"内部端点仅允许 127.0.0.1 访问，来自 {host!r}", status=403)
+
+
+@console_router.post("/console/api/_internal/distill-event")
+def internal_distill_event(payload: dict, request: Request,
+                          store: Store = Depends(get_store)) -> dict:
+    forbidden = _assert_loopback(request)
+    if forbidden is not None:
+        return forbidden
+    job_id = str(payload.get("job_id") or "").strip()
+    if not job_id or store.get_job(job_id) is None:
+        # 守护进程在 master 重启后发事件是常见场景：旧 job_id 已不存在。
+        # 不报错，守护继续工作（事件流到不存在的 job 是它自己的事）。
+        return {"ok": True, "skipped": "unknown job"}
+    kind = str(payload.get("kind") or "log")
+    line = str(payload.get("line") or "")
+    if not line:
+        return {"ok": True, "skipped": "empty"}
+    # 复用 events 表：append_events 接受 (stream, line) 元组列表。
+    # 我们用 "distill" stream 名称而非 "system"，让 UI 端以后可以按颜色区分
+    # — 但目前 UI 把所有 stream 一视同仁显示，所以这里只是元数据，不影响行为。
+    store.append_events(job_id, [("distill", f"[{kind}] {line}")])
+    return {"ok": True}
+
+
+@console_router.get("/console/api/_internal/distill-cancel")
+def internal_distill_cancel(daemon_id: str, request: Request) -> dict:
+    forbidden = _assert_loopback(request)
+    if forbidden is not None:
+        return forbidden
+    cancels: dict = request.app.state.daemon_cancels
+    return {"canceled": cancels.get(daemon_id, threading.Event()).is_set()}
+
+
+def set_daemon_cancel(daemon_id: str) -> None:
+    """Called by the cancel_job endpoint to flag a daemon for shutdown.
+
+    Stored in app.state.daemon_cancels (a dict[daemon_id, Event]) so multiple
+    daemons can be tracked independently. The daemon_runner that owns this
+    id polls /distill-cancel every 2s and tears down on the next tick.
+    """
+    store = _daemon_cancel_store()
+    event = store.get(daemon_id)
+    if event is None:
+        event = threading.Event()
+        store[daemon_id] = event
+    event.set()
+
+
+# Single-process cancel registry. wire_console_state() replaces this with
+# app.state.daemon_cancels at startup; tests can monkeypatch it directly.
+_daemon_cancel_registry: dict[str, threading.Event] = {}
+
+
+def _daemon_cancel_store() -> dict[str, threading.Event]:
+    return _daemon_cancel_registry
+
+
+# ---------------------------------------------------------------------------
 # 状态装配：把 store / executor 挂到 app.state，并跑崩溃恢复。create_app 与
 # kev.serve 共用同一份——两者都是「控制台所在的进程」，只是前者是独立入口（8790），
 # 后者把 server 也塞进 app.state。
@@ -797,6 +1124,17 @@ def wire_console_state(app: FastAPI, *, store: Store | None = None,
         register_finished(app.state.store, job_id, exit_code)
 
     app.state.executor = executor or LocalExecutor(app.state.store, on_finished=_on_finished)
+    # Process-wide GPU lock. Held while a TrainService.train (or future
+    # EvalService baseline/benchmark) call is running; every other GPU
+    # service queues on it. Compare/Calibrate services run on CPU and never
+    # touch this lock. Without the lock, two concurrent GPU services can
+    # OOM the single-GPU box (the failure mode that motivated this in the
+    # first place — see plan Wave B / Task B-2 acceptance).
+    app.state.gpu_lock = threading.Lock()
+    # Per-daemon cancel flags. The master process stores a threading.Event
+    # for each running daemon_runner subprocess; the daemon polls its flag
+    # via /_internal/distill-cancel and tears its child Popen down on set.
+    app.state.daemon_cancels = _daemon_cancel_registry
 
 
 # ---------------------------------------------------------------------------

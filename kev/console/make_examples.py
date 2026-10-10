@@ -44,7 +44,13 @@ def sample_balanced(records: list[dict], n: int, seed: int = 0) -> list[dict]:
     return picked
 
 
-def main(argv=None) -> int:
+def run(argv=None) -> int:
+    """Pure-function entry point: takes an optional argv list, returns a process exit code.
+
+    Alias of the original main() so the service layer (kev.console.services.data)
+    can call it in-process. The CLI entry is unchanged: `python -m kev.console.make_examples`
+    still calls run() (via `main = run` below) with sys.argv[1:].
+    """
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data", required=True, help="labelled JSONL to sample from")
@@ -73,5 +79,8 @@ def main(argv=None) -> int:
     return 0
 
 
+main = run
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run())

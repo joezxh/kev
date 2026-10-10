@@ -30,18 +30,23 @@ sys.path.insert(0, str(HERE.parent / "generators"))
 
 import common  # noqa: E402
 
-# 蒸馏场景 -> spec 名（与 make_seeds.SCENARIOS 一致；无 Kev 轨的场景不在此表）
-SPEC_FOR = {"inquiry": "triage", "medication": "medication-review", "diagnosis": "diagnosis",
-            "record-summary": "record-summary"}
+# Spec content lives in scenarios.spec_json; this script reads the DB instead of a hard-coded slug map.
+
+def _load_spec(distill_slug: str):
+    """Look up the scenario spec via the DB. ``distill_slug`` is the state.jsonl row's ``scenario`` field."""
+    from kev.console.db import Store  # local import: avoid forcing sqlite open when unused (e.g. tests)
+    row = Store().get_scenario_by_slug(distill_slug)
+    if row is None or not row.get("spec_json"):
+        raise SystemExit(f"scenario {distill_slug!r} not in console DB (run `uv run u console initdb` first)")
+    return json.loads(row["spec_json"])
 
 
 def read_jsonl(path):
     return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
 
-def build_records(scenario, seed_rows, state_rows):
+def build_records(distill_slug, seed_rows, state_rows):
     """Join the two files on `id` and rebuild Kev records. Labels come from the sidecar, full stop."""
-    spec_name = SPEC_FOR[scenario]
-    spec = common.load_spec(spec_name)
+    spec = _load_spec(distill_slug)
     by_id = {row["id"]: row for row in state_rows}
     seed_ids = {row["id"] for row in seed_rows}
     missing = seed_ids - set(by_id)
@@ -53,7 +58,7 @@ def build_records(scenario, seed_rows, state_rows):
         labels = state_row["labels"]
         unknown = set(labels) - set(spec["questions"])
         if unknown:
-            raise SystemExit(f"{row['id']}: labels {sorted(unknown)} are not questions of spec {spec_name}")
+            raise SystemExit(f"{row['id']}: labels {sorted(unknown)} are not questions of spec {distill_slug}")
         records.append(common.labelled(spec, state_row["state"], labels, state_row.get("soft") or None))
         order.append(row["id"])
     return records, order
@@ -103,10 +108,9 @@ def reconcile(records, order, sft_path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
-                                     formatter_class=argparse.RawDescriptionHelpFormatter,
-                                     epilog="有 Kev 轨的场景: " + "、".join(sorted(SPEC_FOR)))
-    parser.add_argument("--scenario", required=True, choices=sorted(SPEC_FOR),
-                        help="蒸馏场景名（knowledge-qa 无 Kev 轨，不可用）")
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--scenario", required=True,
+                        help="蒸馏场景名（与 state.jsonl 的 scenario 字段一致；任意场景名，校验由 DB 完成）")
     parser.add_argument("--seed-file", help="<scenario>.seed.jsonl，仅用于确定行序")
     parser.add_argument("--state-file", help="<scenario>.state.jsonl，标签的唯一来源")
     parser.add_argument("--out", help="Kev 记录输出路径")
@@ -119,9 +123,8 @@ def main(argv=None):
     seed_rows = read_jsonl(args.seed_file) if args.seed_file else [{"id": r["id"]} for r in state_rows]
 
     records, order = build_records(args.scenario, seed_rows, state_rows)
-    spec_name = SPEC_FOR[args.scenario]
     if args.out:
-        common.write_records(records, args.out, 0, spec_name)
+        common.write_records(records, args.out, 0, args.scenario)
     else:
         print(f"{len(records)} records rebuilt (not written; pass --out)")
 

@@ -21,10 +21,12 @@ classifiers = [
 dependencies = [
     "accelerate>=1.15.0",
     "datasets>=3.0",
+    "jinja2>=3.1",            # distill system_prompt + yaml template (§3.5, §3.8)
     "numpy>=2.5.3",
     "peft>=0.21",
     "pydantic>=2.9",
     "scikit-learn>=1.9.1",
+    "simpleeval>=1.0",        # restricted expression evaluation for rules.when (§3.2)
     "torch>=2.6,<2.9",
     "transformers>=5.17,<6",
 ]

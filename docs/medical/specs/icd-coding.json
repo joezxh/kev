@@ -66,5 +66,28 @@
     "置信档（对应 confidence_tier 三档）：0 高置信（证据链完整且 reasonable）、1 中置信（轻微疑点但方向明确）、2 低置信（关键依据缺失或矛盾，需人工裁定；insufficient_record 时必须为 2）",
     "住院时长与转归：1-3 天、4-9 天、10 天以上、死亡、自动出院、转院",
     "主诊断表述规范度：规范术语（含部位与性质）、笼统表述（症状主导）、待排诊断（带「?」或「待排」）、英文缩写混排"
-  ]
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "",
+    "note": "长文本 + 大标签体系 + 罕见组合 + 需医学知识；仅 4B。"
+  },
+  "smoke_probe": {
+    "state": {
+      "patient": "female 58",
+      "length_of_stay_days": 9,
+      "primary_dx": "J18.9",
+      "secondary_dx": "E11.9, I10",
+      "procedure": "none",
+      "key_findings": "community-acquired pneumonia",
+      "past_history": "type 2 diabetes, hypertension",
+      "clinical_course": "improved on antibiotics"
+    },
+    "questions": [
+      {"qid": "needs_coder", "type": "noul",
+       "instructions": "该编码是否需要编码员人工复核？"}
+    ],
+    "expected_label": {"needs_coder": "true"}
+  }
 }

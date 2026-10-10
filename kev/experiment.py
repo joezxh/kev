@@ -11,11 +11,14 @@ Two execution modes share one code path:
 """
 import argparse
 import copy
-import fcntl
 import gc
 import json
 import os
 import platform
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 import re
 import shutil
 import subprocess
@@ -152,8 +155,11 @@ def study_lock():
     (ROOT / "runs").mkdir(exist_ok=True)
     with (ROOT / "runs/.research.lock").open("a") as lock:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+            if os.name == "nt":
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError):
             raise RuntimeError("another research runner owns the GPU queue") from None
         yield
 

@@ -1,0 +1,215 @@
+{
+  "name": "record-summary",
+  "domain": "住院病历的现病史与病程记录摘要核对。摘要由结构化要素组成：主诉、现病史要点、体格检查、诊断、用药、诊疗计划。上游医师已写下部分要素，摘要助手需要判断要素是否完整、是否需要编码员复核、以及缺陷的严重程度。不直接生成 ICD 编码，只判断完整性与是否需人工。",
+  "state": "一份住院病历的结构化摘录，字段短且跨记录固定：人口学、主诉、现病史要点、查体记录、诊断列表、用药记录、诊疗计划、缺失标记。要点已由上游抽取或规则截断，不含病历全文。",
+  "state_example": {
+    "patient": "female 64",
+    "chief_complaint": "反复右上腹疼痛 3 个月",
+    "presenting_history": "3 个月前无明显诱因出现右上腹隐痛，餐后加重，伴嗳气，无反酸",
+    "examination": "右上腹轻压痛，无反跳痛，肝区叩击痛阴性",
+    "diagnosis": ["慢性胃炎", "幽门螺杆菌感染待排"],
+    "medications": ["雷贝拉唑 20 mg qd", "阿莫西林 1000 mg tid"],
+    "plan": "胃镜检查 + 幽门螺杆菌呼气试验，评估根除治疗指征",
+    "missing_element": "无"
+  },
+  "questions": {
+    "missing_element": {
+      "type": "choice",
+      "instructions": "摘要中缺失的是哪个要素？",
+      "criteria": {
+        "none": "六个要素齐全，无缺失",
+        "chief_complaint": "缺主诉",
+        "presenting_history": "缺现病史要点",
+        "examination": "缺体格检查记录",
+        "diagnosis": "缺诊断",
+        "medication": "缺用药记录",
+        "plan": "缺诊疗计划"
+      }
+    },
+    "needs_coder_review": {
+      "type": "noul",
+      "instructions": "这份摘要是否需要编码员复核后才能用于编码？",
+      "criteria": {
+        "true": "需要复核：要素缺失影响诊断编码，或诊断列表与记录内容不一致",
+        "false": "无需复核：要素齐全且诊断与记录一致"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "摘要缺陷的严重程度如何？",
+      "criteria": [
+        "0：要素齐全，无缺陷",
+        "1：轻度缺陷：缺主诉或现病史要点，不影响诊断判断",
+        "2：中度缺陷：缺查体、诊断或用药记录，诊断可信度下降",
+        "3：重度缺陷：缺诊疗计划，无法判断后续处理"
+      ]
+    },
+    "coding_confidence": {
+      "type": "score",
+      "instructions": "依据这份摘要做诊断编码的置信档位如何？",
+      "criteria": [
+        "0：低置信 —— 关键要素缺失，编码需要额外临床信息",
+        "1：中置信 —— 诊断可初步判断，但需补充要素确认",
+        "2：高置信 —— 要素齐全且诊断与记录一致"
+      ]
+    }
+  },
+  "guidance": "missing_element 为 none 当且仅当六个要素全部存在；此时 severity 必为 0、needs_coder_review 必为 false、coding_confidence 必为 2。severity 由缺失要素的类型决定而非随机：缺主诉或现病史要点为 1，缺查体、诊断或用药记录为 2，缺诊疗计划为 3。needs_coder_review 为 true 当且仅当 severity >= 2。coding_confidence 由 severity 派生：severity 0 对应 2，severity 1 与 2 对应 1，severity 3 对应 0。诊断列表存在但与用药记录明显不符（用药为完全不相关类别）时，即使无要素缺失也需要编码员复核，此时 severity 取 2、coding_confidence 取 1。",
+  "variety": [
+    "六要素缺失组合（missing_element 七选项逐一覆盖）：全齐 none、缺主诉 chief_complaint、缺现病史要点 presenting_history、缺体格检查 examination、缺诊断 diagnosis、缺用药记录 medication、缺诊疗计划 plan、缺两项（低频但须存在）",
+    "严重度档（severity 由缺失要素类型派生，不得随机）：0 六要素全齐、1 缺主诉或现病史要点、2 缺查体/诊断/用药记录、3 缺诊疗计划",
+    "置信档（coding_confidence 由 severity 派生）：2 高置信（要素齐全且诊断与记录一致）、1 中置信（severity 为 1 或 2，需补充要素确认）、0 低置信（severity 为 3，缺诊疗计划无法判断后续处理）",
+    "needs_coder_review=true 的两类来源（须都生成）：要素缺失影响诊断编码（severity>=2）；六要素齐全但诊断列表与用药记录明显不符（用药为完全不相关类别），此时 severity 取 2、coding_confidence 取 1",
+    "科室来源：内科、外科、肿瘤科、妇产科、儿科、ICU、康复科、中医科",
+    "病程阶段：入院记录、首次病程记录、阶段小结、出院小结、死亡记录、手术记录",
+    "诊断数量与构成：单一诊断、并列多个诊断、待排诊断（带「待排」或「?」）、入院诊断与出院诊断不一致、并发症未列入诊断列表",
+    "用药复杂度：无用药记录、单药、联合用药、特殊人群用药（孕产妇/肾功能不全/肝功能异常）、用药与诊断明显不符",
+    "主诉风格：口语化（「肚子疼」）、书面化、极简（「发热」）、冗长、时间表述模糊（「这几天」）",
+    "现病史要素完整度：起病时间/诱因/性质/加重缓解因素/伴随症状/既往诊疗经过——六要素齐全、仅前三项、完全缺失",
+    "查体记录：生命体征齐全、仅部分系统、仅记录阳性体征、缺阴性体征、模板化复制上一份",
+    "诊疗计划：明确检查计划、仅笼统记录（「对症处理」）、缺失、计划与诊断不匹配",
+    "患者人群：成人、儿童、孕产妇、老年、危重、术后"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "chief_complaint", "category": "chief_complaint", "severity": 1, "adverse": false, "element_severity": 1},
+      {"name": "presenting_history", "category": "presenting_history", "severity": 1, "adverse": false, "element_severity": 1},
+      {"name": "examination", "category": "examination", "severity": 2, "adverse": true, "element_severity": 2},
+      {"name": "diagnosis", "category": "diagnosis", "severity": 2, "adverse": true, "element_severity": 2},
+      {"name": "medication", "category": "medication", "severity": 2, "adverse": true, "element_severity": 2},
+      {"name": "plan", "category": "plan", "severity": 3, "adverse": true, "element_severity": 3},
+      {"name": "none", "category": "none", "severity": 0, "adverse": false, "element_severity": 0},
+      {"name": "mismatch", "category": "mismatch", "severity": 2, "adverse": true, "element_severity": 2}
+    ],
+    "selectors": [
+      {"min": 1, "max": 1, "weight_normal": 1.0, "weight_trigger_extra": 0.0, "max_trigger_extra": 0, "max_trigger_tier_drift": 0}
+    ],
+    "categories": {
+      "chief_complaint": ["chief_complaint"],
+      "presenting_history": ["presenting_history"],
+      "examination": ["examination"],
+      "diagnosis": ["diagnosis"],
+      "medication": ["medication"],
+      "plan": ["plan"],
+      "none": ["none"],
+      "mismatch": ["mismatch"]
+    },
+    "tier_windows": {},
+    "contexts": [
+      "入院记录：",
+      "首次病程记录：",
+      "阶段小结：",
+      "出院小结：",
+      "死亡记录：",
+      "手术记录："
+    ],
+    "patients": [
+      "male 3",
+      "male 9",
+      "male 17",
+      "male 26",
+      "male 34",
+      "male 41",
+      "male 52",
+      "male 58",
+      "male 63",
+      "male 67",
+      "male 71",
+      "male 78"
+    ],
+    "cases": [
+      ["心血管", "cardiac", "反复胸闷 2 个月", "2 个月前起活动后胸闷，休息后缓解，无胸痛", "心率 82 bpm，心律齐，未闻及杂音", ["稳定型心绞痛", "高血压 2 级"], ["阿司匹林 100 mg qd", "美托洛尔 47.5 mg qd"], "完善冠脉 CTA，评估血运重建指征"],
+      ["消化", "gastric", "反复上腹痛 3 个月", "3 个月来上腹隐痛，餐后加重，伴嗳气，无反酸黑便", "上腹轻压痛，无反跳痛", ["慢性胃炎", "幽门螺杆菌感染待排"], ["雷贝拉唑 20 mg qd", "阿莫西林 1000 mg tid"], "胃镜检查加幽门螺杆菌呼气试验"],
+      ["呼吸", "pulmonary", "反复咳嗽咳痰 3 周", "3 周前受凉后出现咳嗽，咳白色黏痰，无发热盗汗", "双肺呼吸音粗，未闻及明显干湿啰音", ["社区获得性肺炎待排"], ["阿莫西林 1000 mg tid", "氨溴索 30 mg tid"], "胸部 CT 评估感染范围，必要时痰培养"],
+      ["神经", "neuro", "反复头晕 2 周", "2 周来间断头晕，与体位相关，无肢体无力，无言语不清", "神经系统查体未见明显异常", ["后循环缺血待排", "高血压 1 级"], ["氢氯噻嗪 12.5 mg qd"], "头颅 MRI 加 MRA，评估后循环"],
+      ["内分泌", "metabolic", "多饮多尿 2 个月", "2 个月来多饮多尿，体重下降约 5 kg，无明显多食", "BMI 21.4 kg/m2，甲状腺无肿大", ["2 型糖尿病", "糖尿病肾病待排"], ["二甲双胍 500 mg bid"], "空腹及餐后血糖谱，糖化血红蛋白，尿微量白蛋白"],
+      ["血液肿瘤", "heme", "乏力伴牙龈出血 1 个月", "1 个月来乏力渐重，伴牙龈出血，无发热，无骨痛", "面色苍白，脾肋下 2 cm 可及", ["再生障碍性贫血待排", "急性白血病待排"], ["环孢素 100 mg bid"], "骨髓穿刺加免疫分型，血细胞减少原因待查"],
+      ["泌尿", "urinary", "反复尿频尿痛 5 天", "5 天来尿频尿急尿痛，排尿末灼热，无血尿", "膀胱区轻压痛，肾区叩击痛阴性", ["急性膀胱炎"], ["左氧氟沙星 500 mg qd"], "尿常规加尿培养，泌尿系超声"],
+      ["骨科", "ortho", "右膝关节肿痛 2 周", "2 周前无明显诱因出现右膝肿痛，步行加重，上下楼梯困难", "右膝轻度肿胀，浮髌试验阴性", ["右膝关节积液待排"], ["塞来昔布 200 mg bid"], "膝关节超声加 MRI，明确积液性质"],
+      ["妇产", "gyn", "月经量增多 3 个月", "3 个月来月经量较前增多约一倍，周期仍规则，无痛经", "外阴及阴道无异常出血", ["子宫肌瘤待排", "贫血待查"], ["氨甲环酸 500 mg tid", "铁剂"], "妇科超声评估肌瘤大小，纠正贫血"],
+      ["儿科", "peds", "发热 3 天", "3 天前发热，最高 39.2 度，伴咳嗽，无呕吐腹泻，精神尚可", "咽部充血，双肺呼吸音清", ["急性上呼吸道感染", "发热待查"], ["布洛芬 100 mg q4h（按体重）"], "血常规加 CRP，必要时胸片"]
+    ],
+    "mismatch_drugs": [
+      "地高辛 0.25 mg qd",
+      "华法林 2.5 mg qd",
+      "左甲状腺素钠 50 ug qd",
+      "沙丁胺醇吸入 2 喷 q8h",
+      "呋塞米 20 mg qd"
+    ],
+    "stages": ["入院记录", "首次病程记录", "阶段小结", "出院小结"],
+    "ages": [3, 9, 17, 26, 34, 41, 52, 58, 63, 67, 71, 78],
+    "notes": [
+      "患者自述症状较前无明显变化，一般情况可，饮食睡眠尚可",
+      "查房时患者精神状态可，对答切题，未诉特殊不适",
+      "今日体温正常，未诉新发不适，继续原方案",
+      "患者情绪稳定，家属已充分告知病情及后续注意事项",
+      "晨间查房见患者已下床活动，症状未见加重",
+      "记录时患者正在睡眠，未唤醒，未见异常",
+      "主管医师查房意见：既往史及过敏史已再次核对无误",
+      "患者要求明日复查，已口头告知需空腹抽血",
+      "经上级医师查房意见，已调整用药并记录于医嘱",
+      "自动导入住院时间与住院次数，未做人工修改"
+    ],
+    "rules": [
+      {
+        "when": "state['missing_element'] == 'none'",
+        "then": [
+          {"label": "missing_element", "value": "none"},
+          {"label": "needs_coder_review", "value": false},
+          {"label": "severity", "value": 0},
+          {"label": "coding_confidence", "value": 2}
+        ]
+      },
+      {
+        "when": "state['missing_element'] == 'mismatch'",
+        "then": [
+          {"label": "missing_element", "value": "none"},
+          {"label": "needs_coder_review", "value": True},
+          {"label": "severity", "value": 2},
+          {"label": "coding_confidence", "value": 1}
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {"label": "missing_element", "value": "element_name_lookup(state['missing_element'])"},
+          {"label": "needs_coder_review", "value": "severity_lookup(state['missing_element']) >= 2"},
+          {"label": "severity", "value": "severity_lookup(state['missing_element'])"},
+          {"label": "coding_confidence", "value": "missing_element(['x'], False)"}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.0,
+        "fields": [],
+        "question": "needs_coder_review",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {}
+      },
+      "minimal_pair": {"rate": 0.35, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "by_missing_element": {
+        "none": {"share": 0.143, "quota": 113, "elements": []},
+        "chief_complaint": {"share": 0.143, "quota": 113, "elements": ["chief_complaint"]},
+        "presenting_history": {"share": 0.143, "quota": 113, "elements": ["presenting_history"]},
+        "examination": {"share": 0.143, "quota": 112, "elements": ["examination"]},
+        "diagnosis": {"share": 0.143, "quota": 112, "elements": ["diagnosis"]},
+        "medication": {"share": 0.143, "quota": 112, "elements": ["medication"]},
+        "plan": {"share": 0.143, "quota": 112, "elements": ["plan"]}
+      },
+      "mismatch": {"share": 0.10, "quota": 79}
+    },
+    "panel_category": {
+      "chief_complaint": "chief_complaint",
+      "presenting_history": "presenting_history",
+      "examination": "examination",
+      "diagnosis": "diagnosis",
+      "medication": "medication",
+      "plan": "plan",
+      "none": "none",
+      "mismatch": "mismatch"
+    }
+  }
+}

@@ -33,9 +33,10 @@ def test_seed_is_idempotent_and_bilingual(client):
     medical = domains["medical"]
     assert medical["label_zh"] == "医疗" and medical["label_en"] == "Medical"
     slugs = {s["slug"] for s in medical["scenarios"]}
-    # run_matrix 已知的 7 个医疗场景全部落库（含 icd-coding）
+    # run_matrix 已知的医疗场景全部落库（含 icd-coding）
     assert {"critical-value", "icd-coding", "triage"} <= slugs
-    assert len(medical["scenarios"]) == 7
+    # 7 个基础医疗场景 + 3 个蒸馏轨补回（inquiry / medication / knowledge-qa）
+    assert len(medical["scenarios"]) == 10
     cv = next(s for s in medical["scenarios"] if s["slug"] == "critical-value")
     assert cv["label_zh"] == "危急值" and cv["label_en"] == "Critical Value"
     assert cv["spec_path"] == "docs/medical/specs/critical-value.json"
@@ -46,7 +47,7 @@ def test_seed_does_not_duplicate_on_reinit(client):
     store = client.app.state.store
     store.seed_scenarios()
     medical = next(d for d in store.list_scenario_tree() if d["slug"] == "medical")
-    assert len(medical["scenarios"]) == 7
+    assert len(medical["scenarios"]) == 10
 
 
 # ---- 域 / 场景 CRUD ------------------------------------------------------

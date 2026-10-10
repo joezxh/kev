@@ -16,7 +16,13 @@ from kev.console.executor import ALLOWED_ENV, SECRET_ENV, LocalExecutor
 
 @pytest.fixture
 def store(tmp_path):
-    return Store(tmp_path / "db.sqlite")
+    path = tmp_path / "db.sqlite"
+    s = Store(path)
+    # Legacy attribute used throughout this test file: the per-test directory
+    # where log_path / pidfile / etc. live. Store today exposes `url` instead;
+    # we keep `path` here so each call site stays a one-liner.
+    s.path = path
+    return s
 
 
 def make_job(store, kind="train"):
@@ -37,12 +43,12 @@ def drain(store, executor, job_id, timeout=20.0):
         raise AssertionError(f"job never reached a terminal state: {error}") from None
 
 
-def test_streams_stdout_into_events_and_marks_success(store):
+def test_streams_stdout_into_events_and_marks_success(store, tmp_path):
     executor = LocalExecutor(store)
     job_id = make_job(store)
     handle = executor.spawn(
         job_id, [sys.executable, "-c", "print('hello'); print('ep0 step 10/2 loss 0.500 kl 0.000 anchor 0.000 1.000s/rec')"],
-        cwd=os.getcwd(), log_path=str(store.path.parent / "job.log"),
+        cwd=os.getcwd(), log_path=str(tmp_path / "job.log"),
     )
     assert handle.popen is not None
     assert drain(store, executor, job_id) == 0
@@ -127,7 +133,7 @@ def test_cancel_kills_the_process_group(store):
     )
     assert handle.pid > 0
     grandchildren = [_wait_for_pid(pidfile)]
-    assert executor.cancel(job_id) is True
+    assert executor.cancel_job(job_id) is True
     assert store.get_job(job_id)["status"] == "canceled"
     time.sleep(0.5)
     for pid in grandchildren:
@@ -164,7 +170,7 @@ def test_on_finished_does_not_fire_for_a_canceled_job(store):
     job_id = make_job(store)
     executor.spawn(job_id, [sys.executable, "-c", "import time; time.sleep(60)"],
                    cwd=os.getcwd(), log_path=str(store.path.parent / "c.log"))
-    executor.cancel(job_id)
+    executor.cancel_job(job_id)
     drain(store, executor, job_id)
     assert seen == []          # 取消不是「完成」，不能注册产物
 
@@ -279,4 +285,4 @@ def test_wait_returns_the_exit_code_and_times_out(store):
                    cwd=os.getcwd(), log_path=str(store.path.parent / "c.log"))
     with pytest.raises(TimeoutError, match="still running"):
         executor.wait(slow, timeout=0.3)
-    executor.cancel(slow)
+    executor.cancel_job(slow)

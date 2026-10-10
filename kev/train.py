@@ -28,6 +28,22 @@ from .suite import SYNTHETIC_SOURCES, digest, load_split, read_json, read_manife
 from .model import MAX_STATE, MAX_TRAIN_STATE, DecisionModel, fits, load_tokenizer, rows_of, training_context, user_tokens
 
 
+# --- cancellation ---------------------------------------------------------------------------------------------------
+
+# Service layer sets this to interrupt a running training without spawning a new process (see
+# docs/superpowers/plans/2026-10-09-studio-rollout-plan.md, Wave A / Task A1).
+# Step loop checks it every CANCEL_CHECK_EVERY optimizer steps; setting it raises _TrainCanceled, which
+# `run()` translates into a clean return code so the executor marks the job failed (not stuck running).
+cancel: threading.Event = threading.Event()
+
+
+class _TrainCanceled(Exception):
+    """Raised inside the step loop when `cancel` is set. Caught at run() boundary."""
+
+
+CANCEL_CHECK_EVERY = 8
+
+
 # --- losses -----------------------------------------------------------------------------------------------------------
 
 def permuted_copy(rec, rng):
@@ -526,6 +542,16 @@ def pinned_revision(a, manifest):
 
 def main():
     a = parse_args()
+    return run(a)
+
+
+def run(a: argparse.Namespace) -> int:
+    """Pure-function entry point: takes a parsed Namespace, returns a process exit code.
+
+    Separated from main() so a service layer (kev.console.services.train) can call this in-process
+    without re-parsing argv or duplicating the CLI's field-validation block. The CLI entry is unchanged:
+    `python -m kev.train` still calls main() which calls run() with the parsed args.
+    """
     dev = a.device or default_device()
     rank, world = full_ft.init_distributed(dev) if a.full_ft else (0, 1)   # torchrun: each rank's "cuda" is its own GPU
     out_dir = Path(a.out)
@@ -632,6 +658,13 @@ def main():
             run["n"] += variants; seen += round(variants); tokens_seen += sum(v.tokens for v in batch)
             peak_mem = max(peak_mem, allocated_bytes(dev))
             if ends_step:
+                # Service-layer cancellation (kev.console.services.train): a long training job is interruptible
+                # without a SIGKILL. CANCEL_CHECK_EVERY keeps the is_set() probe off the hot path (an Event check
+                # is a few microseconds; opt.step() is seconds). The flag is checked at the optimizer-step boundary
+                # only; we set `stopped` so the outer ep loop breaks cleanly and run() returns 130 (SIGINT convention).
+                if step % CANCEL_CHECK_EVERY == 0 and cancel.is_set():
+                    stopped = True
+                    break
                 if not a.full_ft: norm = float(torch.nn.utils.clip_grad_norm_(model.trainable_parameters(), MAX_GRAD_NORM, error_if_nonfinite=True))   # MasterAdamW clips by the global norm itself; both refuse a non-finite norm (a NaN gradient from a finite loss)
                 started = time.time(); opt.step(); sync(dev); optimizer_seconds += time.time() - started
                 grad_norms += [[] for _ in range(ep + 1 - len(grad_norms))]
@@ -658,7 +691,13 @@ def main():
     if writer: writer.wait()   # a resume point being written in the background is finished (and then superseded, or continued from)
     if snapshots: snapshots.wait()   # and the last snapshot
     if stopped:
-        print(f"stopped after step {step}; continue with --resume 1", flush=True); return
+        # 130 is the POSIX convention for SIGINT (128 + 2); we reuse it for the in-process cancel path so the
+        # executor can distinguish "service canceled this job" from "reached the requested --stop_after step"
+        # (the latter keeps the old return-None semantics: 0 means success, the caller should not treat 130 as failure).
+        if cancel.is_set():
+            print(f"canceled at step {step}", flush=True)
+            return 130
+        print(f"stopped after step {step}; continue with --resume 1", flush=True); return 0
     seen, tokens_seen = full_ft.global_sum([seen, tokens_seen])   # ranks' micro-batches differ in size under --length_sort
 
     wall = time.time() - t0
@@ -677,7 +716,8 @@ def main():
                "weights": meta.weights, "peak_device_bytes": peak_mem, "device": dev, "dtype": a.dtype, "batch": a.batch,
                "peak_rss_bytes": (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == "darwin" else 1024)) if resource else None})
     print("saved", a.out, flush=True)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

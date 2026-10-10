@@ -1,0 +1,262 @@
+{
+  "name": "diagnosis",
+  "domain": "门诊与急诊的初诊评估。患者因主诉就诊，需要给出初步鉴别方向、是否需要进一步检查、以及就诊紧急度。涵盖心血管、呼吸、消化、神经、泌尿、代谢内分泌、肌肉骨骼、血液肿瘤九大系统。",
+  "state": "患者就诊时的结构化记录：人口学、主诉（患者原话，1-3 句）、生命体征、已完成的检验值、是否已做影像、合并症、患病时长。字段名短且跨记录固定。",
+  "state_example": {
+    "patient": "male 58",
+    "chief_complaint": "活动后气促 2 周，伴下肢水肿",
+    "vitals": "BP 152/92 mmHg, HR 104 bpm, SpO2 93%",
+    "labs": {"肌钙蛋白": "0.9 ng/mL", "NT-proBNP": "3200 pg/mL", "肌酐": "96 umol/L"},
+    "imaging": "未做",
+    "comorbidities": ["高血压 10 年", "2 型糖尿病 8 年"],
+    "duration": "2 周"
+  },
+  "questions": {
+    "differential_direction": {
+      "type": "choice",
+      "instructions": "初步判断应优先考虑哪个系统的鉴别方向？",
+      "criteria": {
+        "cardiovascular": "心源性：胸痛、心悸、活动后气促、下肢水肿、血压异常",
+        "respiratory": "呼吸系统：咳嗽咳痰、气促、喘息、胸膜相关症状",
+        "gastrointestinal": "消化系统：腹痛、反酸、呕吐、腹泻、便血",
+        "neurologic": "神经系统：头痛、眩晕、肢体麻木无力、意识改变、言语不清",
+        "urinary": "泌尿系统：尿频尿急尿痛、血尿、肾绞痛、排尿困难",
+        "endocrine": "代谢内分泌：多饮多尿、体重明显改变、怕冷乏力、血糖异常",
+        "musculoskeletal": "肌肉骨骼：关节痛、腰痛、外伤、行走困难",
+        "hematologic_oncologic": "血液与肿瘤：贫血貌、淋巴结肿大、盗汗、乏力消瘦",
+        "undirected": "现有信息不足以定向，需先完善影像与检验"
+      }
+    },
+    "needs_test": {
+      "type": "noul",
+      "instructions": "是否需要影像或实验室检查才能进一步明确诊断？",
+      "criteria": {
+        "true": "已有指向性线索，但仍需检查确认范围、程度或并发症",
+        "false": "临床表现已足以给出方向性判断，无需追加检查"
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "本次就诊的紧急程度如何？",
+      "criteria": [
+        "0：可按普通门诊预约，无需当日处理",
+        "1：建议尽快门诊，但无需急诊",
+        "2：需要急诊评估或当日处理",
+        "3：存在危险信号，需立即急救"
+      ]
+    },
+    "red_flag": {
+      "type": "noul",
+      "instructions": "是否存在需要立即处理的危险信号？",
+      "criteria": {
+        "true": "存在危险信号：意识改变、持续胸痛、明显呼吸困难、大出血、严重低血压、SpO2 下降",
+        "false": "未发现危险信号"
+      }
+    }
+  },
+  "guidance": "differential_direction 优先取最紧急且最专科化的系统：任一危险信号存在时，方向仍按受累系统给出（除非主诉指向两个系统且无法判定），但 needs_test 必为 true、urgency 必为 3。三个方向并存无法判定时取 undirected，且 needs_test 为 true。urgency 3 与 red_flag true 等价：存在任一危险信号则两者同时为真。urgency 0 时 red_flag 必为 false。needs_test 为 false 仅在主诉已高度特异且体征与检验均无异常时出现，此时 urgency 不得为 2 或 3。",
+  "variety": [
+    "九个系统的典型主诉（differential_direction 九选项逐一覆盖）：cardiovascular（胸痛、心悸、活动后气促、下肢水肿、血压异常）、respiratory（咳嗽咳痰、气促、喘息、胸膜相关症状）、gastrointestinal（腹痛、反酸、呕吐、腹泻、便血）、neurologic（头痛、眩晕、肢体麻木无力、意识改变、言语不清）、urinary（尿频尿急尿痛、血尿、肾绞痛、排尿困难）、endocrine（多饮多尿、体重明显改变、怕冷乏力、血糖异常）、musculoskeletal（关节痛、腰痛、外伤、行走困难）、hematologic_oncologic（贫血貌、淋巴结肿大、盗汗、乏力消瘦）、undirected（三个方向并存无法判定）",
+    "危险信号八项（red_flag=true 与 urgency=3 需逐项覆盖，并各自触发对应系统方向）：意识改变或晕厥、持续胸痛、明显呼吸困难、呕血或黑便、大出血、严重低血压、SpO2 下降、剧烈头痛伴喷射性呕吐",
+    "紧急度档（urgency 四档全覆盖）：0 可按普通门诊预约（慢病随访、常规体检、轻症稳定且 red_flag=false）、1 建议尽快门诊但无需急诊、2 需要急诊评估或当日处理、3 存在危险信号需立即急救（此时 red_flag 必为 true）",
+    "needs_test=false 的特例（需专门生成此类以覆盖该标签）：主诉已高度特异且体征与检验均无异常，此时 urgency 不得为 2 或 3",
+    "undirected 的特例（需专门生成此类以覆盖该标签）：主诉同时涉及三个系统、检验与影像均无指向性证据，此时 needs_test 必为 true",
+    "主诉与检验方向关系：方向一致、主诉含糊但检验有明确指向、检验完全缺失、主诉与检验方向冲突（须按最紧急且最专科化的系统仲裁）",
+    "主诉长度与语气：一句话、三句话、平实叙述、焦虑、急迫、表述含糊（患者说不清部位或时间）",
+    "年龄跨度：婴幼儿、儿童、青年、中年、老年、极高龄",
+    "生命体征组合：全部正常、仅一项异常、多项同时异常、完全未测量",
+    "合并症与用药：无、单一慢性病（高血压/糖尿病）、多病共存、既往手术史、正在服用抗凝药或降糖药",
+    "是否已做影像：未做、已做且正常、已做且有异常但与主诉方向不一致、影像为决定性证据（此时 needs_test 可为 false）",
+    "患病时长：数小时、数天、2-4 周、3 个月以上、慢性反复发作"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "持续胸痛", "category": "cardiovascular", "urgency": 2, "needs_test": true, "red_flag": true, "priority": 0},
+      {"name": "胸痛伴放射至左肩背", "category": "cardiovascular", "urgency": 3, "needs_test": true, "red_flag": true, "priority": 1},
+      {"name": "心悸", "category": "cardiovascular", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 2},
+      {"name": "活动后气促", "category": "cardiovascular", "urgency": 2, "needs_test": true, "red_flag": false, "priority": 3},
+      {"name": "下肢水肿", "category": "cardiovascular", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 4},
+      {"name": "血压显著升高", "category": "cardiovascular", "urgency": 2, "needs_test": true, "red_flag": false, "priority": 5},
+      {"name": "咳嗽咳痰", "category": "respiratory", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 6},
+      {"name": "发热伴咳嗽", "category": "respiratory", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 7},
+      {"name": "呼吸困难", "category": "respiratory", "urgency": 2, "needs_test": true, "red_flag": true, "priority": 8},
+      {"name": "喘憋不能平卧", "category": "respiratory", "urgency": 3, "needs_test": true, "red_flag": true, "priority": 9},
+      {"name": "腹痛", "category": "gastrointestinal", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 10},
+      {"name": "上腹隐痛餐后加重", "category": "gastrointestinal", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 11},
+      {"name": "反酸烧心", "category": "gastrointestinal", "urgency": 0, "needs_test": false, "red_flag": false, "priority": 12},
+      {"name": "呕血黑便", "category": "gastrointestinal", "urgency": 3, "needs_test": true, "red_flag": true, "priority": 13},
+      {"name": "头痛", "category": "neurologic", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 14},
+      {"name": "眩晕", "category": "neurologic", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 15},
+      {"name": "肢体麻木无力", "category": "neurologic", "urgency": 2, "needs_test": true, "red_flag": true, "priority": 16},
+      {"name": "言语不清", "category": "neurologic", "urgency": 3, "needs_test": true, "red_flag": true, "priority": 17},
+      {"name": "意识改变", "category": "neurologic", "urgency": 3, "needs_test": true, "red_flag": true, "priority": 18},
+      {"name": "尿频尿急尿痛", "category": "urinary", "urgency": 0, "needs_test": true, "red_flag": false, "priority": 19},
+      {"name": "血尿", "category": "urinary", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 20},
+      {"name": "肾绞痛", "category": "urinary", "urgency": 2, "needs_test": true, "red_flag": false, "priority": 21},
+      {"name": "排尿困难", "category": "urinary", "urgency": 0, "needs_test": true, "red_flag": false, "priority": 22},
+      {"name": "多饮多尿", "category": "endocrine", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 23},
+      {"name": "体重明显下降", "category": "endocrine", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 24},
+      {"name": "怕冷乏力", "category": "endocrine", "urgency": 0, "needs_test": true, "red_flag": false, "priority": 25},
+      {"name": "血糖明显升高", "category": "endocrine", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 26},
+      {"name": "关节痛", "category": "musculoskeletal", "urgency": 0, "needs_test": false, "red_flag": false, "priority": 27},
+      {"name": "腰痛", "category": "musculoskeletal", "urgency": 0, "needs_test": false, "red_flag": false, "priority": 28},
+      {"name": "外伤", "category": "musculoskeletal", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 29},
+      {"name": "行走困难", "category": "musculoskeletal", "urgency": 1, "needs_test": false, "red_flag": false, "priority": 30},
+      {"name": "贫血貌", "category": "hematologic_oncologic", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 31},
+      {"name": "淋巴结肿大", "category": "hematologic_oncologic", "urgency": 1, "needs_test": true, "red_flag": false, "priority": 32},
+      {"name": "盗汗消瘦", "category": "hematologic_oncologic", "urgency": 2, "needs_test": true, "red_flag": false, "priority": 33},
+      {"name": "乏力伴牙龈出血", "category": "hematologic_oncologic", "urgency": 2, "needs_test": true, "red_flag": true, "priority": 34}
+    ],
+    "selectors": [
+      {"min": 1, "max": 1, "weight_normal": 1.0, "weight_trigger_extra": 0.0, "max_trigger_extra": 0, "max_trigger_tier_drift": 0}
+    ],
+    "categories": {
+      "cardiovascular": [
+        "持续胸痛", "胸痛伴放射至左肩背", "心悸", "活动后气促", "下肢水肿", "血压显著升高"
+      ],
+      "respiratory": [
+        "咳嗽咳痰", "发热伴咳嗽", "呼吸困难", "喘憋不能平卧"
+      ],
+      "gastrointestinal": [
+        "腹痛", "上腹隐痛餐后加重", "反酸烧心", "呕血黑便"
+      ],
+      "neurologic": [
+        "头痛", "眩晕", "肢体麻木无力", "言语不清", "意识改变"
+      ],
+      "urinary": [
+        "尿频尿急尿痛", "血尿", "肾绞痛", "排尿困难"
+      ],
+      "endocrine": [
+        "多饮多尿", "体重明显下降", "怕冷乏力", "血糖明显升高"
+      ],
+      "musculoskeletal": [
+        "关节痛", "腰痛", "外伤", "行走困难"
+      ],
+      "hematologic_oncologic": [
+        "贫血貌", "淋巴结肿大", "盗汗消瘦", "乏力伴牙龈出血"
+      ],
+      "undirected": []
+    },
+    "tier_windows": {},
+    "contexts": [
+      "BP 148/92 mmHg, HR 96 bpm, RR 20 /min, SpO2 94%",
+      "BP 132/84 mmHg, HR 76 bpm, RR 16 /min, SpO2 98%",
+      "BP 105/65 mmHg, HR 118 bpm, RR 24 /min, SpO2 91%",
+      "BP 165/100 mmHg, HR 88 bpm, RR 18 /min, SpO2 96%",
+      "BP 92/58 mmHg, HR 132 bpm, RR 26 /min, SpO2 89%"
+    ],
+    "patients": [
+      "male 3",
+      "male 9",
+      "male 17",
+      "male 26",
+      "male 34",
+      "male 41",
+      "male 52",
+      "male 58",
+      "male 63",
+      "male 67",
+      "male 71",
+      "male 78",
+      "female 3",
+      "female 9",
+      "female 17",
+      "female 26",
+      "female 34",
+      "female 41",
+      "female 52",
+      "female 58",
+      "female 63",
+      "female 67",
+      "female 71",
+      "female 78"
+    ],
+    "lab_hints": {
+      "cardiovascular": {"肌钙蛋白": ["0.9 ng/mL", "4.2 ng/mL"], "NT-proBNP": ["3200 pg/mL", "980 pg/mL"]},
+      "respiratory": {"D-二聚体": ["2.8 mg/L FEU", "5.1 mg/L FEU"]},
+      "endocrine": {"空腹血糖": ["11.2 mmol/L", "16.4 mmol/L"], "TSH": ["8.2 mIU/L"]},
+      "hematologic_oncologic": {"血红蛋白": ["68 g/L", "91 g/L"], "血小板": ["38 ×10^9/L"]},
+      "urinary": {"尿白细胞": ["阳性", "++"], "肌酐": ["168 umol/L"]},
+      "neurologic": {"头颅 CT": ["未见异常", "未见明显异常"]},
+      "gastrointestinal": {"便潜血": ["阳性"], "胃镜": ["慢性非萎缩性胃炎"]}
+    },
+    "imaging": [
+      "未做",
+      "胸片未见明显异常",
+      "腹部超声示肝脏回声增粗",
+      "头颅 CT 未见异常",
+      "胸部 CT 示双肺纹理增粗",
+      "心脏超声示左室舒张功能减低"
+    ],
+    "comorbid": [
+      ["无"],
+      ["高血压 10 年"],
+      ["2 型糖尿病 8 年", "高血压 5 年"],
+      ["慢性阻塞性肺疾病"],
+      ["冠心病搭桥术后"],
+      ["肿瘤放化疗中"],
+      ["慢性肾病 3 期"],
+      ["妊娠 28 周"]
+    ],
+    "durations": [
+      ["3 天", 3],
+      ["1 周", 7],
+      ["2 周", 14],
+      ["1 个月", 30],
+      ["3 个月", 90]
+    ],
+    "tones": [
+      "有点难受",
+      "想尽快看看",
+      "拖了好几天了",
+      "家里人都很着急",
+      "这种情况要紧吗",
+      "反复发作"
+    ],
+    "rules": [
+      {
+        "when": "red_flag_wins(state['presentations'])",
+        "then": [
+          {"label": "differential_direction", "value": "tier_priority_arbiter(state['presentations']) if len({p['category'] for p in state['presentations']}) == 1 else 'undirected'"},
+          {"label": "needs_test", "value": true},
+          {"label": "urgency", "value": 3},
+          {"label": "red_flag", "value": true}
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {"label": "differential_direction", "value": "tier_priority_arbiter(state['presentations'])"},
+          {"label": "needs_test", "value": "any(p['needs_test'] for p in state['presentations']) and not (max(p['urgency'] for p in state['presentations']) == 0 and not any(p['needs_test'] for p in state['presentations']))"},
+          {"label": "urgency", "value": "max(p['urgency'] for p in state['presentations'])"},
+          {"label": "red_flag", "value": false}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.0,
+        "fields": [],
+        "question": "needs_test",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {}
+      },
+      "minimal_pair": {"rate": 0.35, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "custom": "round_robin",
+      "round_robin": {
+        "period": 25,
+        "slots": [
+          {"slot": [0, 1], "target": "undirected"},
+          {"slot": [2, 24], "target": "department_index", "stride": 2}
+        ],
+        "department_index_order": [
+          "cardiovascular", "respiratory", "gastrointestinal", "neurologic",
+          "urinary", "endocrine", "musculoskeletal", "hematologic_oncologic"
+        ]
+      }
+    },
+    "panel_category": {}
+  }
+}

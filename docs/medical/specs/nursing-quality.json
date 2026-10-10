@@ -66,5 +66,27 @@
     "时间点：交接班高峰、午间、夜间、查房时、抢救后、术前准备期",
     "检查主体与场景：护士长巡查、责任护士自查、质控科抽查、实习生带教、跨科室会诊",
     "严重度上浮规则（须按 guidance 处理）：patient 为 bedridden、dependencies 含多路管路或 risk_scores 提示中高风险时，同等缺陷的 severity 上浮一级，但前提是 observed 中确有该环节的执行或记录问题"
-  ]
+  ],
+  "routing": {
+    "risk": "low",
+    "human_review": true,
+    "evidence_question": "",
+    "note": "护理质控检查表逐项可判，0.8B 主力。"
+  },
+  "smoke_probe": {
+    "state": {
+      "patient": "male 71, bed 12",
+      "ward": "cardiology",
+      "nursing_level": "level 2",
+      "check_point": "pressure ulcer prevention, repositioning",
+      "observed": "no repositioning documented for 6 hours",
+      "dependencies": "none",
+      "risk_scores": "Braden 12"
+    },
+    "questions": [
+      {"qid": "reportable", "type": "noul",
+       "instructions": "该护理缺陷是否应上报？（质量问题而非个人疏忽）"}
+    ],
+    "expected_label": {"reportable": "true"}
+  }
 }

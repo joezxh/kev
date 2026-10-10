@@ -1,0 +1,84 @@
+{
+  "_meta": {
+    "purpose": "用药指导 / 医保合理性 —— 生成式 SFT 轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM（Kev 轨复用 medication-review spec）。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/medication.yaml"
+  },
+  "name": "medication",
+  "label_zh": "用药指导",
+  "label_en": "Medication",
+  "domain": "门诊与住院的用药咨询与医保合理性。药品覆盖常见类别；患者包括成人、孕产妇、哺乳期妇女、儿童、老年、肝肾功能不全者。",
+  "state": "用药咨询的结构化字段：患者人口学与生理状态、过敏史、当前用药、咨询的药品、咨询的问题类型。",
+  "state_example": {
+    "patient": "female 34, gestation 28 weeks",
+    "state_flags": "pregnant, eGFR 88 mL/min/1.73m2",
+    "allergies": "青霉素（皮疹）",
+    "current_meds": ["阿莫西林 500mg tid"],
+    "question_drug": "甲硝唑 0.4g tid",
+    "question_type": "妊娠期是否可用"
+  },
+  "questions": {
+    "answer_appropriate": {
+      "type": "noul",
+      "instructions": "该回答是否覆盖了适应证、用法用量、注意事项、相互作用与禁忌人群？",
+      "criteria": {
+        "true": "覆盖完整，可作参考",
+        "false": "覆盖不全或超出说明书范围"
+      }
+    },
+    "needs_pharmacist": {
+      "type": "noul",
+      "instructions": "该问题是否需要药师复核？",
+      "criteria": {
+        "true": "高风险：妊娠/哺乳/儿童/老年、肝肾功能异常、注射剂、管制类",
+        "false": "低风险，按常规处理"
+      }
+    }
+  },
+  "guidance": "medication 仅提供说明书范围内的用药咨询与医保合理性提示，不做超出说明书的个体化剂量调整。涉及妊娠/哺乳/儿童/老年、肝肾功能异常、注射剂、管制类时 needs_pharmacist 必为 true。",
+  "variety": [
+    "药品类别：抗感染药、降压药、降糖药、抗凝药、NSAIDs、PPI、镇痛药、抗真菌与抗病毒药",
+    "患者人群：成人、孕产妇、哺乳期、儿童、老年、肝肾功能不全",
+    "问题类型：能否使用、剂量、相互作用、禁忌、医保范围",
+    "高风险组合：妊娠+抗生素、哺乳+镇痛、老年+多药、肝肾不全+抗菌药"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；Kev 轨复用 medication-review spec 的规则引擎。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是一位临床药师。回答要说明该药的适应证、用法用量、注意事项、相互作用与禁忌人群，并明确指出是否需要药师复核。不给出超出说明书范围的个体化剂量调整建议。",
+      "en": "You are a clinical pharmacist. Explain the drug's indications, dosing, precautions, interactions and contraindicated populations, and state whether pharmacist review is required. Do not provide individualised dose adjustments beyond the package insert."
+    },
+    "ask_template": "请基于以下咨询字段回答：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "门诊与住院的用药咨询",
+      "说明书范围内的适应证、剂量、相互作用与禁忌",
+      "是否需要药师复核的高风险信号"
+    ],
+    "kev_track": false
+  },
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "needs_pharmacist",
+    "note": "用药咨询规则封闭，0.8B 可作主力；高风险信号仍需药师复核。"
+  },
+  "smoke_probe": {
+    "state": {
+      "patient": "female 34, gestation 28 weeks",
+      "state_flags": "pregnant, eGFR 88 mL/min/1.73m2",
+      "allergies": "青霉素（皮疹）",
+      "current_meds": "阿莫西林 500mg tid",
+      "question_drug": "甲硝唑 0.4g tid",
+      "question_type": "妊娠期是否可用"
+    },
+    "questions": [
+      {"qid": "needs_pharmacist", "type": "noul",
+       "instructions": "该问题是否需要药师复核？"}
+    ],
+    "expected_label": {"needs_pharmacist": "true"}
+  }
+}

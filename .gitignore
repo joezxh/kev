@@ -675,3 +675,28 @@ data/console/
 *.db-wal
 *.db-shm
 playground/.next/
+# 本地部署权重（大文件，勿入库）：deploy/runs/ 由 docker-compose 挂载，权重仅留本地
+deploy/runs/
+
+# 医疗蒸馏与微调产出（docs/medical/）：种子、SFT 样本、Kev 记录、金标集。
+# 只入库生成器与配置；真实产出体积大，且即使已脱敏也不适合进版本库。
+# 说明见 docs/medical/README.md 与 docs/medical/distill/README.md。
+data/
+medical-data/
+
+# ---- kev console（医疗微调控制台）----
+# 编排层的 SQLite 与作业日志。日志是真相源但体积大且含训练输出，不入库；
+# database 会记录本机绝对路径与凭据的「是否已配置」状态，更不该入库。
+data/console/
+*.db
+*.db-wal
+*.db-shm
+playground/.next/
+
+# IDE artifacts (.qoder and .codebuddy directories repowiki/agent plans)
+.qoder/
+.codebuddy/
+
+# local credentials and overrides; .env.example is the safe template
+.env
+deploy/.env

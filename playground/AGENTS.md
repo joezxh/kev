@@ -67,3 +67,28 @@ live argv preview + gate panel on the right. A stage page supplies its field spe
 
 Before changing `kev/console/`, read
 `docs/superpowers/specs/2026-10-04-medical-finetune-console-design.md`.
+
+## Generator 标签（`/console/scenarios#generator/<slug>`）
+
+动态场景生成器的 UI 入口（spec `2026-10-09-dynamic-scenario-generators.md`）。4 个子面板，每个
+是一个 JSON textarea：
+
+- **Generator** —— `spec_json.generator`（sampler / rules / plan 字段）
+- **Distill** —— `spec_json.distill`（system_prompt / ask_template / kev_track / topics）
+- **Routing** —— `spec_json.routing`（risk / human_review / evidence_question / note）
+- **Smoke Probe** —— `spec_json.smoke_probe`（state / questions / expected_label）
+
+**Save / Discard / Reset** 三按钮的语义：
+
+- **Save**：把 4 个 JSON 字段 PUT 到 `/console/api/scenarios/{id}`（spec_json 合并）。
+- **Discard**：丢弃当前 draft，回到 spec 里的 4 个原值。
+- **Reset**：从 DB 重新加载，覆盖 draft（不调用 API）。
+
+**校验规则**（在 PUT 路径的 `app.py` 里）：
+
+- `routing.risk` ∈ {low, medium, high, critical}；其它值 400
+- `routing.evidence_question` 若非空，必须在 `spec.questions` 中；否则 400
+- `smoke_probe.questions[].qid` 必须都在 `spec.questions` 中；否则 400
+
+4 个 sub-field 之外的 spec 字段（questions / fields / …）由 spec editor 标签页管理，
+本标签不接触。

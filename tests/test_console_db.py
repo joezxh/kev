@@ -265,4 +265,6 @@ def test_append_events_with_no_rows_reports_no_new_cursor(store):
 
 
 def test_schema_version_is_stamped(store):
-    assert store.schema_version() == 4
+    # v5 added jobs.daemon_id for the distill_daemon Wave D refactor
+    # (kev/console/data_daemon.py + the corresponding app.py endpoints).
+    assert store.schema_version() == 5

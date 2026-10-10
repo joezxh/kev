@@ -72,5 +72,25 @@
     "临床背景：胸痛、呼吸困难、乏力、头晕、恶心呕吐、无明显症状（体检偶然发现）",
     "数值表述：带单位（mmol/L、g/L、x10^9/L、ng/mL、mg/L FEU）、仅给数值无单位、中文叙述夹英文缩写（K+、Cr、cTn、D-Dimer）、参考区间与实测值并列",
     "易错陷阱：老年女性 Cr 需明显高于 442 才判危急、儿童 Cr 基线低更易达危急、Hb 与 PLT 同时低下时不得只取其一、cTn 升高需结合胸痛才落在「立即」档"
-  ]
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "漏报危急值 ≫ 误报：低置信必须升级 4B 并强制转人工，不取 argmax 自动处置。"
+  },
+  "smoke_probe": {
+    "state": {
+      "patient": "male 67",
+      "context": "routine chemistry panel, no symptoms reported",
+      "labs": "K+ 6.2 mmol/L, Cr 98 umol/L",
+      "ref_ranges_included": "yes",
+      "missing_context": "no symptoms reported"
+    },
+    "questions": [
+      {"qid": "is_critical", "type": "noul",
+       "instructions": "该报告中的任一检验项目是否触及危急值（需要立即临床干预）？"}
+    ],
+    "expected_label": {"is_critical": "true"}
+  }
 }

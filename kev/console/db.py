@@ -24,11 +24,27 @@ from sqlalchemy import text
 
 from . import paths
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # 运行时共享的编排库单例：create_app 启动时写入，stage 模块（data.py 等）借此解析
 # 场景 spec_path。未初始化时返回 None，调用方应回退到 docs/medical/specs 目录。
 _STORE: "Store | None" = None
+
+
+# 医疗场景的 (label_zh, label_en) 表。spec 文件的 `label_zh`/`label_en` 优先；这里只覆盖缺省
+# 情况（老 spec 没设 label_zh 时回退）。这是从已删除的 6 个 gen_*.py 模块的 docstring 收拢来的。
+_SCENARIO_LABELS: dict[str, tuple[str, str]] = {
+    "critical-value": ("危急值", "Critical Value"),
+    "diagnosis": ("诊断", "Diagnosis"),
+    "medication-review": ("用药审查", "Medication Review"),
+    "nursing-quality": ("护理质量", "Nursing Quality"),
+    "record-summary": ("病历摘要", "Record Summary"),
+    "triage": ("分诊", "Triage"),
+    "icd-coding": ("ICD 编码", "ICD Coding"),
+    "inquiry": ("导诊", "Inquiry"),
+    "medication": ("用药指导", "Medication"),
+    "knowledge-qa": ("医学知识问答", "Knowledge QA"),
+}
 
 
 def set_store(store: "Store") -> None:
@@ -125,6 +141,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   artifacts_out TEXT NOT NULL,
   parent_id     TEXT REFERENCES jobs(id),
   attempt       INTEGER NOT NULL DEFAULT 1,
+  daemon_id     TEXT,
   exit_code     INTEGER,
   error         TEXT,
   created_at    TEXT NOT NULL,
@@ -255,7 +272,8 @@ _JSON_COLUMNS = frozenset({"request", "env_overlay", "artifacts_in", "artifacts_
 _ROW_COLUMNS = (
     "id", "kind", "stage", "scenario", "title", "status", "request", "argv",
     "env_overlay", "cwd", "log_path", "artifacts_in", "artifacts_out",
-    "parent_id", "attempt", "exit_code", "error", "created_at", "started_at", "finished_at",
+    "parent_id", "attempt", "daemon_id", "exit_code", "error",
+    "created_at", "started_at", "finished_at",
 )
 
 
@@ -472,31 +490,40 @@ class Store:
                 with self.engine.begin() as conn:
                     conn.execute(text("ALTER TABLE scenarios ADD COLUMN spec_json TEXT"))
             self._backfill_specs()
-            with self.engine.begin() as conn:
-                conn.execute(
-                    text("UPDATE console_meta SET value=:v WHERE key='schema_version'"),
-                    {"v": str(SCHEMA_VERSION)},
-                )
+        # v5: distill_daemon needs to record the daemon_runner subprocess id
+        # so cancel_job can set the loopback cancel flag (the daemon polls
+        # /_internal/distill-cancel and tears down its inner generate_data.py
+        # child on set). Old rows are NULL; the column is purely advisory.
+        if version < 5:
+            if not self._column_exists("jobs", "daemon_id"):
+                with self.engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE jobs ADD COLUMN daemon_id TEXT"))
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("UPDATE console_meta SET value=:v WHERE key='schema_version'"),
+                {"v": str(SCHEMA_VERSION)},
+            )
 
     # ---- jobs -------------------------------------------------------------
 
     def create_job(self, *, kind, stage, scenario, title, request, argv, env_overlay,
                    cwd, log_path, artifacts_in, artifacts_out, parent_id=None,
-                   attempt=1) -> str:
+                   attempt=1, daemon_id=None) -> str:
         """attempt 是「第几次尝试」：重试（换名续跑）时由调用方递增，jobs 表据此区分
-        首次执行与重试。parent_id 指向被重试的那个作业。
+        首次执行与重试。parent_id 指向被重试的那个作业。daemon_id 仅 distill_daemon
+        阶段使用：标记对应的 daemon_runner 子进程 id，让取消流程能查到它。
         """
         job_id = uuid.uuid4().hex
         self._conn().execute(
             text("INSERT INTO jobs (id, kind, stage, scenario, title, status, request, argv, env_overlay, cwd,"
-                 " log_path, artifacts_in, artifacts_out, parent_id, attempt, created_at)"
+                 " log_path, artifacts_in, artifacts_out, parent_id, attempt, daemon_id, created_at)"
                  " VALUES (:id,:kind,:stage,:scenario,:title,'pending',:request,:argv,:env_overlay,:cwd,"
-                 " :log_path,:artifacts_in,:artifacts_out,:parent_id,:attempt,:created_at)"),
+                 " :log_path,:artifacts_in,:artifacts_out,:parent_id,:attempt,:daemon_id,:created_at)"),
             dict(id=job_id, kind=kind, stage=stage, scenario=scenario, title=title,
                  request=_dumps(request), argv=_dumps(argv), env_overlay=_dumps(env_overlay),
                  cwd=str(cwd), log_path=str(log_path), artifacts_in=_dumps(artifacts_in),
                  artifacts_out=_dumps(artifacts_out), parent_id=parent_id, attempt=int(attempt),
-                 created_at=_now()),
+                 daemon_id=daemon_id, created_at=_now()),
         )
         return job_id
 
@@ -512,8 +539,9 @@ class Store:
                 params[column] = value
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         params["limit"] = limit
+        # Postgres 没有 SQLite 的 rowid 伪列；jobs 表有 id 主键，用它做二级排序（确定性）。
         rows = self._conn().execute(
-            text(f"SELECT * FROM jobs{where} ORDER BY created_at DESC, rowid DESC LIMIT :limit"), params
+            text(f"SELECT * FROM jobs{where} ORDER BY created_at DESC, id DESC LIMIT :limit"), params
         ).mappings().fetchall()
         return [_job(row) for row in rows]
 
@@ -956,16 +984,13 @@ class Store:
         使空库自包含、运行时不再强制要求 docs/medical/specs/*.json 存在。
         """
         paths.ensure_generators_on_path()
-        from run_matrix import SCENARIOS as _RM_SCENARIOS
-        labels = {
-            "critical-value": ("危急值", "Critical Value"),
-            "diagnosis": ("诊断", "Diagnosis"),
-            "icd-coding": ("ICD 编码", "ICD Coding"),
-            "medication-review": ("用药审查", "Medication Review"),
-            "nursing-quality": ("护理质量", "Nursing Quality"),
-            "record-summary": ("病历摘要", "Record Summary"),
-            "triage": ("分诊", "Triage"),
-        }
+        # 替代已删除的 run_matrix.SCENARIOS 字典：从 docs/medical/specs/ glob 出来即可
+        # （这一段原本就是用 spec 文件名做种子清单；run_matrix.SCENARIOS 就是这么算的）
+        from kev.console import paths as _paths
+        _RM_SCENARIOS = sorted(p.stem for p in _paths.SPECS.glob("*.json"))
+        # Derive (label_zh, label_en) from the spec file's first comment line.
+        # Format: 危急值复核记录生成器 —— ... → label_zh="危急值", label_en from spec.name.title()
+        from kev.console import paths as _paths
         now = _now()
         with self.tx() as conn:
             conn.execute(
@@ -977,7 +1002,22 @@ class Store:
                      sort=0, created_at=now),
             )
             for idx, name in enumerate(_RM_SCENARIOS):
-                zh, en = labels.get(name, (name, name))
+                spec_file = _paths.SPECS / f"{name}.json"
+                label_zh, label_en = name, name.replace("-", " ").title()
+                # 1) Prefer the spec file's `label_zh`/`label_en` (set by hand in newer specs).
+                if spec_file.is_file():
+                    try:
+                        spec_obj = json.loads(spec_file.read_text(encoding="utf-8"))
+                        if spec_obj.get("label_zh"):
+                            label_zh = spec_obj["label_zh"]
+                        if spec_obj.get("label_en"):
+                            label_en = spec_obj["label_en"]
+                    except (ValueError, OSError):
+                        pass
+                # 2) Otherwise use the name → label map (the original gen_*.py docstrings had the titles).
+                if label_zh == name:
+                    label_zh, label_en = _SCENARIO_LABELS.get(name, (name, name.replace("-", " ").title()))
+                zh, en = label_zh, label_en
                 conn.execute(
                     self._upsert_ignore_sql(
                         "scenarios",
@@ -997,17 +1037,26 @@ class Store:
         spec_json 为 NULL（运行时回退到文件，不影响启动）。
         """
         paths.ensure_generators_on_path()
-        from run_matrix import SCENARIOS as _RM_SCENARIOS
+        # 替代已删除的 run_matrix.SCENARIOS 字典：从 docs/medical/specs/ glob 出来即可
+        # （这一段原本就是用 spec 文件名做种子清单；run_matrix.SCENARIOS 就是这么算的）
+        from kev.console import paths as _paths
+        _RM_SCENARIOS = sorted(p.stem for p in _paths.SPECS.glob("*.json"))
         for name in _RM_SCENARIOS:
             row = self.get_scenario_by_slug(name)
             if row is None or row.get("spec_json"):
                 continue
             spec_file = paths.SPECS / f"{name}.json"
             if spec_file.is_file():
+                spec = json.loads(spec_file.read_text(encoding="utf-8"))
+                # Also pull routing + smoke_probe from the same on-disk spec.
+                routing = spec.get("routing")
+                smoke_probe = spec.get("smoke_probe")
                 self._conn().execute(
                     text("UPDATE scenarios SET spec_json=:s, updated_at=:t WHERE id=:id"),
-                    dict(s=spec_file.read_text(encoding="utf-8"), t=_now(), id=row["id"]),
+                    dict(s=json.dumps(spec, ensure_ascii=False), t=_now(), id=row["id"]),
                 )
+                if routing or smoke_probe:
+                    self.update_scenario_subfields(row["id"], routing=routing, smoke_probe=smoke_probe)
 
     def list_scenario_slugs(self) -> list[str]:
         rows = self._conn().execute(
@@ -1090,6 +1139,51 @@ class Store:
             return fallback
         repo = paths.SPECS / f"{slug}.json"
         return repo if repo.is_file() else None
+
+    # ---- spec_json sub-field helpers (Task 21: generator / distill / routing / smoke_probe) ----
+
+    def update_scenario_subfields(self, scenario_id, *, generator=None, distill=None, routing=None, smoke_probe=None) -> bool:
+        """Update only the generator / distill / routing / smoke_probe sub-fields of spec_json.
+
+        Reads the current spec_json, merges the new sub-fields (None means "do not change"), and writes it back via
+        write_spec_file (which also records a history version). Returns True on success.
+        """
+        row = self.get_scenario_by_id(scenario_id)
+        if row is None or not row.get("spec_json"):
+            return False
+        import json as _json
+        spec = _json.loads(row["spec_json"])
+        if generator is not None:
+            spec["generator"] = generator
+        if distill is not None:
+            spec["distill"] = distill
+        if routing is not None:
+            spec["routing"] = routing
+        if smoke_probe is not None:
+            spec["smoke_probe"] = smoke_probe
+        self.write_spec_file(row["slug"], _json.dumps(spec, ensure_ascii=False))
+        return True
+
+    def list_smoke_probes(self) -> list:
+        """Return [{scenario, state, questions, expected_label}] for every scenario that has a smoke_probe block."""
+        out = []
+        for row in self._conn().execute(
+            text("SELECT slug, spec_json FROM scenarios WHERE spec_json IS NOT NULL")
+        ).mappings().fetchall():
+            try:
+                spec = json.loads(row["spec_json"])
+            except (ValueError, TypeError):
+                continue
+            probe = spec.get("smoke_probe")
+            if not probe:
+                continue
+            out.append({
+                "scenario": row["slug"],
+                "state": probe.get("state", {}),
+                "questions": probe.get("questions", []),
+                "expected_label": probe.get("expected_label", {}),
+            })
+        return out
 
     # ---- domain CRUD ------------------------------------------------------
 

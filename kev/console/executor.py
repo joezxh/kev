@@ -14,6 +14,7 @@ import json
 import os
 import signal
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -50,6 +51,95 @@ class ProcessHandle:
     popen: subprocess.Popen
 
 
+@dataclass
+class _CallableHandle:
+    """In-process counterpart of ProcessHandle, returned by LocalExecutor.spawn_callable.
+
+    Carries the function, the tee target, and a label so the events table can show
+    what kind of in-process call this was (e.g. "service:data.generate").
+    """
+    job_id: str
+    fn: object               # Callable[[], int]
+    log_path: Path
+    label: str
+
+
+class _CapturingStdout:
+    """Routes sys.stdout to a tee (log file + events table) for the duration of a call.
+
+    Mimics subprocess.Popen's stdout=PIPE: every print() line is captured, persisted
+    to the log file, and queued into the same events/metrics paths the subprocess
+    reader uses. Single-threaded (fn is run on the same thread that installs the
+    capture), so no thread-safety guards are needed.
+    """
+    def __init__(self, on_line, job_id, log_path, buffer, pending, flush_callback):
+        # on_line is unused (kept to match the conceptual interface of a real tee)
+        self._job_id = job_id
+        self._log_path = log_path
+        self._buffer = buffer
+        self._pending = pending
+        self._flush = flush_callback
+        self._sink = None
+
+    def install(self):
+        """Open the log sink and replace sys.stdout with a StringIO that tees writes."""
+        self._sink = open(self._log_path, "a", encoding="utf-8", newline="")
+        self._stream = _TeeStream(self._sink, self._capture)
+        self._original = sys.stdout
+        sys.stdout = self._stream
+        return self._original
+
+    def uninstall(self, original):
+        """Flush, close the log, restore the original stdout. Always call in a finally."""
+        if self._pending:
+            self._flush()
+        if self._sink is not None:
+            self._sink.flush()
+            self._sink.close()
+            self._sink = None
+        sys.stdout = original
+
+    def _capture(self, line: str) -> None:
+        try:
+            self._pending.append(("stdout", line))
+            point = parse_step(line)
+            if point is not None:
+                self._buffer.push(point)
+        except Exception:
+            pass
+        if len(self._pending) >= BATCH:
+            self._flush()
+
+
+class _TeeStream:
+    """A file-like wrapper that forwards every write to both a sink and a callback."""
+    def __init__(self, sink, callback):
+        self._sink = sink
+        self._callback = callback
+
+    def write(self, s):
+        if not s:
+            return 0
+        if s != "\n":
+            self._sink.write(s)
+            for line in s.splitlines():
+                self._callback(line)
+        else:
+            self._sink.write(s)
+        return len(s)
+
+    def flush(self):
+        self._sink.flush()
+
+    # A few methods print() may call; route to the underlying sink so subprocess-like
+    # calls (isatty, etc.) keep working.
+    def isatty(self):
+        return False
+
+    def writable(self):
+        return True
+
+
 class LocalExecutor:
     def __init__(self, store: Store, *, secret_env=None, buffer_limit: int = DEFAULT_BUFFER,
                  on_finished=None):
@@ -67,6 +157,19 @@ class LocalExecutor:
         # failed/succeeded。没有它就是两个线程抢同一个终态，谁后写谁赢（见 cancel）。
         self._canceling: set[str] = set()
         self._lock = threading.Lock()
+        # Process-wide cancel flag. Service-layer methods (DataService, etc.) check
+        # `self.cancel.is_set()` cooperatively; subprocess jobs see it via the
+        # reader thread (cancel() sets _canceling + sends SIGTERM, which is
+        # orthogonal to this flag — that path uses _canceling to avoid races
+        # between SIGTERM and the subprocess settling). The two are independent
+        # so service jobs can be canceled without spawning a process.
+        self.cancel = threading.Event()
+        # Per-line callback for the in-process tee (_CapturingStdout / _TeeStream).
+        # Subprocess path uses _stream() which writes to the events table directly
+        # and never hits this attribute, so it's only required by spawn_callable.
+        # Default is a no-op so library callers don't have to wire one up; the
+        # kev.console FastAPI binding provides a real one in app.py.
+        self._on_line = lambda _stream, _line: None
 
     # ---- env --------------------------------------------------------------
 
@@ -106,6 +209,66 @@ class LocalExecutor:
         threading.Thread(target=self._pump, args=(job_id, popen, log_path),
                          name=f"console-{job_id[:8]}", daemon=True).start()
         return handle
+
+    def spawn_callable(self, job_id, fn, *, label: str, log_path: str, env_overlay=None) -> "_CallableHandle":
+        """In-process variant of spawn(): runs fn() in a thread, tee-fakes a log file.
+
+        Used by the service layer (kev.console.services.{data,train,eval,deploy,publish})
+        which calls business functions in-process instead of spawning a subprocess
+        (see docs/superpowers/plans/2026-10-09-studio-rollout-plan.md, Wave B).
+
+        - fn: Callable[[], int] — same return shape as a script's exit code.
+        - label: short string written as the "argv" row in the events table
+          (the UI's argv preview is not meaningful for a service call; this
+          gives readers a hook like "service:data.generate").
+        - log_path: where stdout is tee'd (same convention as spawn).
+        - env_overlay: forwarded to _record_overlay (same ALLOWED_ENV gate).
+
+        fn is expected to print() to stdout. The function is responsible for any
+        cancel/cooperative-shutdown check (e.g. kev.train.cancel.is_set()) — this
+        wrapper does not know how to interrupt a Python function in mid-execution.
+        """
+        self._record_overlay(job_id, env_overlay)
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+        handle = _CallableHandle(job_id=job_id, fn=fn, log_path=Path(log_path), label=label)
+        with self._lock:
+            self._handles[job_id] = handle
+            self._metrics[job_id] = MetricBuffer(self.buffer_limit)
+        self.store.transition(job_id, "running")
+        # First event row: identifies the call shape for readers
+        self.store.append_events(job_id, [("meta", f"service-call: {label}")])
+        threading.Thread(target=self._pump_callable, args=(job_id, handle),
+                         name=f"console-{job_id[:8]}", daemon=True).start()
+        return handle
+
+    def _pump_callable(self, job_id, handle) -> None:
+        """Reader for spawn_callable. Routes fn()'s print() through the same
+        log file + events table as spawn()'s _pump does for a subprocess.
+
+        fn is run synchronously on this thread; its print() is captured by
+        _CapturingStdout, and after fn() returns we flush any remaining lines.
+        We refuse to die with a swallowed exception: an unexpected error in
+        fn() (or in the tee path) still pushes the job to a terminal state.
+        """
+        try:
+            self._stream_callable(job_id, handle)
+        except Exception as error:  # noqa: BLE001 - see docstring
+            self._force_terminal(job_id, f"callable 线程异常：{error!r}")
+
+    def _stream_callable(self, job_id, handle) -> None:
+        buffer = self._metrics[job_id]
+        pending: list[tuple[str, str]] = []
+        capture = _CapturingStdout(self._on_line, job_id, handle.log_path, buffer, pending,
+                                   lambda: self._flush(job_id, pending))
+        original_stdout = capture.install()
+        try:
+            code = handle.fn()
+        finally:
+            capture.uninstall(original_stdout)
+        # Anything still buffered after fn() returns
+        if pending:
+            self._flush(job_id, pending)
+        self._settle(job_id, code)
 
     def _record_overlay(self, job_id, overlay) -> None:
         """把这次真正跑的非敏感键写回 jobs.env_overlay —— 审计问的是「跑的时候是什么」，
@@ -190,7 +353,14 @@ class LocalExecutor:
         except Exception:  # 事件落库失败不能连带杀掉训练进程
             pass
 
-    def cancel(self, job_id) -> bool:
+    def cancel_job(self, job_id) -> bool:
+        """Cancel a running job. The process-wide `self.cancel` Event is set so
+        any in-process service call (DataService / future TrainService / etc.)
+        observing it can return early; subprocess jobs see SIGTERM + the
+        `_canceling` set so the reader thread yields the terminal state."""
+        # Always set the process-wide flag: a service-layer call that may be
+        # running in a thread observes self.cancel.is_set() and returns early.
+        self.cancel.set()
         with self._lock:
             handle = self._handles.get(job_id)
             if handle is not None:

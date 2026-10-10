@@ -20,6 +20,7 @@ export const CONSOLE_STRINGS = {
   "console.nav.usage": { en: "7 · Usage", zh: "7 · 用量" },
   "console.nav.distill": { en: "8 · Distill config", zh: "8 · 蒸馏配置" },
   "console.nav.scenarios": { en: "9 · Scenarios", zh: "9 · 场景管理" },
+  "console.nav.studio": { en: "Studio", zh: "Studio" },
 
   "console.apikeys.name": { en: "Name", zh: "名称" },
   "console.apikeys.create": { en: "Create key", zh: "创建 key" },
@@ -138,6 +139,14 @@ export const CONSOLE_STRINGS = {
   "console.jobs.paused": { en: "Following paused", zh: "已暂停跟随" },
   "console.jobs.metricPoints": { en: "showing the last {n} points ({d} dropped)", zh: "仅显示最近 {n} 点（已丢弃 {d} 点）" },
   "console.jobs.empty": { en: "No jobs yet.", zh: "还没有作业。" },
+  "console.jobs.loading": { en: "Loading…", zh: "加载中…" },
+  "console.jobs.scenario": { en: "Scenario", zh: "场景" },
+  "console.jobs.run": { en: "Run", zh: "运行名" },
+  "console.jobs.attempt": { en: "Attempt", zh: "尝试" },
+  "console.jobs.created": { en: "Created", zh: "创建时间" },
+  "console.jobs.command": { en: "Command", zh: "执行命令" },
+  "console.jobs.view": { en: "view", zh: "查看" },
+  "console.jobs.noError": { en: "No error message recorded.", zh: "未记录错误信息。" },
   "console.common.cancel": { en: "Cancel", zh: "取消" },
   "console.common.close": { en: "Close", zh: "关闭" },
 
@@ -240,4 +249,32 @@ export const CONSOLE_STRINGS = {
   "console.cascade.domain": { en: "Domain", zh: "领域" },
   "console.cascade.scenario": { en: "Scenario", zh: "场景" },
   "console.cascade.scenarioPlaceholder": { en: "select a domain first", zh: "请先选择领域" },
+
+  // ---- studio (Wave C of the studio rollout plan) ----
+  // The studio module is a parallel shell that mirrors the existing /console
+  // pages but groups navigation by lifecycle (data / train-eval-deploy /
+  // system) instead of by stage. The first pages land as thin wrappers over
+  // the same /api/console/* contracts; the goal is navigation + layout.
+  "studio.title": { en: "Studio", zh: "Studio" },
+  "studio.subtitle": {
+    en: "Lifecycle shell: data, train → eval → deploy, system. Backed by the same /console/api/* contracts as the legacy console.",
+    zh: "生命周期外壳：数据 / 训练→评测→部署 / 系统。复用 /console/api/* 同一套 HTTP 契约。",
+  },
+  "studio.nav.data": { en: "Data", zh: "数据" },
+  "studio.nav.lifecycle": { en: "Lifecycle", zh: "生命周期" },
+  "studio.nav.system": { en: "System", zh: "系统" },
+  "studio.nav.domains": { en: "Domains & scenarios", zh: "域与场景" },
+  "studio.nav.datasets": { en: "Datasets", zh: "数据集" },
+  "studio.nav.goldset": { en: "Goldset", zh: "金标集" },
+  "studio.nav.train": { en: "Train", zh: "训练" },
+  "studio.nav.eval": { en: "Evaluate", zh: "评测" },
+  "studio.nav.deploy": { en: "Deploy", zh: "部署" },
+  "studio.nav.publish": { en: "Publish", zh: "发布" },
+  "studio.nav.overview": { en: "Overview", zh: "总览" },
+  "studio.nav.apikeys": { en: "API keys", zh: "API Keys" },
+  "studio.nav.usage": { en: "Usage", zh: "用量" },
+  "studio.placeholder": {
+    en: "This studio page lands in a later Wave C commit. The legacy /console/{kind} tab is the working surface for now.",
+    zh: "本 Studio 页面将在后续 Wave C 提交中落地。短期内使用 /console/{kind} 作为工作面板。",
+  },
 } as const;

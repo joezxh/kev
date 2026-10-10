@@ -48,7 +48,8 @@ def build(request: JobRequest) -> BuiltCommand:
 
 
 publish = StageSpec("publish", STAGE, "发布到 Hub", build,
-                    outcome="在 Hub 上确认 repo 状态；远端不可公开（医疗模型）")
+                    outcome="在 Hub 上确认 repo 状态；远端不可公开（医疗模型）",
+                    service="publish.publish")
 
 PUBLISH_STAGES = (publish,)
 

@@ -67,5 +67,28 @@
     "生命体征：已测且正常、已测且异常、未知（多数线上场景缺失）、SpO2 下降、血压极高、心率过速",
     "既往史：无特殊病史、慢病多病共存、术后、肿瘤治疗中、长期服药、孕产史",
     "边界情形：罕见科室主诉、单症状可挂多科而无明确指向（判 general_medicine）、症状已缓解但要求复查、明确要求指定某科室"
-  ]
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "",
+    "note": "科室归属语义丰富、规则难穷举，4B 主力。"
+  },
+  "smoke_probe": {
+    "state": {
+      "patient": "female 34, gestation 28 weeks",
+      "channel": "outpatient",
+      "chief_complaint": "规律腹痛 3 小时",
+      "duration": "3 hours",
+      "accompanying": "no fever, no vaginal bleeding",
+      "history": "G2P1",
+      "vitals": "BP 118/74, HR 88",
+      "red_flags": "none"
+    },
+    "questions": [
+      {"qid": "immediate_human", "type": "noul",
+       "instructions": "该患者是否需要立即人工分诊（而非继续等待）？"}
+    ],
+    "expected_label": {"immediate_human": "true"}
+  }
 }

@@ -121,10 +121,12 @@ def _benchmark_like(kind: str):
 
 
 benchmark = StageSpec("benchmark", "benchmark", "开发集打分", _benchmark_like("benchmark"),
-                      outcome="接着跑 compare（配对 CI 在这里产生）")
+                      outcome="接着跑 compare（配对 CI 在这里产生）",
+                      service="eval.benchmark")
 baseline = StageSpec("baseline", "benchmark", "基线打分（零样本对照）",
                      _benchmark_like("baseline"),
-                     outcome="与 benchmark 用同一份 development.jsonl，然后 compare")
+                     outcome="与 benchmark 用同一份 development.jsonl，然后 compare",
+                     service="eval.baseline")
 
 
 def _compare(request: JobRequest) -> BuiltCommand:
@@ -147,7 +149,8 @@ def _compare(request: JobRequest) -> BuiltCommand:
 
 
 compare = StageSpec("compare", "compare", "配对 bootstrap 对比", _compare,
-                    outcome="G4/G5 的证据来源；public=1 产出 G6 的回归证据；接着跑 calibrate")
+                    outcome="G4/G5 的证据来源；public=1 产出 G6 的回归证据；接着跑 calibrate",
+                    service="eval.compare")
 
 
 def _calibrate(request: JobRequest) -> BuiltCommand:
@@ -164,7 +167,8 @@ def _calibrate(request: JobRequest) -> BuiltCommand:
 
 
 calibrate = StageSpec("calibrate", "calibrate", "温度拟合", _calibrate,
-                      outcome="workload_temperature 是部署阶段的服务温度来源（G7）")
+                      outcome="workload_temperature 是部署阶段的服务温度来源（G7）",
+                      service="eval.calibrate")
 
 EVAL_STAGES = (baseline, benchmark, compare, calibrate)
 

@@ -35,6 +35,20 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
           <div className="border-b border-sidebar-border px-4 py-3">
             <Link href="/" className="text-xs text-muted-foreground hover:text-foreground">{t("console.back")}</Link>
             <div className="text-sm font-semibold">{t("console.title")}</div>
+            <div className="mt-2 flex flex-wrap gap-3 text-xs">
+              <Link
+                href="/console"
+                className={cn("hover:text-foreground", pathname.startsWith("/console") && "font-medium text-foreground")}
+              >
+                {t("kev.nav.console")}
+              </Link>
+              <Link
+                href="/studio"
+                className={cn("hover:text-foreground", pathname.startsWith("/studio") && "font-medium text-foreground")}
+              >
+                {t("console.nav.studio")}
+              </Link>
+            </div>
           </div>
           <nav className="flex flex-1 flex-col gap-0.5 p-2">
             {NAV.map((item) => {

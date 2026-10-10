@@ -67,6 +67,10 @@ class BuiltCommand:
     cwd: str = ""
     artifacts_in: list = field(default_factory=list)
     artifacts_out: list = field(default_factory=list)
+    # 仅 distill_daemon 阶段使用：标记对应的 daemon_runner 子进程 id。
+    # _spawn() 把它写到 jobs.daemon_id，cancel_job 端点用它去设 loopback 取消标志。
+    # 其余阶段留 None（写入时即 SQL NULL）。
+    daemon_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,13 @@ class StageSpec:
     build: object                 # Callable[[JobRequest], BuiltCommand]
     persist: str = Persist.SUCCESS
     outcome: str = ""             # UI 读它决定成功后的下一步提示
+    # Dotted service-method name, e.g. "data.generate". When set, the stage
+    # runs in-process via LocalExecutor.spawn_callable + kev.console.services
+    # instead of Popen. Stages without a console-owned service (skill scripts
+    # in skills/kev-finetune/scripts/*) leave this None and keep the Popen
+    # path. preview() still goes through build(), so the UI's argv preview
+    # matches the script shape verbatim — services only differ at run time.
+    service: str | None = None
 
     def preview(self, request: JobRequest) -> BuiltCommand:
         """纯函数：不 spawn、不写库。UI 靠它实时显示 argv。"""

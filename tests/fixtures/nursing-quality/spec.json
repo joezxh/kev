@@ -1,0 +1,265 @@
+{
+  "name": "nursing-quality",
+  "domain": "医院护理质量管控。质控维度覆盖护理评估、给药执行、护理记录、管路与设备、皮肤与压疮、跌倒与导管预防、医患沟通。对象为住院患者与门诊输液患者。质控依据为护理核心制度、检查表条目与医院质控标准。",
+  "state": "一次护理质量检查的结构化摘要：患者年龄性别与护理级别、所在病区、检查时间点、涉及的具体护理环节（如静脉输液、皮下注射、留置导尿管、压疮风险评估、跌倒风险评估、护理记录书写）、检查中发现的实际情况（做了什么、记录了什么、是否规范）、患者依赖程度（是否卧床、是否留置多路管路）。",
+  "state_example": {
+    "patient": "male 71, bedridden",
+    "ward": "神经内科 3 病区",
+    "nursing_level": "一级护理",
+    "check_point": "静脉输液过程",
+    "observed": "输液前未核对腕带姓名，巡视记录本上 14:00 一栏空白",
+    "dependencies": "留置尿管 1 条，桡动脉测压管 1 条",
+    "risk_scores": "Braden 12 分（中等风险），Morse 评分 45 分（高风险）"
+  },
+  "questions": {
+    "issue_type": {
+      "type": "choice",
+      "instructions": "本次检查发现的问题属于哪一类？",
+      "criteria": {
+        "none": "未发现问题",
+        "assessment": "护理评估：入院评估、风险评估（压疮/跌倒/导管）未做或做得不完整",
+        "execution": "给药与操作执行：核对、给药、输血、导管维护等操作未按规范执行",
+        "record": "护理记录：记录缺失、漏项、事后补记、字迹或时间逻辑不自洽",
+        "communication": "沟通与健康教育：告知不到位、知情同意缺失、宣教未落实",
+        "device": "设备与管路：管路固定、标识、刻度、引流装置管理不规范"
+      }
+    },
+    "reportable": {
+      "type": "noul",
+      "instructions": "该问题是否需要上报护理部（形成质量缺陷事件）？",
+      "criteria": {
+        "true": "构成护理不良事件或需质量改进追踪（给药错误、管路脱落、压疮发生、跌倒、非计划拔管、记录严重失真）",
+        "false": "一般缺陷，可在科室质控会内整改"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "该问题的严重程度如何？",
+      "criteria": [
+        "0 = 符合规范，无需处理",
+        "1 = 轻度缺陷：流程执行不到位但未造成实际后果",
+        "2 = 中度缺陷：已造成患者可观察的不适或潜在风险，需科室整改",
+        "3 = 重度缺陷：构成护理不良事件，需立即上报并组织讨论"
+      ]
+    },
+    "preventable": {
+      "type": "choice",
+      "instructions": "该问题的可预防性如何？",
+      "criteria": {
+        "preventable": "可通过规范执行与培训预防（多数护理缺陷属于此类）",
+        "partially": "部分可预防，还需设备、药品或人力条件配合",
+        "not_preventable": "不可预防（患者病情突变、不可避免的并发症等）"
+      }
+    }
+  },
+  "guidance": "issue_type 按检查点与 observed 的直接对应关系判定，不要外推：核对/给药/输血/操作步骤相关的问题归 execution；评估表未做或要素缺失归 assessment；记录本缺项、漏签名、时间逻辑矛盾归 record；宣教告知/解释不到位归 communication；管路固定松脱、无标识、刻度不准、引流装置更换超时归 device。reportable 为 true 的触发条件是问题造成了实际不良事件或需要跨科室质量追踪：给药错误（含给错药、漏给、剂量错误）、管路脱落与非计划拔管、压疮发生、跌倒致伤、非计划拔管、护理记录严重失真（事后补记伪造）、给药后不良反应未及时处置。severity 严格对应：issue_type=none 时 severity 必须为 0；一般执行或记录缺陷未造成后果为 1（对应 reportable=false）；已造成患者可观察不适或存在潜在风险为 2；构成不良事件为 3（reportable=true）。因此 issue_type=none 与 severity=0、reportable=false 必须同时成立。preventable 取值规则：只要缺陷源于执行动作或记录行为未按规范做，即为 preventable；仅当还牵涉设备缺陷、药品短缺、人手不足等系统因素时才是 partially；仅当问题源于患者病情本身突变（如突发动脉瘤破裂、术后并发症）时才是 not_preventable。patient 为 bedridden、dependencies 含多路管路、risk_scores 提示中高风险时，同等缺陷的 severity 应上浮一级，但前提是 observed 中确有该环节的执行或记录问题。",
+  "variety": [
+    "检查环节（覆盖 domain 的七个质控维度）：入院评估、压疮风险评估、跌倒风险评估、静脉输液、皮下注射、肌肉注射、口服药给药、输血核对、留置导尿管维护、留置胃管、静脉留置针管路维护、压疮护理、护理记录书写、交接班、医患沟通、健康教育宣教",
+    "缺陷类型（issue_type 六选项逐一覆盖）：none 未发现问题、assessment 评估未做或要素缺失、execution 核对/给药/输血/无菌操作未按规范、record 漏项/漏签名/时间逻辑矛盾/事后补记、communication 告知不到位/知情同意缺失/宣教未落实、device 管路固定松脱/无标识/刻度不准/引流更换超时",
+    "严重度档（severity 四档全覆盖，且须与 issue_type 联动）：0 符合规范（issue_type=none 时必须为 0）、1 轻度流程缺陷未造成后果、2 中度已造成可观察不适或潜在风险、3 重度构成护理不良事件",
+    "不良事件类型（reportable=true 的触发，须逐项覆盖）：给药错误（给错药/漏给/剂量错误）、管路脱落、非计划拔管、压疮发生、跌倒致伤、护理记录严重失真（事后补记伪造）、给药后不良反应未及时处置",
+    "可预防性档（preventable 三档全覆盖）：preventable 流程可预防、partially 涉及系统因素、not_preventable 病情突变",
+    "特殊人群：儿童、老年、孕产妇、哺乳期女性、术后、ICU、临终",
+    "护理级别：特级、一级、二级、三级",
+    "病区：神经内科、心血管内科、呼吸内科、消化内科、骨科、肿瘤科、老年科、普外科、ICU、产科",
+    "依赖程度与风险评分：卧床 + 多路管路 + Braden 9-18 + Morse 30-45 的不同组合；非卧床患者仅有常规风险评分",
+    "检查时间点：晨间护理时、午间巡视、夜班巡视、交接班核查、家属反馈、质控抽查、晨会交班汇报",
+    "边界陷阱：severity 必须与 issue_type 联动（none=0）、bedridden 才触发 severity 上浮、给药错误一定 reportable=true、insulin 与输血相关的 defect 一定 severity=3"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "静脉输液过程", "unit": "", "decimals": 0, "category": "execution", "issue_type": "execution", "severity_default": 1, "adverse": false, "preventability": "preventable", "observed": "输液前未核对腕带姓名与药名"},
+      {"name": "静脉输液过程_速度", "unit": "", "decimals": 0, "category": "execution", "issue_type": "execution", "severity_default": 2, "adverse": false, "preventability": "preventable", "observed": "输液过程中未及时巡视，液体滴速过快未调整"},
+      {"name": "皮下注射", "unit": "", "decimals": 0, "category": "execution", "issue_type": "execution", "severity_default": 1, "adverse": false, "preventability": "preventable", "observed": "注射部位未标注时间，核对记录缺签名"},
+      {"name": "口服给药", "unit": "", "decimals": 0, "category": "execution", "issue_type": "execution", "severity_default": 2, "adverse": true, "preventability": "preventable", "observed": "漏发一次降压药，服药单未记录原因"},
+      {"name": "输血过程", "unit": "", "decimals": 0, "category": "execution", "issue_type": "execution", "severity_default": 3, "adverse": true, "preventability": "preventable", "observed": "输血前未双人核对血型，过程记录缺观察项"},
+      {"name": "留置导尿管", "unit": "", "decimals": 0, "category": "device", "issue_type": "device", "severity_default": 2, "adverse": false, "preventability": "partially", "observed": "导尿管固定装置松动，刻度未标识"},
+      {"name": "留置尿管", "unit": "", "decimals": 0, "category": "device", "issue_type": "device", "severity_default": 3, "adverse": true, "preventability": "preventable", "observed": "尿管牵拉致尿道损伤，已发生非计划拔管"},
+      {"name": "桡动脉测压管", "unit": "", "decimals": 0, "category": "device", "issue_type": "device", "severity_default": 2, "adverse": false, "preventability": "partially", "observed": "测压管固定胶布过敏未观察，延长管无刻度标识"},
+      {"name": "鼻胃管", "unit": "", "decimals": 0, "category": "device", "issue_type": "device", "severity_default": 2, "adverse": false, "preventability": "preventable", "observed": "鼻胃管刻度未记录，胃管固定不牢"},
+      {"name": "压疮风险评估", "unit": "", "decimals": 0, "category": "assessment", "issue_type": "assessment", "severity_default": 1, "adverse": false, "preventability": "preventable", "observed": "Braden 评分未在入院 24 小时内完成"},
+      {"name": "跌倒风险评估", "unit": "", "decimals": 0, "category": "assessment", "issue_type": "assessment", "severity_default": 1, "adverse": false, "preventability": "preventable", "observed": "Morse 评分未在入院时完成，防跌倒措施未落实"},
+      {"name": "导管风险评估", "unit": "", "decimals": 0, "category": "assessment", "issue_type": "assessment", "severity_default": 2, "adverse": false, "preventability": "preventable", "observed": "留置 3 路管路未做导管风险评估表"},
+      {"name": "疼痛评估", "unit": "", "decimals": 0, "category": "assessment", "issue_type": "assessment", "severity_default": 1, "adverse": false, "preventability": "preventable", "observed": "疼痛评分表连续 3 天未记录"},
+      {"name": "护理记录书写_漏项", "unit": "", "decimals": 0, "category": "record", "issue_type": "record", "severity_default": 1, "adverse": false, "preventability": "preventable", "observed": "体温单 14:00 一栏空白未补记"},
+      {"name": "护理记录书写_失真", "unit": "", "decimals": 0, "category": "record", "issue_type": "record", "severity_default": 2, "adverse": true, "preventability": "preventable", "observed": "记录时间逻辑不自洽，巡视记录显示在输液之前"},
+      {"name": "护理记录书写_伪造", "unit": "", "decimals": 0, "category": "record", "issue_type": "record", "severity_default": 3, "adverse": true, "preventability": "preventable", "observed": "出院记录存在事后补记，与医嘱时间矛盾"},
+      {"name": "交接班", "unit": "", "decimals": 0, "category": "record", "issue_type": "record", "severity_default": 1, "adverse": false, "preventability": "preventable", "observed": "交接班内容遗漏压疮高风险患者"},
+      {"name": "健康宣教", "unit": "", "decimals": 0, "category": "communication", "issue_type": "communication", "severity_default": 1, "adverse": false, "preventability": "preventable", "observed": "糖尿病患者饮食宣教未落实签字"},
+      {"name": "知情同意", "unit": "", "decimals": 0, "category": "communication", "issue_type": "communication", "severity_default": 2, "adverse": false, "preventability": "partially", "observed": "特殊检查知情同意书未完整签署"},
+      {"name": "医患沟通", "unit": "", "decimals": 0, "category": "communication", "issue_type": "communication", "severity_default": 1, "adverse": false, "preventability": "preventable", "observed": "告知患者翻身目的时语气生硬，患者投诉"},
+      {"name": "设备管理", "unit": "", "decimals": 0, "category": "device", "issue_type": "device", "severity_default": 1, "adverse": false, "preventability": "partially", "observed": "输液泵电池老化未及时更换"},
+      {"name": "胰岛素注射", "unit": "", "decimals": 0, "category": "execution", "issue_type": "execution", "severity_default": 3, "adverse": true, "preventability": "preventable", "observed": "胰岛素剂量与医嘱不符，血糖异常升高"},
+      {"name": "跌倒预防", "unit": "", "decimals": 0, "category": "execution", "issue_type": "execution", "severity_default": 3, "adverse": true, "preventability": "partially", "observed": "高风险患者未拉床栏，致跌倒致尾椎骨折"},
+      {"name": "压疮护理_事件", "unit": "", "decimals": 0, "category": "execution", "issue_type": "execution", "severity_default": 3, "adverse": true, "preventability": "partially", "observed": "卧床患者未按计划翻身，骶尾部出现 II 期压疮"},
+      {"name": "病情观察_抢救", "unit": "", "decimals": 0, "category": "assessment", "issue_type": "assessment", "severity_default": 2, "adverse": true, "preventability": "not_preventable", "observed": "患者术后突发低血压，抢救记录及时但术前评估未能预判"},
+      {"name": "病情观察_出血", "unit": "", "decimals": 0, "category": "record", "issue_type": "record", "severity_default": 1, "adverse": false, "preventability": "not_preventable", "observed": "患者夜间突发上消化道出血，属疾病自身进展"},
+      {"name": "压疮护理_临终", "unit": "", "decimals": 0, "category": "execution", "issue_type": "execution", "severity_default": 2, "adverse": false, "preventability": "not_preventable", "observed": "患者临终前皮肤渗液致局部破损，非翻身不到位所致"}
+    ],
+    "selectors": [
+      {"min": 1, "max": 1, "weight_normal": 1.0, "weight_trigger_extra": 0.0, "max_trigger_extra": 0, "max_trigger_tier_drift": 0}
+    ],
+    "categories": {
+      "execution": [
+        "静脉输液过程",
+        "静脉输液过程_速度",
+        "皮下注射",
+        "口服给药",
+        "输血过程",
+        "胰岛素注射",
+        "跌倒预防",
+        "压疮护理_事件",
+        "压疮护理_临终"
+      ],
+      "record": [
+        "护理记录书写_漏项",
+        "护理记录书写_失真",
+        "护理记录书写_伪造",
+        "交接班",
+        "病情观察_出血"
+      ],
+      "device": [
+        "留置导尿管",
+        "留置尿管",
+        "桡动脉测压管",
+        "鼻胃管",
+        "设备管理"
+      ],
+      "assessment": [
+        "压疮风险评估",
+        "跌倒风险评估",
+        "导管风险评估",
+        "疼痛评估",
+        "病情观察_抢救"
+      ],
+      "communication": [
+        "健康宣教",
+        "知情同意",
+        "医患沟通"
+      ],
+      "none": [
+        "病区巡视"
+      ]
+    },
+    "tier_windows": {},
+    "contexts": [
+      "晨间护理时发现：",
+      "午间巡视发现：",
+      "夜班巡视时发现：",
+      "交接班核查发现：",
+      "家属反馈后核查发现：",
+      "质控抽查发现：",
+      "晨会交班汇报："
+    ],
+    "patients": [
+      "male 67, bedridden",
+      "female 58, bedridden",
+      "male 45, 部分自理",
+      "female 72, bedridden",
+      "female 29, 部分自理",
+      "male 8, 部分自理",
+      "female 66, bedridden",
+      "male 3, 部分自理"
+    ],
+    "wards": [
+      "神经内科 3 病区",
+      "心血管内科 2 病区",
+      "呼吸内科 1 病区",
+      "消化内科 4 病区",
+      "骨科 2 病区",
+      "肿瘤科 3 病区",
+      "老年科 5 病区",
+      "普外科 1 病区",
+      "ICU",
+      "产科 2 病区"
+    ],
+    "nursing_levels": ["特级护理", "一级护理", "二级护理", "三级护理"],
+    "dependencies": [
+      "留置尿管 1 条",
+      "留置尿管 1 条，桡动脉测压管 1 条",
+      "鼻胃管 1 条",
+      "留置尿管 1 条，鼻胃管 1 条，负压引流 1 条",
+      "无"
+    ],
+    "risk_scores": [
+      "Braden 12 分（中等风险），Morse 45 分（高风险）",
+      "Braden 9 分（高风险）",
+      "Braden 15 分（轻度风险），Morse 30 分（中风险）",
+      "Braden 18 分（低风险）"
+    ],
+    "rules": [
+      {
+        "when": "state['check_point'] == '病区巡视'",
+        "then": [
+          {"label": "issue_type", "value": "none"},
+          {"label": "reportable", "value": false},
+          {"label": "severity", "value": 0},
+          {"label": "preventable", "value": "preventable"}
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {"label": "issue_type", "value": "issue_type_lookup(state['check_point'])"},
+          {"label": "reportable", "value": "adverse_lookup(state['check_point'])"},
+          {"label": "severity", "value": "lift_severity(severity_default_lookup(state['check_point']), 'bedridden' in state['patient'])"},
+          {"label": "preventable", "value": "preventability_lookup(state['check_point'])"}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.0,
+        "fields": [],
+        "question": "reportable",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {}
+      },
+      "minimal_pair": {"rate": 0.35, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "by_issue_type": {
+        "none": {"share": 0.25, "quota": 197},
+        "execution": {"share": 0.19, "quota": 151},
+        "assessment": {"share": 0.15, "quota": 121},
+        "device": {"share": 0.15, "quota": 116},
+        "record": {"share": 0.13, "quota": 101},
+        "communication": {"share": 0.13, "quota": 101}
+      },
+      "by_preventability": {
+        "not_preventable": {"share": 0.18, "quota": 140},
+        "partially": {"share": 0.25, "quota": 197},
+        "preventable": {"share": 0.57, "quota": 450}
+      }
+    },
+    "panel_category": {
+      "静脉输液过程": "execution",
+      "静脉输液过程_速度": "execution",
+      "皮下注射": "execution",
+      "口服给药": "execution",
+      "输血过程": "execution",
+      "留置导尿管": "device",
+      "留置尿管": "device",
+      "桡动脉测压管": "device",
+      "鼻胃管": "device",
+      "压疮风险评估": "assessment",
+      "跌倒风险评估": "assessment",
+      "导管风险评估": "assessment",
+      "疼痛评估": "assessment",
+      "护理记录书写_漏项": "record",
+      "护理记录书写_失真": "record",
+      "护理记录书写_伪造": "record",
+      "交接班": "record",
+      "健康宣教": "communication",
+      "知情同意": "communication",
+      "医患沟通": "communication",
+      "设备管理": "device",
+      "胰岛素注射": "execution",
+      "跌倒预防": "execution",
+      "压疮护理_事件": "execution",
+      "病情观察_抢救": "assessment",
+      "病情观察_出血": "record",
+      "压疮护理_临终": "execution"
+    }
+  }
+}

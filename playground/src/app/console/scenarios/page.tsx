@@ -12,6 +12,7 @@ import {
 import { LangToggle } from "@/components/lang-toggle";
 import { api, type Scenario, type ScenarioTree } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
+import { GeneratorTab } from "./GeneratorTab";
 
 type Selection =
   | { type: "domain"; id: string }
@@ -40,6 +41,9 @@ export default function ScenariosPage() {
   const [specDirty, setSpecDirty] = useState(false);
   const [specError, setSpecError] = useState<string | null>(null);
   const [specHistory, setSpecHistory] = useState<{ ts: string }[]>([]);
+  const [specJson, setSpecJson] = useState<{
+    generator?: unknown; distill?: unknown; routing?: unknown; smoke_probe?: unknown;
+  } | null>(null);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -83,8 +87,21 @@ export default function ScenariosPage() {
     });
     setBusy(true);
     api.scenarioSpec(scenario.slug)
-      .then((res) => { setSpecContent(res.content); setSpecDirty(false); setSpecError(null); })
-      .catch(() => { setSpecContent(""); setSpecError(t("console.scenarios.specLoadFailed")); })
+      .then((res) => {
+        setSpecContent(res.content); setSpecDirty(false); setSpecError(null);
+        try {
+          const parsed = JSON.parse(res.content) as Record<string, unknown>;
+          setSpecJson({
+            generator: parsed.generator,
+            distill: parsed.distill,
+            routing: parsed.routing,
+            smoke_probe: parsed.smoke_probe,
+          });
+        } catch {
+          setSpecJson(null);
+        }
+      })
+      .catch(() => { setSpecContent(""); setSpecError(t("console.scenarios.specLoadFailed")); setSpecJson(null); })
       .finally(() => setBusy(false));
     api.specHistory(scenario.slug).then(setSpecHistory).catch(() => setSpecHistory([]));
   };
@@ -400,6 +417,45 @@ export default function ScenariosPage() {
                   )}
                 </div>
               </div>
+
+              {scenarioDraft.id !== "__new__" && specJson && (
+                <div className="space-y-2 rounded-md border border-border bg-muted/30 p-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Generator</Label>
+                    <span className="text-xs text-muted-foreground">spec_json 子字段编辑器（Fields/Rules/Aug+Plan/Distill/Routing/Smoke 的最小版）</span>
+                  </div>
+                  <GeneratorTab
+                    scenario={scenarioDraft.slug}
+                    spec={specJson}
+                    scenarioId={scenarioDraft.id}
+                    onSave={async (subfields) => {
+                      // 把 4 个子字段合并进当前 spec，重新序列化后保存（沿用 saveSpec 通道）
+                      let next: Record<string, unknown>;
+                      try {
+                        next = JSON.parse(specContent) as Record<string, unknown>;
+                      } catch {
+                        next = {};
+                      }
+                      next.generator = subfields.generator;
+                      next.distill = subfields.distill;
+                      next.routing = subfields.routing;
+                      next.smoke_probe = subfields.smoke_probe;
+                      const merged = JSON.stringify(next, null, 2);
+                      setSpecContent(merged);
+                      setSpecDirty(true);
+                      await api.saveScenarioSpec(scenarioDraft.slug, merged);
+                      setSpecDirty(false);
+                      setSpecJson({
+                        generator: subfields.generator,
+                        distill: subfields.distill,
+                        routing: subfields.routing,
+                        smoke_probe: subfields.smoke_probe,
+                      });
+                      toast.success(t("console.scenarios.specSaved"));
+                    }}
+                  />
+                </div>
+              )}
             </>
           )}
         </section>

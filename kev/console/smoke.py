@@ -1,75 +1,25 @@
-#!/usr/bin/env python3
-"""对已部署的 System One 端点做冒烟测试：5 个场景各 1 例。
+"""python -m kev.console.smoke CLI entry."""
+from __future__ import annotations
 
-只读、不写业务数据；输出 JSON 报告供 UI 展示 p 分布与 argmax。
-探针的 state 字段名与 docs/medical/data-format.md 的 state_example 对齐 —— 字段名对模型可见，
-改字段名等于换了一个任务。
-
-Run: python kev/console/smoke.py --base-url http://127.0.0.1:8008 --out runs/x-smoke.json
-"""
 import argparse
-import json
 import sys
-import urllib.error
-import urllib.request
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from kev.suite import write_json            # noqa: E402
-from kev.console.stages import deploy as dp  # noqa: E402  探针的唯一真相源
 
 
-def post(base_url: str, path: str, payload: dict) -> dict:
-    request = urllib.request.Request(
-        f"{base_url.rstrip('/')}{path}",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return json.loads(response.read().decode("utf-8"))
-
-
-def get(base_url: str, path: str) -> dict:
-    with urllib.request.urlopen(f"{base_url.rstrip('/')}{path}", timeout=30) as response:
-        return json.loads(response.read().decode("utf-8"))
-
-
-def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--base-url", required=True)
-    parser.add_argument("--out", required=True)
-    args = parser.parse_args(argv)
-
-    report = {"base_url": args.base_url, "models": None, "probes": [], "failures": 0}
-    try:
-        report["models"] = get(args.base_url, "/v1/models")
-    except (urllib.error.URLError, TimeoutError, OSError) as error:
-        report["error"] = f"端点不可达：{error}"
-        write_json(args.out, report)
-        print(f"endpoint unreachable: {error}")
-        return 1
-
-    for probe in dp.SMOKE_PROBES:
-        questions = [{"id": q["qid"], "type": q["type"], "instructions": q["instructions"]}
-                     for q in probe["questions"]]
-        try:
-            answer = post(args.base_url, "/v1/systemone",
-                          {"state": probe["state"], "questions": questions})
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as error:
-            report["failures"] += 1
-            report["probes"].append({"scenario": probe["scenario"], "error": str(error)})
-            continue
-        answers = answer.get("answers") or answer.get("response", {}).get("answers") or []
-        report["probes"].append({"scenario": probe["scenario"], "answers": answers})
-
-    write_json(args.out, report)
-    print(f"probes {len(report['probes'])} failures {report['failures']}")
-    return 1 if report["failures"] else 0
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--from-db", action="store_true", help="Run smoke probes from the DB (spec §3.7).")
+    parser.add_argument("--scenario", type=str, default=None, help="Limit to one scenario slug.")
+    args = parser.parse_args()
+    if args.from_db:
+        from kev.console.services.smoke import run_from_db
+        results = run_from_db(args.scenario)
+        for r in results:
+            mark = "OK" if r["matched"] else "FAIL"
+            print(f"{mark}  {r['scenario']}: actual={r['actual_label']} expected={r['expected_label']}")
+        return 0 if all(r["matched"] for r in results) else 1
+    parser.print_help()
+    return 2
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

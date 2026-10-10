@@ -44,6 +44,18 @@ export type JobDetail = Job & {
   artifacts: Artifact[]; notes: { kind: string }[];
 };
 
+/** GET /jobs/{id}/log 的响应：job.log 文件的尾部内容（真相源，区别于 SSE 回放的 events 表）。 */
+export type JobLog = {
+  job_id: string; log_path: string; name: string;
+  exists: boolean; content: string; truncated: boolean;
+};
+
+/** GET /artifacts/{id}/content 的响应：产物文件的文本内容（结果页展示用）。 */
+export type ArtifactContent = {
+  id: string; kind: string; path: string; bytes: number | null;
+  content: string; truncated: boolean;
+};
+
 export type ConsoleError = {
   kind: string; message: string; field: string; hint: string; stderr_tail: string;
 };
@@ -135,6 +147,7 @@ export const api = {
     return call<Job[]>(`jobs${query ? `?${query}` : ""}`);
   },
   job: (id: string) => call<JobDetail>(`jobs/${id}`),
+  jobLog: (id: string) => call<JobLog>(`jobs/${id}/log`),
   preview: (payload: { kind: string; scenario: string; run_name: string;
                        params: Record<string, unknown> }) =>
     call<{ argv: string[]; env: Record<string, string>; outcome: string }>("jobs/preview", {
@@ -147,6 +160,8 @@ export const api = {
   retry: (id: string) => call<Job>(`jobs/${id}/retry`, { method: "POST" }),
 
   artifacts: (kind?: string) => call<Artifact[]>(`artifacts${kind ? `?kind=${kind}` : ""}`),
+  artifactContent: (id: string) =>
+    call<ArtifactContent>(`artifacts/${encodeURIComponent(id)}/content`),
   gates: (stage: string, scenario: string, runName = "") =>
     call<Gate[]>(`gates/${stage}?scenario=${encodeURIComponent(scenario)}` +
                  (runName ? `&run_name=${encodeURIComponent(runName)}` : "")),
@@ -225,6 +240,26 @@ export const api = {
   specHistoryVersion: (slug: string, ts: string) =>
     call<{ slug: string; ts: string; content: string }>(
       `scenarios/${encodeURIComponent(slug)}/spec/history/${encodeURIComponent(ts)}`),
+
+  // Generator tab API
+  generatorPreview: (scenario: string, body: { generator: unknown; distill: unknown; state_example: unknown }) =>
+    fetch(`/console/api/scenarios/${encodeURIComponent(scenario)}/generator/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
+  generatorDryRun: (scenario: string, body: { n: number; seed: number }) =>
+    fetch(`/console/api/scenarios/${encodeURIComponent(scenario)}/generator/dry-run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
+  generatorValidate: (scenario: string, body: { generator: unknown; distill: unknown }) =>
+    fetch(`/console/api/scenarios/${encodeURIComponent(scenario)}/generator/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
 
   distillUsageTotals: (from?: string, to?: string) => {
     const q = new URLSearchParams();

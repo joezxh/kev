@@ -12,51 +12,12 @@
 """
 from __future__ import annotations
 
-from .. import paths
+from .. import db, paths
 from .base import BuiltCommand, Invalid, JobRequest, Persist, StageSpec
 
 SERVE_PORT = 8008                      # 与 playground 的 rewrite / Dockerfile 暴露端口一致
 DOCKERFILE = paths.ROOT / "deploy/kev-serve/Dockerfile"
 SMOKE_SCRIPT = paths.CONSOLE_SCRIPTS / "smoke.py"
-
-# 5 个场景各 1 例冒烟探针。state 的字段名与 docs/medical/data-format.md 的
-# state_example 严格对齐 —— 字段名对模型可见，跨记录必须一致，改字段名等于换了一个任务。
-SMOKE_PROBES = [
-    {"scenario": "critical-value", "state": {
-        "patient": "male 67", "context": "routine chemistry panel, no symptoms reported",
-        "labs": "K+ 6.2 mmol/L, Cr 98 umol/L", "ref_ranges_included": "yes",
-        "missing_context": "no symptoms reported"},
-     "questions": [{"qid": "is_critical", "type": "noul",
-                    "instructions": "该报告中的任一检验项目是否触及危急值（需要立即临床干预）？"}]},
-    {"scenario": "triage", "state": {
-        "patient": "female 34, gestation 28 weeks", "channel": "outpatient",
-        "chief_complaint": "规律腹痛 3 小时", "duration": "3 hours",
-        "accompanying": "no fever, no vaginal bleeding", "history": "G2P1",
-        "vitals": "BP 118/74, HR 88", "red_flags": "none"},
-     "questions": [{"qid": "immediate_human", "type": "noul",
-                    "instructions": "该患者是否需要立即人工分诊（而非继续等待）？"}]},
-    {"scenario": "medication-review", "state": {
-        "patient": "female 62, eGFR 24", "state_flags": "renal impairment",
-        "allergies": "penicillin (rash)", "current_meds": "amoxicillin 500mg tid",
-        "current_rx": "amoxicillin 500mg tid", "days_on_drug": 6, "indication": "sinusitis"},
-     "questions": [{"qid": "needs_pharmacist", "type": "noul",
-                    "instructions": "该用药是否需要药师介入复核？"}]},
-    {"scenario": "nursing-quality", "state": {
-        "patient": "male 71, bed 12", "ward": "cardiology", "nursing_level": "level 2",
-        "check_point": "pressure ulcer prevention, repositioning",
-        "observed": "no repositioning documented for 6 hours",
-        "dependencies": "none", "risk_scores": "Braden 12"},
-     "questions": [{"qid": "reportable", "type": "noul",
-                    "instructions": "该护理缺陷是否应上报？（质量问题而非个人疏忽）"}]},
-    {"scenario": "icd-coding", "state": {
-        "patient": "female 58", "length_of_stay_days": 9, "primary_dx": "J18.9",
-        "secondary_dx": "E11.9, I10", "procedure": "none",
-        "key_findings": "community-acquired pneumonia",
-        "past_history": "type 2 diabetes, hypertension",
-        "clinical_course": "improved on antibiotics"},
-     "questions": [{"qid": "needs_coder", "type": "noul",
-                    "instructions": "该编码是否需要编码员人工复核？"}]},
-]
 
 
 def _python() -> str:
@@ -97,7 +58,8 @@ def _image(request: JobRequest) -> BuiltCommand:
         artifacts_out=[f"image:{tag}"])
 
 
-image = StageSpec("image", "image", "构建部署镜像", _image, outcome="接着 deploy")
+image = StageSpec("image", "image", "构建部署镜像", _image, outcome="接着 deploy",
+                 service="deploy.image")
 
 
 def _deploy(request: JobRequest) -> BuiltCommand:
@@ -143,9 +105,10 @@ def _smoke(request: JobRequest) -> BuiltCommand:
 
 
 smoke = StageSpec("smoke", "deploy", "冒烟测试（5 场景各 1 例）", _smoke,
-                  outcome="看 p 分布与 argmax；别只看分数，形状不对说明权重或字段名有问题")
+                  outcome="看 p 分布与 argmax；别只看分数，形状不对说明权重或字段名有问题",
+                  service="deploy.smoke")
 
 DEPLOY_STAGES = (image, deploy, smoke)
 
-__all__ = ["SERVE_PORT", "DOCKERFILE", "SMOKE_SCRIPT", "SMOKE_PROBES",
+__all__ = ["SERVE_PORT", "DOCKERFILE", "SMOKE_SCRIPT",
            "image", "deploy", "smoke", "DEPLOY_STAGES"]

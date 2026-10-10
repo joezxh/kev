@@ -104,6 +104,7 @@ export function Playground() {
           <h1 className="font-medium tracking-tight">kev</h1>
           <Link href="/chess" className="text-muted-foreground hover:text-foreground">chess</Link>
           <Link href="/console" className="text-muted-foreground hover:text-foreground">{t("kev.nav.console")}</Link>
+          <Link href="/studio" className="text-muted-foreground hover:text-foreground">{t("console.nav.studio")}</Link>
           <Link href={`/docs/${lang}`} className="text-muted-foreground hover:text-foreground">{lang === "zh" ? "kev文档" : "docs"}</Link>
         </nav>
         <div className="flex shrink-0 items-center gap-3">

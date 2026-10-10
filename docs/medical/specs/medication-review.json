@@ -68,5 +68,27 @@
     "给药途径与药名表述：口服片、静脉滴注、静脉推注、肌肉注射、外用、吸入；中文商品名、通用名、英文缩写（ceftriaxone / metronidazole）、中英混排；剂量写法 mg/g/ml/片/支 混用",
     "适应症不符的具体对照：抗生素用于无细菌指征的功能性消化不良、镇痛药用于与诊断无关的疼痛、降压药用于非高血压适应症",
     "边界陷阱（务必按 guidance 处理）：eGFR<30 或转氨酶升高时即使 verdict=pass 也须 needs_pharmacist=true；过敏史为「青霉素（皮疹）」时任何青霉素类或头孢类均为 contraindication；禁忌与重复用药的优先级高于剂量偏差"
-  ]
+  ],
+  "routing": {
+    "risk": "low",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "用药/医保审核规则封闭，0.8B 可作主力；仍需药师复核。"
+  },
+  "smoke_probe": {
+    "state": {
+      "patient": "female 62, eGFR 24",
+      "state_flags": "renal impairment",
+      "allergies": "penicillin (rash)",
+      "current_meds": "amoxicillin 500mg tid",
+      "current_rx": "amoxicillin 500mg tid",
+      "days_on_drug": 6,
+      "indication": "sinusitis"
+    },
+    "questions": [
+      {"qid": "needs_pharmacist", "type": "noul",
+       "instructions": "该用药是否需要药师介入复核？"}
+    ],
+    "expected_label": {"needs_pharmacist": "true"}
+  }
 }

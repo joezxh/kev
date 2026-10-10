@@ -25,6 +25,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "generators"))
+# split_data lives in skills/kev-finetune/scripts, not next to the generators. common imports it too,
+# but adding the path here keeps `import split_data` independent of common's import side effect.
+sys.path.insert(0, str(HERE.parents[2] / "skills/kev-finetune/scripts"))
 
 import common  # noqa: E402
 import split_data  # noqa: E402
@@ -32,8 +35,26 @@ import split_data  # noqa: E402
 SPEC_FOR = {"inquiry": "triage", "medication": "medication-review", "diagnosis": "diagnosis",
             "record-summary": "record-summary"}
 SFT_ONLY = {"knowledge-qa"}
+# Scenarios are partitioned by their DB spec's ``distill.kev_track`` flag instead of a hard-coded map.
 LABEL_FLOOR = 0.05      # split_data.py 的告警阈值
 MIN_CALIBRATION_QUESTIONS = 100
+
+
+def _partition_scenarios():
+    """Return (kev_track, sft_only) slug lists by parsing each scenario's spec_json in the DB."""
+    from kev.console.db import Store  # local import: avoid forcing sqlite open when unused
+    kev_track, sft_only = [], []
+    store = Store()
+    for slug in store.list_scenario_slugs():
+        row = store.get_scenario_by_slug(slug)
+        if row is None or not row.get("spec_json"):
+            continue
+        spec = json.loads(row["spec_json"])
+        if spec.get("distill", {}).get("kev_track", False):
+            kev_track.append(slug)
+        else:
+            sft_only.append(slug)
+    return kev_track, sft_only
 
 def read_jsonl(path):
     return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -43,6 +64,11 @@ def check_records(scenario, path, expect=None):
     """Structure and distribution assertions for one scenario's Kev records. Returns (questions, problems)."""
     records = read_jsonl(path)
     spec = common.load_spec(SPEC_FOR[scenario])
+    from kev.console.db import Store  # local import: mirrors seed_to_kev.py
+    row = Store().get_scenario_by_slug(scenario)
+    if row is None or not row.get("spec_json"):
+        return 0, [f"{scenario}: scenario not in console DB (run `uv run u console initdb` first)"]
+    spec = json.loads(row["spec_json"])
     problems = []
     if not records:
         return 0, [f"{scenario}: no records"]
@@ -101,9 +127,10 @@ def main(argv=None):
 
     problems, total_questions = [], 0
     if args.all:
+        kev_track, sft_only = _partition_scenarios()
         for scenario in sorted(SPEC_FOR):
             path = Path(args.records_dir) / f"{scenario}.jsonl"
-            print(f"\n== {scenario} ({SPEC_FOR[scenario]})")
+            print(f"\n== {scenario} (Kev 轨, spec={SPEC_FOR[scenario]})")
             if not path.exists():
                 problems.append(f"{scenario}: missing {path}")
                 continue
@@ -115,7 +142,7 @@ def main(argv=None):
     else:
         if not args.records:
             raise SystemExit("--scenario requires --records")
-        print(f"== {args.scenario} ({SPEC_FOR[args.scenario]})")
+        print(f"== {args.scenario} (spec={SPEC_FOR[args.scenario]})")
         total_questions, found = check_records(args.scenario, args.records, expect)
         problems += found
 

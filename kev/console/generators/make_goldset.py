@@ -93,38 +93,23 @@ def disagreement(a_records, b_records):
     return rows, per_question, len(shared)
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest="command", required=True)
+def run_sample(args) -> int:
+    """sample 子命令的纯函数入口：分层抽样 + 写文件 + 打印覆盖。"""
+    records = read(args.data)
+    picked = sample(records, args.n, args.seed)
+    write(picked, args.out)
+    print(f"{len(picked)} of {len(records)} records -> {args.out}")
+    print("label coverage in the sample:")
+    for qid, table in sorted(_table(picked).items()):
+        total = sum(table.values())
+        print(f"  {qid}: " + ", ".join(f"{k}={v}" for k, v in table.most_common()))
+    print("next: have a clinician/pharmacist review each record against the spec's guidance, edit the labels,")
+    print("      then: split_data.py <generated>.jsonl --out data/x --holdout <this file>")
+    return 0
 
-    p_sample = sub.add_parser("sample", help="stratified sample for human review")
-    p_sample.add_argument("data", help="generated labelled JSONL")
-    p_sample.add_argument("--n", type=int, default=200, help="records to sample; 150-250 is the useful range")
-    p_sample.add_argument("--seed", type=int, default=0)
-    p_sample.add_argument("--out", required=True, help="gold-set JSONL to write (edit labels, then use as --holdout)")
 
-    p_audit = sub.add_parser("audit", help="compare two independent labellings")
-    p_audit.add_argument("a", help="first labelled JSONL")
-    p_audit.add_argument("b", help="second labelled JSONL")
-    p_audit.add_argument("--out", default="", help="optional JSONL for the disagreeing records")
-    p_audit.add_argument("--threshold", type=float, default=0.05,
-                         help="exit non-zero when the disagreement rate exceeds this, so CI can gate on it")
-
-    args = parser.parse_args(argv)
-    if args.command == "sample":
-        records = read(args.data)
-        picked = sample(records, args.n, args.seed)
-        write(picked, args.out)
-        print(f"{len(picked)} of {len(records)} records -> {args.out}")
-        print("label coverage in the sample:")
-        for qid, table in sorted(_table(picked).items()):
-            total = sum(table.values())
-            print(f"  {qid}: " + ", ".join(f"{k}={v}" for k, v in table.most_common()))
-        print("next: have a clinician/pharmacist review each record against the spec's guidance, edit the labels,")
-        print("      then: split_data.py <generated>.jsonl --out data/x --holdout <this file>")
-        return 0
-
+def run_audit(args) -> int:
+    """audit 子命令的纯函数入口：分歧率计算 + 写分歧文件 + 闸门判定。"""
     rows, per_question, shared = disagreement(read(args.a), read(args.b))
     total = sum(per_question.values())
     print(f"compared {shared} shared states, {total} question labels")
@@ -153,13 +138,38 @@ def main(argv=None):
     return 0
 
 
-def _table(records):
-    table = {}
-    for record in records:
-        for qid, q in record["questions"].items():
-            table.setdefault(qid, Counter())[split_data.label_key(q)] += 1
-    return table
+def run(argv=None) -> int:
+    """Pure-function entry point: takes an optional argv list, returns a process exit code.
+
+    Dispatches to run_sample() or run_audit() based on the subcommand. The service
+    layer (kev.console.services.data) calls run_sample() / run_audit() directly
+    with a built Namespace; the CLI entry uses run() via `main = run` below.
+    """
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_sample = sub.add_parser("sample", help="stratified sample for human review")
+    p_sample.add_argument("data", help="generated labelled JSONL")
+    p_sample.add_argument("--n", type=int, default=200, help="records to sample; 150-250 is the useful range")
+    p_sample.add_argument("--seed", type=int, default=0)
+    p_sample.add_argument("--out", required=True, help="gold-set JSONL to write (edit labels, then use as --holdout)")
+
+    p_audit = sub.add_parser("audit", help="compare two independent labellings")
+    p_audit.add_argument("a", help="first labelled JSONL")
+    p_audit.add_argument("b", help="second labelled JSONL")
+    p_audit.add_argument("--out", default="", help="optional JSONL for the disagreeing records")
+    p_audit.add_argument("--threshold", type=float, default=0.05,
+                         help="exit non-zero when the disagreement rate exceeds this, so CI can gate on it")
+
+    args = parser.parse_args(argv)
+    if args.command == "sample":
+        return run_sample(args)
+    return run_audit(args)
+
+
+main = run
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(run())

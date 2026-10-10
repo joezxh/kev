@@ -1,0 +1,50 @@
+{
+  "critical-value": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "漏报危急值 ≫ 误报：低置信必须升级 4B 并强制转人工，不取 argmax 自动处置。"
+  },
+  "medication-review": {
+    "risk": "low",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "用药/医保审核规则封闭，0.8B 可作主力；仍需药师复核。"
+  },
+  "nursing-quality": {
+    "risk": "low",
+    "human_review": true,
+    "evidence_question": "",
+    "note": "护理质控检查表逐项可判，0.8B 主力。"
+  },
+  "triage": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "",
+    "note": "科室归属语义丰富、规则难穷举，4B 主力。"
+  },
+  "icd-coding": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "",
+    "note": "长文本 + 大标签体系 + 罕见组合 + 需医学知识；仅 4B。"
+  },
+  "inquiry": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "needs_more_info",
+    "note": "导诊为分诊与科室建议，不替代诊断；置信不足时建议追问或人工复核。"
+  },
+  "medication": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "needs_pharmacist",
+    "note": "用药咨询规则封闭，0.8B 可作主力；高风险信号仍需药师复核。"
+  },
+  "knowledge-qa": {
+    "risk": "low",
+    "human_review": false,
+    "evidence_question": "",
+    "note": "医学知识问答不涉及个体化诊疗，0.8B 可作主力。"
+  }
+}

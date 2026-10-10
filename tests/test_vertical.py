@@ -318,7 +318,8 @@ def test_the_built_in_registry_has_all_five_industries_and_no_adapters():
     reg = industries()
     assert set(reg.names()) == {"medical", "finance", "legal", "education", "support"}
     assert reg.adapters() == []
-    assert len(reg.scenarios("medical")["medical"]) == 5
+    # medical: 5 rule-derivable + 3 distill-only (inquiry / medication / knowledge-qa) = 8
+    assert len(reg.scenarios("medical")["medical"]) == 8
 
 
 def test_a_peft_adapter_name_is_a_valid_identifier():

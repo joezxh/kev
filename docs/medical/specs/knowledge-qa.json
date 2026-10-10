@@ -1,0 +1,88 @@
+{
+  "_meta": {
+    "purpose": "医学知识问答 —— 生成式 SFT 轨。Kev 是 pointer-readout 模型，只在预声明选项集上输出概率，不生成 token，因此本场景没有 Kev 轨。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/knowledge-qa.yaml"
+  },
+  "name": "knowledge-qa",
+  "label_zh": "医学知识问答",
+  "label_en": "Medical Knowledge Q&A",
+  "domain": "医学知识问答。覆盖常见病机制、临床表现、检查、治疗、预防、流行病学等；不得编造文献或指南出处。",
+  "state": "医学知识问答的结构化字段：主题、问题、上下文（可选的临床背景）、要求覆盖的子项。",
+  "state_example": {
+    "topic": "高血压",
+    "question": "原发性高血压的一线用药选择与各自适用人群？",
+    "context": "成人，无合并症",
+    "aspects": ["一线药物", "适用人群", "常见不良反应"]
+  },
+  "questions": {
+    "answer_accurate": {
+      "type": "noul",
+      "instructions": "回答是否准确、无编造、无超范围推断？",
+      "criteria": {
+        "true": "表述与现行指南/教科书一致，无杜撰",
+        "false": "存在编造、夸大或与主流共识相悖的内容"
+      }
+    },
+    "covers_aspects": {
+      "type": "noul",
+      "instructions": "回答是否覆盖了 question 要求的子项？",
+      "criteria": {
+        "true": "覆盖了所有要求的子项",
+        "false": "缺少至少一个要求的子项"
+      }
+    },
+    "safety_prompt": {
+      "type": "noul",
+      "instructions": "回答是否在涉及诊疗决策时给出「以临床判断与最新指南为准」的提示？",
+      "criteria": {
+        "true": "已给出适用边界与时效性提示",
+        "false": "未给出边界提示"
+      }
+    }
+  },
+  "guidance": "knowledge-qa 仅回答事实性医学知识，不得编造文献、不得给出个体化诊疗建议。涉及诊疗决策时必须提示以临床判断与最新指南为准。",
+  "variety": [
+    "知识领域：心血管、呼吸、消化、神经、泌尿、内分泌、血液、骨科、妇科、儿科、急诊、药理",
+    "问题类型：机制、临床表现、检查、治疗、预防、流行病学",
+    "上下文：有无临床背景、有无人群限定",
+    "覆盖度：完整、缺失部分、缺失大部分"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景无 Kev 轨（开放式问答），仅 SFT 蒸馏。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是一位医学知识助手。回答要准确、简洁，注明适用范围与时效性，并在涉及诊疗决策时提示以临床判断与最新指南为准。不得编造文献或指南出处。",
+      "en": "You are a medical knowledge assistant. Reply accurately and concisely, state the scope and timeliness of the answer, and when clinical decisions are involved, remind the user to follow clinical judgement and the latest guidelines. Do not fabricate literature or guideline citations."
+    },
+    "ask_template": "请基于以下问题回答：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "医学知识问答（机制、临床、检查、治疗、预防、流行病学）",
+      "标注答案的适用范围与时效性",
+      "涉及诊疗决策时的边界提示"
+    ],
+    "kev_track": false
+  },
+  "routing": {
+    "risk": "low",
+    "human_review": false,
+    "evidence_question": "",
+    "note": "医学知识问答不涉及个体化诊疗，0.8B 可作主力。"
+  },
+  "smoke_probe": {
+    "state": {
+      "topic": "高血压",
+      "question": "原发性高血压的一线用药选择与各自适用人群？",
+      "context": "成人，无合并症",
+      "aspects": ["一线药物", "适用人群", "常见不良反应"]
+    },
+    "questions": [
+      {"qid": "covers_aspects", "type": "noul",
+       "instructions": "回答是否覆盖了 question 要求的子项？"}
+    ],
+    "expected_label": {"covers_aspects": "true"}
+  }
+}

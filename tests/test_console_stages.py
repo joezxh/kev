@@ -386,8 +386,12 @@ def test_deploy_refuses_a_second_endpoint_on_the_same_port():
 
 
 def test_smoke_covers_all_five_scenarios_and_targets_the_endpoint():
-    assert {probe["scenario"] for probe in dp.SMOKE_PROBES} == {
-        "critical-value", "triage", "medication-review", "nursing-quality", "icd-coding"}
+    from kev.console.db import Store
+    probes = Store().list_smoke_probes()
+    # 5 规则可推 + 3 蒸馏轨补回（inquiry / medication / knowledge-qa）
+    assert {probe["scenario"] for probe in probes} == {
+        "critical-value", "triage", "medication-review", "nursing-quality", "icd-coding",
+        "inquiry", "medication", "knowledge-qa"}
     built = dp.smoke.preview(req())
     assert flag(built.argv, "--base-url") == "http://127.0.0.1:8008"
     assert flag(built.argv, "--out") == "runs/cv-8b-lora-v1-smoke.json"
@@ -398,7 +402,7 @@ def test_smoke_covers_all_five_scenarios_and_targets_the_endpoint():
 def test_smoke_probe_state_fields_match_each_specs_state_example():
     """字段名对模型可见、跨记录必须一致（data-format.md §二）：改字段名等于换了一个任务。
     所以探针的 state 键必须与该场景 spec 的 state_example 完全相同，不能自造。"""
-    for probe in dp.SMOKE_PROBES:
+    for probe in Store().list_smoke_probes():
         spec = console_paths.SPECS / f"{probe['scenario']}.json"
         assert spec.is_file(), f"spec 不存在：{spec}"
         declared = set(_json.loads(spec.read_text(encoding="utf-8"))["state_example"])
