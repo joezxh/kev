@@ -1,6 +1,5 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import { useLang } from "@/lib/i18n";
 import type { Gate } from "@/lib/console";
 
@@ -13,12 +12,18 @@ export function GatePanel({ gates, title }: { gates: Gate[]; title?: string }) {
   const failed = gates.filter((gate) => !gate.ok).length;
 
   return (
-    <section className="rounded-md border border-border">
+    <section className="rounded-md border border-border bg-[#111111]">
       <header className="flex items-center justify-between border-b border-border px-3 py-2">
         <h3 className="text-sm font-medium">{title ?? t("console.eval.gates")}</h3>
-        <Badge variant={failed ? "destructive" : "secondary"}>
+        <span
+          className={
+            failed
+              ? "rounded-md border border-border px-2 py-0.5 text-xs text-[#ef4444]"
+              : "rounded-md border border-border px-2 py-0.5 text-xs text-[#22c55e]"
+          }
+        >
           {failed ? t("console.eval.blocked", { n: failed }) : t("console.eval.allPass")}
-        </Badge>
+        </span>
       </header>
       {gates.length === 0 ? (
         <p className="px-3 py-2 text-sm text-muted-foreground">该阶段不设闸门</p>
@@ -27,11 +32,11 @@ export function GatePanel({ gates, title }: { gates: Gate[]; title?: string }) {
           {gates.map((gate) => (
             <li key={gate.id} className="px-3 py-2 text-sm">
               <div className="flex items-start gap-2">
-                <span className={gate.ok ? "text-emerald-600" : "text-destructive"}>
+                <span className={gate.ok ? "text-[#22c55e]" : "text-[#ef4444]"}>
                   {gate.ok ? "✓" : "✗"}
                 </span>
                 <span className="font-mono text-xs text-muted-foreground">{gate.id}</span>
-                <span className={gate.ok ? "text-muted-foreground" : "text-destructive"}>
+                <span className={gate.ok ? "text-muted-foreground" : "text-[#ef4444]"}>
                   {gate.detail}
                 </span>
               </div>

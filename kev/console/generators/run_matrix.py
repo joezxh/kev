@@ -30,42 +30,9 @@ SIZES = {
     "4b": ("jaredpalmer/kev-4b", "kev-{scenario}-4b", 13, "2e-5（沿用 init 自身参数）"),
 }
 
-# Module-level proxies. These are *not* evaluated at import time (the DB path
-# would circular-import). Callers that need a fresh list at runtime should use
-# the helper functions below; callers that imported these names get the
-# best-effort snapshot computed when the module first loaded.
-
-from kev.console.db import Store as _Store  # noqa: E402  (after sys.path shim)
-
-
-def list_scenarios() -> list:
-    """DB-backed scenarios list."""
-    return _Store().list_scenario_slugs()
-
-
-def list_four_b_only() -> set:
-    """DB-backed FOUR_B_ONLY set."""
-    store = _Store()
-    import json as _json
-    slugs = set()
-    for slug in store.list_scenario_slugs():
-        row = store.get_scenario_by_slug(slug)
-        if not row or not row.get("spec_json"):
-            continue
-        try:
-            spec = _json.loads(row["spec_json"])
-        except (TypeError, ValueError):
-            continue
-        if (spec.get("routing") or {}).get("four_b_only") is True:
-            slugs.add(slug)
-    return slugs
-
-
-# SCENARIOS / FOUR_B_ONLY names were deleted in Task 29. Downstream callers
-# (kev.console.db / kev.console.stages.data / kev.console.stages.train) still
-# import them as `from run_matrix import SCENARIOS / FOUR_B_ONLY`; those imports
-# are now broken by design. Tasks 30 / 31 will point the callers at
-# `list_scenarios()` / `list_four_b_only()` (or their own DB query).
+SCENARIOS = sorted(p.stem for p in SPECS.glob("*.json"))
+# 官方不支持训练 / 语义难度过高的场景：只跑 4B 轨
+FOUR_B_ONLY = {"icd-coding"}
 
 
 def check_name(name):
@@ -86,8 +53,7 @@ def steps(scenario, sizes, data, version, python, secret=""):
     spec = SPECS / f"{scenario}.json"
     out = [
         ("plan_size", [python, str(SKILL_SCRIPTS / "plan_size.py"), str(spec), "--baseline-acc", "0.75"], None),
-        ("generate", [python, str(Path(__file__).resolve().parent / "engine.py"),
-                      "--scenario", scenario,
+        ("generate", [python, str(Path(__file__).resolve().parent / f"gen_{scenario.replace('-', '_')}.py"),
                       "--n", "787", "--out", f"{data}.jsonl", "--seed", "0"], None),
         ("split", [python, str(SKILL_SCRIPTS / "split_data.py"), f"{data}.jsonl", "--out", data], None),
     ]

@@ -267,6 +267,47 @@ export const api = {
     if (to) q.set("to_day", to);
     return call<DistillUsageTotal[]>(`distill-usage/totals${q.toString() ? `?${q}` : ""}`);
   },
+
+  // ---- ch6 管理面：projects / members / quota / webhooks / invoices ----
+  projects: () => call<Project[]>("projects"),
+  createProject: (p: { slug: string; name: string; description?: string }) =>
+    call<Project>("projects", { method: "POST", body: JSON.stringify(p) }),
+  project: (id: string) => call<Project>(`projects/${id}`),
+  updateProject: (id: string, p: { name?: string; slug?: string; description?: string }) =>
+    call<Project>(`projects/${id}`, { method: "PUT", body: JSON.stringify(p) }),
+  deleteProject: (id: string) => call<{ deleted: boolean }>(`projects/${id}`, { method: "DELETE" }),
+
+  members: (projectId: string) => call<Member[]>(`projects/${projectId}/members`),
+  inviteMember: (projectId: string, p: { email: string; name?: string; role?: string; status?: string }) =>
+    call<Member>(`projects/${projectId}/members`, { method: "POST", body: JSON.stringify(p) }),
+  updateMember: (projectId: string, memberId: string, p: { role?: string; status?: string; name?: string }) =>
+    call<Member>(`projects/${projectId}/members/${memberId}`, { method: "PUT", body: JSON.stringify(p) }),
+  removeMember: (projectId: string, memberId: string) =>
+    call<{ deleted: boolean }>(`projects/${projectId}/members/${memberId}`, { method: "DELETE" }),
+
+  quota: (projectId: string) => call<Quota>(`projects/${projectId}/quota`),
+  setQuota: (projectId: string, p: {
+    training_hours_limit?: number; gpu_limit?: number;
+    api_calls_limit?: number; storage_gb_limit?: number;
+  }) => call<Quota>(`projects/${projectId}/quota`, { method: "PUT", body: JSON.stringify(p) }),
+
+  webhooks: (projectId: string) => call<Webhook[]>(`projects/${projectId}/webhooks`),
+  createWebhook: (projectId: string, p: { url: string; events: string[]; secret?: string }) =>
+    call<Webhook>(`projects/${projectId}/webhooks`, { method: "POST", body: JSON.stringify(p) }),
+  updateWebhook: (projectId: string, webhookId: string, p: { url?: string; events?: string[]; secret?: string; active?: boolean }) =>
+    call<Webhook>(`projects/${projectId}/webhooks/${webhookId}`, { method: "PUT", body: JSON.stringify(p) }),
+  deleteWebhook: (projectId: string, webhookId: string) =>
+    call<{ deleted: boolean }>(`projects/${projectId}/webhooks/${webhookId}`, { method: "DELETE" }),
+  pingWebhook: (projectId: string, webhookId: string) =>
+    call<{ status: number }>(`projects/${projectId}/webhooks/${webhookId}/ping`, { method: "POST" }),
+
+  invoices: (projectId: string, period?: string) => {
+    const q = new URLSearchParams();
+    if (period) q.set("period", period);
+    return call<Invoice[]>(`projects/${projectId}/invoices${q.toString() ? `?${q}` : ""}`);
+  },
+  createInvoice: (projectId: string, p: { period: string; amount: number; currency?: string; status?: string; due_at?: string; line_items?: unknown[] }) =>
+    call<Invoice>(`projects/${projectId}/invoices`, { method: "POST", body: JSON.stringify(p) }),
 };
 
 export type DistillUsageTotal = { day: string; tokens: number };
@@ -280,6 +321,35 @@ export type ScenarioDomain = {
   sort: number; scenarios: Scenario[];
 };
 export type ScenarioTree = ScenarioDomain;
+
+// ---- ch6 管理面资源 ----------------------------------------------------
+export type Project = {
+  id: string; slug: string; name: string; description: string;
+  created_at: string; updated_at: string;
+};
+export type Member = {
+  id: string; project_id: string; email: string; name: string;
+  role: "owner" | "admin" | "member" | "viewer";
+  status: "invited" | "active";
+  created_at: string;
+};
+export type Quota = {
+  project_id: string;
+  training_hours_limit: number; training_hours_used: number;
+  gpu_limit: number; api_calls_limit: number; api_calls_used: number;
+  storage_gb_limit: number; storage_gb_used: number;
+  updated_at: string;
+};
+export type Webhook = {
+  id: string; project_id: string; url: string; events: string[];
+  secret: string; active: boolean; last_status: number | null;
+  last_delivered_at: string | null; created_at: string;
+};
+export type Invoice = {
+  id: string; project_id: string; period: string; amount: number;
+  currency: string; status: "open" | "paid" | "void";
+  due_at: string | null; issued_at: string; line_items: unknown[];
+};
 
 /**
  * 订阅作业的 SSE 日志流。

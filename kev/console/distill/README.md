@@ -58,11 +58,12 @@ join 就永远不依赖它的字段透传行为。两文件必须同序同长，
 `knowledge-qa` 没有 Kev 轨的原因：Kev 是 pointer-readout 模型，只在**预声明选项集**上输出概率、一个 token
 都不生成，开放式问答在结构上无法成为 Kev 任务。强行做只能退化成 4 选 1 判断题，失去问答轨的全部价值。
 
-## 新增一个场景：1 步
+## 新增一个场景：3 步
 
-把 `generator` / `distill` / `routing` / `smoke_probe` 4 个字段补到 `docs/medical/specs/<slug>.json`。
-UI 端到端：`/console/scenarios#generator/<slug>`（Generator 标签的 4 个子面板），保存即落库。
-不需要改任何 Python 文件。
+1. 在 `../generators/` 加 `gen_<name>.py`（若该场景的标签可规则派生）并在 `../specs/` 加同名 spec
+2. 在 `make_seeds.py` 的 `SCENARIOS` 与 `SYSTEM_PROMPTS` 登记，加 `ASK` 模板
+3. 复制一份 `configs/<name>.yaml` 改 `dataset` 路径与 system prompt，并在 `seed_to_kev.py` / `check_volume.py`
+   的 `SPEC_FOR` 登记 spec 名
 
 ## 凭据
 

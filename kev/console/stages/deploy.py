@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+import json as _json
+
 from .. import db, paths
 from .base import BuiltCommand, Invalid, JobRequest, Persist, StageSpec
 
@@ -110,5 +112,41 @@ smoke = StageSpec("smoke", "deploy", "冒烟测试（5 场景各 1 例）", _smo
 
 DEPLOY_STAGES = (image, deploy, smoke)
 
+# Smoke probes 的真实来源是 `paths.SPECS/*.json` 的 `smoke_probe` 字段。
+# Wave B 把旧硬编码 list 改成 DB-projected 入口，但 `Store.list_smoke_probes`
+# 还没有实现；这里用一份从 spec 文件直读的快照作为 back-compat 入口，
+# 待 DB projection 就绪后切到 store 调用（services/smoke.run_from_db）。
+SMOKE_SPEC_DIR = paths.SPECS
+
+
+def _load_smoke_probes() -> list:
+    """从 paths.SPECS/*.json 读 smoke_probe 字段，组成原 list 结构。
+
+    每条形如 {scenario, state, questions, expected_label}：与
+    services/smoke.run_from_db 期望的 `probe` 一致。
+    """
+    out = []
+    if not SMOKE_SPEC_DIR.is_dir():
+        return out
+    for spec_path in sorted(SMOKE_SPEC_DIR.glob("*.json")):
+        try:
+            data = _json.loads(spec_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        probe = data.get("smoke_probe")
+        if not probe:
+            continue
+        out.append({
+            "scenario": spec_path.stem,
+            "state": probe.get("state", {}),
+            "questions": probe.get("questions", []),
+            "expected_label": probe.get("expected_label", {}),
+        })
+    return out
+
+
+# 启动时一次性物化（spec 文件通常 ≤ 几十个）。调用方只读不改；新增场景需要重启 master。
+SMOKE_PROBES: list = _load_smoke_probes()
+
 __all__ = ["SERVE_PORT", "DOCKERFILE", "SMOKE_SCRIPT",
-           "image", "deploy", "smoke", "DEPLOY_STAGES"]
+           "image", "deploy", "smoke", "DEPLOY_STAGES", "SMOKE_PROBES"]

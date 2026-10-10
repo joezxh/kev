@@ -19,7 +19,7 @@ from .. import paths
 from .base import BuiltCommand, Conflict, Invalid, JobRequest, StageSpec
 
 paths.ensure_generators_on_path()
-from run_matrix import SIZES, check_name, list_four_b_only as _list_four_b  # noqa: E402
+from run_matrix import FOUR_B_ONLY, SIZES, check_name  # noqa: E402
 
 BASE = "Qwen/Qwen3.5-0.8B-Base"
 BASE_REVISION = "9a45d25e"
@@ -50,7 +50,7 @@ def _python() -> str:
 
 def methods_for(scenario: str) -> dict:
     """该场景可用的三种方式。UI 的默认值来自这里，不要在前端硬编码。"""
-    four_b_only = scenario in _list_four_b()
+    four_b_only = scenario in FOUR_B_ONLY
     return {
         "a1": {"title": "A1 · LoRA 热启动（推荐起步）", "init_from": SIZES["8b"][0],
                "lora": "16", "lora_targets": "all", "lr": DEFAULT_LR["8b"], "head_dim": "256",
@@ -158,8 +158,7 @@ def _train(request: JobRequest) -> BuiltCommand:
 
 
 train = StageSpec("train", "train", "SFT 训练", _train,
-                  outcome="接着跑 baseline + benchmark + compare（闸门 G4 需要配对 CI）",
-                  service="train.train")
+                  outcome="接着跑 baseline + benchmark + compare（闸门 G4 需要配对 CI）")
 
 TRAIN_STAGES = (train,)
 

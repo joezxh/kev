@@ -25,18 +25,11 @@ from ..paths import SKILL_SCRIPTS, SPECS
 from .base import BuiltCommand, Conflict, Invalid, JobRequest, StageSpec
 
 paths.ensure_generators_on_path()
-from run_matrix import SIZES, check_name, list_four_b_only, list_scenarios  # noqa: E402
+from run_matrix import FOUR_B_ONLY, SCENARIOS as _SCENARIOS, SIZES, check_name  # noqa: E402
 
 from .. import db as _db
 
-# run_matrix 的场景表已改为 DB 支撑（list_scenarios / list_four_b_only），不再是模块级字典。
-# 不能在 import 期就求值：那会在只想拿常量的场景（CLI、迁移、测试）也去开数据库。
-# PEP 562 惰性属性：第一次真正访问 SCENARIOS 时才查库。
-def __getattr__(name):
-    if name == "SCENARIOS":
-        return tuple(list_scenarios())
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
+SCENARIOS = tuple(_SCENARIOS)
 SPLITS = ("train", "calibration", "development")
 PLAN_RE = re.compile(r"generate at least (\d+) records")
 DEFAULT_INIT = SIZES["8b"][0]          # jaredpalmer/kev-0.8b
@@ -134,22 +127,15 @@ plan_size = StageSpec("plan_size", "data", "算记录数", _plan_size,
 def parse_plan_size(stdout: str) -> dict:
     """解析 plan_size 的输出：`--json` 的 JSON，或文本形式的 'generate at least 787 records'。
 
-    作业日志里可能混有其他行（argv 回显、事件帧、**调试器的连接提示**），所以不能假设
-    文本以 `{` 开头 —— 实测 pydevd 会往 stdout 打 "Connected to: <socket ...>"，排在
-    `--json` 的多行 JSON 之前，原来的 startswith("{") 分支必然失配，plan 文件静默缺失。
-    因此先截取**最外层大括号之间**的整段再解析；JSON 缺失时退回文本正则。
     作业日志里可能混有其他行（argv 回显、事件帧），所以 JSON 优先整段、其次**从后往前**
     找含 total_records 的 JSON 行，正则取**最后一个**命中 —— 保证拿到的是最终计划。
     """
     text = stdout.strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
+    if text.startswith("{"):
         try:
-            data = json.loads(text[start:end + 1])
+            return json.loads(text)
         except json.JSONDecodeError:
-            data = None
-        if isinstance(data, dict) and data.get("total_records") is not None:
-            return data
+            pass
     for line in reversed(text.splitlines()):
         line = line.strip()
         if line.startswith("{") and "total_records" in line:
@@ -167,9 +153,8 @@ def parse_plan_size(stdout: str) -> dict:
 
 def _generate(request: JobRequest) -> BuiltCommand:
     _spec(request.scenario)          # 先校验场景，否则会拼出 gen_不存在.py 这种鬼命令
-    from kev.console.generators import run_matrix as _rm
-    if request.scenario in _rm.list_four_b_only():
-        raise Invalid(f"{request.scenario} 只支持 4B 轨（语义难度过高，见 run_matrix.list_four_b_only）",
+    if request.scenario in FOUR_B_ONLY:
+        raise Invalid(f"{request.scenario} 只支持 4B 轨（语义难度过高，见 run_matrix.FOUR_B_ONLY）",
                       field="scenario", hint="本阶段只造数据，与尺寸无关；请改跑 generate 的数据侧")
     params = request.params
     data_dir = params.get("data") or f"data/{request.scenario}"
@@ -179,18 +164,11 @@ def _generate(request: JobRequest) -> BuiltCommand:
     argv = [_python(), str(paths.GENERATORS / f"gen_{module}.py"),
             "--n", str(_int(params, "n", PLANNED_RECORDS)), "--out", out,
             "--seed", str(_int(params, "seed", 0))]
-    n = _int(params, "n", PLANNED_RECORDS)
-    seed = _int(params, "seed", 0)
-    pairs = _float(params, "pairs", 0.0)
-    argv = [_python(), "-m", "kev.console.generators.engine",
-            "--scenario", request.scenario, "--n", str(n), "--out", out,
-            "--seed", str(seed), "--pairs", str(pairs)]
     return BuiltCommand(argv=argv, cwd=str(paths.ROOT), artifacts_out=[f"dataset:{_dataset_id(data_dir)}"])
 
 
 generate = StageSpec("generate", "data", "程序化规则合成", _generate,
-                     outcome="接着跑 goldset（可选）与 split",
-                     service="data.generate")
+                     outcome="接着跑 goldset（可选）与 split")
 
 
 # ---- distill -----------------------------------------------------------
@@ -287,8 +265,6 @@ def _distill_daemon(request: JobRequest) -> BuiltCommand:
     # 取消走 /_internal/distill-cancel：daemon_runner 拿到信号后干净停掉它的 schedule
     # 子进程再退出，否则 schedule 子进程会被孤立到 cron/Task Scheduler 回收。
     built = _distill_build(request, require_schedule=True)
-    return BuiltCommand(argv=built.argv, env=built.env, cwd=built.cwd,
-                        artifacts_in=built.artifacts_in, artifacts_out=[])
     daemon_id = uuid.uuid4().hex
     master_url = os.environ.get("KEV_CONSOLE_BASE_URL", "http://127.0.0.1:8790")
     wrapped_argv = [_python(), "-m", "kev.console.daemon_runner",
@@ -327,8 +303,7 @@ def _goldset(request: JobRequest) -> BuiltCommand:
 
 
 goldset = StageSpec("goldset", "data", "抽金标", _goldset,
-                    outcome="人工审校标签后，用 split --holdout 接入；金标永不进 train",
-                    service="data.goldset")
+                    outcome="人工审校标签后，用 split --holdout 接入；金标永不进 train")
 
 
 def _goldset_audit(request: JobRequest) -> BuiltCommand:
@@ -355,8 +330,7 @@ def _goldset_audit(request: JobRequest) -> BuiltCommand:
 
 
 goldset_audit = StageSpec("goldset_audit", "goldset_audit", "金标分歧审计", _goldset_audit,
-                          outcome="分歧率超阈值则 CI 可拦截；分歧样本优先进人工审校池",
-                          service="data.goldset_audit")
+                          outcome="分歧率超阈值则 CI 可拦截；分歧样本优先进人工审校池")
 
 
 # ---- split -------------------------------------------------------------
@@ -407,8 +381,7 @@ def _precheck(request: JobRequest) -> BuiltCommand:
 
 
 precheck = StageSpec("precheck", "data", "token 超限预检", _precheck,
-                     outcome="over_limit 必须为 0 才能训练（闸门 G1）",
-                     service="data.precheck")
+                     outcome="over_limit 必须为 0 才能训练（闸门 G1）")
 
 
 # ---- make_examples -----------------------------------------------------
@@ -438,8 +411,7 @@ def _make_examples(request: JobRequest) -> BuiltCommand:
 
 
 make_examples = StageSpec("make_examples", "data", "抽 few-shot 范例", _make_examples,
-                          outcome="把产物路径填进 distill 的 --examples",
-                          service="data.make_examples")
+                          outcome="把产物路径填进 distill 的 --examples")
 
 DATA_STAGES = (plan_size, generate, distill, distill_daemon, goldset, goldset_audit,
                split, precheck, make_examples)

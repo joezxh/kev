@@ -1,7 +1,7 @@
-// Studio re-export of /console/apikeys. Replaced when the studio ch4
-// (system — keys) surface lands.
-import ApikeysPage from "@/app/console/apikeys/page";
+"use client";
 
-export default function StudioApikeysPage() {
-  return <ApikeysPage />;
+import { ApiKeysManager } from "@/components/studio/ApiKeysManager";
+
+export default function StudioApiKeysPage() {
+  return <ApiKeysManager />;
 }

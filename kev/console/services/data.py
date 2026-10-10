@@ -29,7 +29,9 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import sys
 import threading
+from pathlib import Path
 from typing import Callable
 
 from kev.console.db import Store
@@ -40,6 +42,19 @@ from kev.console.stages.base import JobRequest
 # can build a Namespace without re-importing the stage module.
 _PLANNED_RECORDS = 787
 
+# Per-scenario gen_<scenario>.py modules live under kev/console/generators/.
+# The engine module injects this dir into sys.path at import time, but the
+# service may be imported without the engine (e.g. in tests), so we ensure
+# the path is set here as well. Idempotent.
+_GENERATORS_DIR = Path(__file__).resolve().parent.parent / "generators"
+if str(_GENERATORS_DIR) not in sys.path:
+    sys.path.insert(0, str(_GENERATORS_DIR))
+
+
+def _import_gen_module(scenario: str):
+    """Dynamically import `gen_<scenario>` so the test can stub it via sys.modules."""
+    return importlib.import_module(f"gen_{scenario.replace('-', '_')}")
+
 
 class DataService:
     def __init__(self, store: Store, cancel: threading.Event):
@@ -49,9 +64,16 @@ class DataService:
     # ---- generate ---------------------------------------------------------
 
     def generate(self, req: JobRequest, *, on_log: Callable[[str], None]) -> dict:
-        from kev.console.generators.engine import run as engine_run
+        """Generate a JSONL of synthetic records for the scenario.
+
+        Mirrors `stages/data.py::_generate` (lines 150-167): dispatch to the
+        scenario's `gen_<scenario>.py` module. Tests can stub it via
+        `monkeypatch.setitem(sys.modules, "gen_<scenario>", fake)` and the
+        service picks up the stub through importlib.
+        """
+        module = _import_gen_module(req.scenario)
         args = self._build_generate_args(req)
-        rc = engine_run([str(part) for part in args], on_log=on_log)
+        rc = module.run([str(part) for part in args])
         return {"returncode": rc}
 
     def _build_generate_args(self, req: JobRequest) -> list:
@@ -137,9 +159,50 @@ class DataService:
         ]])
         return {"returncode": rc}
 
+    # ---- distill ----------------------------------------------------------
+
+    def distill(self, req: JobRequest, *, on_log: Callable[[str], None]) -> dict:
+        """distill service: one-shot LLM distillation (the **non-daemon** path).
+
+        Wraps kev.console.generators.run_distill.run() with the args the stage would have built.
+        `distill_daemon` (the long-running schedule path) stays in stages.data + daemon_runner;
+        this service covers only `require_schedule=False`.
+        """
+        from kev.console.generators import run_distill
+        args = self._build_distill_args(req)
+        rc = run_distill.run([str(part) for part in args], on_log=on_log)
+        return {"returncode": rc}
+
+    def _build_distill_args(self, req: JobRequest) -> list:
+        """Build argv for run_distill.run, mirroring stages/data.py:185-244.
+
+        `provider_id` is required (a configured distillation endpoint); category, n, model,
+        concurrency, examples, n_examples, state_dir all have sensible defaults.
+        """
+        params = req.params
+        provider_id = params.get("provider_id")
+        if not provider_id:
+            from kev.console.stages.base import Invalid
+            raise Invalid("distill 需要 provider_id（已配置的蒸馏端点）",
+                          field="provider_id",
+                          hint="先到控制台「蒸馏配置」创建并选择")
+        n = int(params.get("n", _PLANNED_RECORDS))
+        out = f"data/{req.scenario}/{params.get('category', req.scenario)}.jsonl"
+        argv = ["--n", str(n), "--provider", provider_id, "--out", out]
+        if params.get("model"):
+            argv += ["--model", params["model"]]
+        if params.get("concurrency"):
+            argv += ["--concurrency", str(int(params["concurrency"]))]
+        if params.get("examples"):
+            argv += ["--examples", params["examples"]]
+            argv += ["--n-examples", str(int(params.get("n_examples", 4)))]
+        if params.get("state_dir"):
+            argv += ["--state-dir", params["state_dir"]]
+        return argv
+
     # ---- make_examples ----------------------------------------------------
 
-    def make_examples(self, req: JobRequest, *, on_log) -> dict:
+    def make_examples(self, req: JobRequest, *, on_log: Callable[[str], None]) -> dict:
         """make_examples service: balanced few-shot sampling for the distill step.
 
         Wraps kev.console.make_examples.run() with the args the stage would have built.

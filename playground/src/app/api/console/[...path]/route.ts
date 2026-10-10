@@ -2,7 +2,7 @@
 // SSE 必须用 ReadableStream 逐块透传 —— Response.json 会把流缓冲掉，EventSource 收不到帧。
 import type { NextRequest } from "next/server";
 
-const CONSOLE_API = process.env.KEV_CONSOLE_API ?? "http://127.0.0.1:8008/console/api";
+const CONSOLE_API = process.env.KEV_CONSOLE_API ?? "http://127.0.0.1:8790/console/api";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

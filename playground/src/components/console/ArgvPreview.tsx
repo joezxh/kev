@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { api } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
 import { renderArgv } from "./format";
@@ -66,12 +65,12 @@ export function ArgvPreview({ kind, scenario, runName, params, className }: {
           </Button>
         )}
       </div>
-      <ScrollArea className="max-h-44 rounded-md border border-border bg-muted/40">
+      <div className="max-h-44 overflow-y-auto rounded-md border border-border bg-[#0a0a0a]">
         <pre className="p-3 font-mono text-xs leading-relaxed break-all">
-          {error ? <span className="text-destructive">{error}</span>
+          {error ? <span className="text-[#ef4444]">{error}</span>
             : argv ? text : "…"}
         </pre>
-      </ScrollArea>
+      </div>
       {outcome && !error && (
         <p className="mt-1.5 text-xs text-muted-foreground">{outcome}</p>
       )}

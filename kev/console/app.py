@@ -896,6 +896,224 @@ def usage_timeseries(key_id: str, from_ts: str | None = None, to_ts: str | None 
     return store.usage_timeseries(key_id, from_ts, to_ts)
 
 
+# ---- projects / members / quota / webhooks / billing (ch6) -------------
+
+@console_router.get("/console/api/projects")
+def list_projects(store: Store = Depends(get_store)) -> list:
+    return store.list_projects()
+
+
+@console_router.post("/console/api/projects")
+def create_project(payload: dict, store: Store = Depends(get_store)):
+    slug = (payload.get("slug") or "").strip()
+    name = (payload.get("name") or "").strip()
+    if not slug:
+        return _error("validation", "slug 必填", status=400, field="slug")
+    if not name:
+        return _error("validation", "名称必填", status=400, field="name")
+    try:
+        pid = store.create_project(slug=slug, name=name,
+                                   description=(payload.get("description") or "").strip())
+    except sa.exc.IntegrityError:
+        return _error("conflict", f"项目 slug 已存在：{slug}", status=409, field="slug")
+    return JSONResponse(status_code=201, content=store.get_project(pid))
+
+
+@console_router.get("/console/api/projects/{project_id}")
+def get_project(project_id: str, store: Store = Depends(get_store)):
+    proj = store.get_project(project_id)
+    if proj is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    return proj
+
+
+@console_router.put("/console/api/projects/{project_id}")
+def update_project(project_id: str, payload: dict, store: Store = Depends(get_store)):
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    proj = store.update_project(project_id, name=payload.get("name"), slug=payload.get("slug"),
+                                description=payload.get("description"))
+    return proj or _error("validation", f"未知项目 {project_id}", status=404)
+
+
+@console_router.delete("/console/api/projects/{project_id}")
+def delete_project(project_id: str, store: Store = Depends(get_store)):
+    if not store.delete_project(project_id):
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    return {"deleted": True}
+
+
+# ---- members -----------------------------------------------------------
+
+_MEMBER_ROLES = ("owner", "admin", "member", "viewer")
+
+
+@console_router.get("/console/api/projects/{project_id}/members")
+def list_members(project_id: str, store: Store = Depends(get_store)) -> list:
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    return store.list_members(project_id)
+
+
+@console_router.post("/console/api/projects/{project_id}/members")
+def invite_member(project_id: str, payload: dict, store: Store = Depends(get_store)):
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    email = (payload.get("email") or "").strip()
+    if not email or "@" not in email:
+        return _error("validation", "邮箱必填且需合法", status=400, field="email")
+    role = (payload.get("role") or "member")
+    if role not in _MEMBER_ROLES:
+        return _error("validation", "role 必须是 owner/admin/member/viewer", status=400, field="role")
+    mid = store.create_member(project_id=project_id, email=email,
+                              name=(payload.get("name") or "").strip(), role=role,
+                              status=(payload.get("status") or "invited"))
+    return JSONResponse(status_code=201, content=store.get_member(mid))
+
+
+@console_router.put("/console/api/projects/{project_id}/members/{member_id}")
+def update_member(project_id: str, member_id: str, payload: dict,
+                  store: Store = Depends(get_store)):
+    member = store.get_member(member_id)
+    if member is None or member["project_id"] != project_id:
+        return _error("validation", f"未知成员 {member_id}", status=404)
+    role = payload.get("role")
+    if role is not None and role not in _MEMBER_ROLES:
+        return _error("validation", "role 必须是 owner/admin/member/viewer", status=400, field="role")
+    updated = store.update_member(member_id, role=role, status=payload.get("status"),
+                                 name=payload.get("name"))
+    return updated or _error("validation", f"未知成员 {member_id}", status=404)
+
+
+@console_router.delete("/console/api/projects/{project_id}/members/{member_id}")
+def remove_member(project_id: str, member_id: str, store: Store = Depends(get_store)):
+    member = store.get_member(member_id)
+    if member is None or member["project_id"] != project_id:
+        return _error("validation", f"未知成员 {member_id}", status=404)
+    if not store.delete_member(member_id):
+        return _error("validation", f"未知成员 {member_id}", status=404)
+    return {"deleted": True}
+
+
+# ---- quota -------------------------------------------------------------
+
+@console_router.get("/console/api/projects/{project_id}/quota")
+def get_quota(project_id: str, store: Store = Depends(get_store)):
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    return store.get_quota(project_id)
+
+
+@console_router.put("/console/api/projects/{project_id}/quota")
+def set_quota(project_id: str, payload: dict, store: Store = Depends(get_store)):
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    quota = store.set_quota_limits(
+        project_id,
+        training_hours_limit=Store._quota_num(payload.get("training_hours_limit")),
+        gpu_limit=Store._quota_int(payload.get("gpu_limit")),
+        api_calls_limit=Store._quota_int(payload.get("api_calls_limit")),
+        storage_gb_limit=Store._quota_num(payload.get("storage_gb_limit")))
+    return quota
+
+
+# ---- webhooks ----------------------------------------------------------
+
+@console_router.get("/console/api/projects/{project_id}/webhooks")
+def list_webhooks(project_id: str, store: Store = Depends(get_store)) -> list:
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    return store.list_webhooks(project_id)
+
+
+@console_router.post("/console/api/projects/{project_id}/webhooks")
+def create_webhook(project_id: str, payload: dict, store: Store = Depends(get_store)):
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    url = (payload.get("url") or "").strip()
+    if not url:
+        return _error("validation", "URL 必填", status=400, field="url")
+    events = payload.get("events")
+    if isinstance(events, str):
+        try:
+            events = json.loads(events)
+        except ValueError:
+            events = []
+    if not isinstance(events, list):
+        events = []
+    wh_id = store.create_webhook(project_id=project_id, url=url, events=events,
+                                 secret=(payload.get("secret") or "").strip())
+    return JSONResponse(status_code=201, content=store.get_webhook(wh_id))
+
+
+@console_router.put("/console/api/projects/{project_id}/webhooks/{webhook_id}")
+def update_webhook(project_id: str, webhook_id: str, payload: dict,
+                   store: Store = Depends(get_store)):
+    wh = store.get_webhook(webhook_id)
+    if wh is None:
+        return _error("validation", f"未知 webhook {webhook_id}", status=404)
+    events = payload.get("events")
+    if isinstance(events, str):
+        try:
+            events = json.loads(events)
+        except ValueError:
+            events = None
+    updated = store.update_webhook(webhook_id, url=payload.get("url"), events=events,
+                                  secret=payload.get("secret"), active=payload.get("active"))
+    return updated or _error("validation", f"未知 webhook {webhook_id}", status=404)
+
+
+@console_router.delete("/console/api/projects/{project_id}/webhooks/{webhook_id}")
+def delete_webhook(project_id: str, webhook_id: str, store: Store = Depends(get_store)):
+    if not store.delete_webhook(webhook_id):
+        return _error("validation", f"未知 webhook {webhook_id}", status=404)
+    return {"deleted": True}
+
+
+@console_router.post("/console/api/projects/{project_id}/webhooks/{webhook_id}/ping")
+def ping_webhook(project_id: str, webhook_id: str, store: Store = Depends(get_store)):
+    wh = store.get_webhook(webhook_id)
+    if wh is None:
+        return _error("validation", f"未知 webhook {webhook_id}", status=404)
+    try:
+        resp = requests.post(wh["url"], json={"type": "ping", "hook_id": webhook_id}, timeout=10)
+        status = resp.status_code
+    except requests.RequestException as cause:
+        status = 0
+    store.record_webhook_delivery(webhook_id, status=status)
+    return {"status": status}
+
+
+# ---- invoices (billing) ------------------------------------------------
+
+@console_router.get("/console/api/projects/{project_id}/invoices")
+def list_invoices(project_id: str, period: str | None = None,
+                  store: Store = Depends(get_store)) -> list:
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    return store.list_invoices(project_id, period)
+
+
+@console_router.post("/console/api/projects/{project_id}/invoices")
+def create_invoice(project_id: str, payload: dict, store: Store = Depends(get_store)):
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    period = (payload.get("period") or "").strip()
+    if not period:
+        return _error("validation", "计费周期必填（如 2026-10）", status=400, field="period")
+    try:
+        amount = float(payload.get("amount"))
+    except (ValueError, TypeError):
+        return _error("validation", "金额必须是数字", status=400, field="amount")
+    inv_id = store.create_invoice(
+        project_id=project_id, period=period, amount=amount,
+        currency=(payload.get("currency") or "USD").strip(),
+        status=(payload.get("status") or "open").strip(),
+        due_at=(payload.get("due_at") or None),
+        line_items=payload.get("line_items"))
+    return JSONResponse(status_code=201, content=store.get_invoice(inv_id))
+
+
 # ---- kev proxy ---------------------------------------------------------
 
 async def proxy_kev(path: str, request: Request, store: Store = Depends(get_store)):

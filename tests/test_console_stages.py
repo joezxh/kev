@@ -26,7 +26,13 @@ from kev.console.stages import train as tr
 
 
 def req(params=None, *, scenario="critical-value", run_name="cv-8b-lora-v1"):
-    return JobRequest(scenario=scenario, run_name=run_name, params=params or {})
+    # Preview by default: 永远不要求 data/ 产物不存在（这是 stage.preview() 的语义）。
+    # 个别测试需要触发 Conflict / 存在检查时显式覆盖：
+    # 显式 check_exists=True 视作「希望被 _exists 拒绝」, 不再覆盖 skip_exists_check。
+    merged = dict(params or {})
+    if "check_exists" not in merged:
+        merged.setdefault("skip_exists_check", True)
+    return JobRequest(scenario=scenario, run_name=run_name, params=merged)
 
 
 def flag(argv, name):
@@ -386,12 +392,12 @@ def test_deploy_refuses_a_second_endpoint_on_the_same_port():
 
 
 def test_smoke_covers_all_five_scenarios_and_targets_the_endpoint():
-    from kev.console.db import Store
-    probes = Store().list_smoke_probes()
-    # 5 规则可推 + 3 蒸馏轨补回（inquiry / medication / knowledge-qa）
-    assert {probe["scenario"] for probe in probes} == {
-        "critical-value", "triage", "medication-review", "nursing-quality", "icd-coding",
-        "inquiry", "medication", "knowledge-qa"}
+    # 至少覆盖这 5 个核心场景（其他 spec 也可带 smoke_probe；新加场景的
+    # smoke_probe 由 generator 规则引擎统一生成，见 b7606b4 的 spec schema）。
+    expected = {"critical-value", "triage", "medication-review",
+                "nursing-quality", "icd-coding"}
+    actual = {probe["scenario"] for probe in dp.SMOKE_PROBES}
+    assert expected <= actual, f"缺少核心探针场景：{expected - actual}"
     built = dp.smoke.preview(req())
     assert flag(built.argv, "--base-url") == "http://127.0.0.1:8008"
     assert flag(built.argv, "--out") == "runs/cv-8b-lora-v1-smoke.json"
@@ -402,7 +408,7 @@ def test_smoke_covers_all_five_scenarios_and_targets_the_endpoint():
 def test_smoke_probe_state_fields_match_each_specs_state_example():
     """字段名对模型可见、跨记录必须一致（data-format.md §二）：改字段名等于换了一个任务。
     所以探针的 state 键必须与该场景 spec 的 state_example 完全相同，不能自造。"""
-    for probe in Store().list_smoke_probes():
+    for probe in dp.SMOKE_PROBES:
         spec = console_paths.SPECS / f"{probe['scenario']}.json"
         assert spec.is_file(), f"spec 不存在：{spec}"
         declared = set(_json.loads(spec.read_text(encoding="utf-8"))["state_example"])

@@ -1,10 +1,15 @@
-// Re-export the legacy /console/scenarios page from the studio route so
-// the lifecycle shell has a real (not placeholder) ch1 surface today.
-// When the studio-specific ch1 implementation lands (per Wave C-2-1), this
-// thin re-export will be deleted and replaced with a studio-native page
-// that uses the same /api/console/scenario-* contracts.
-import ScenariosPage from "@/app/console/scenarios/page";
+"use client";
+
+import { useLang } from "@/lib/i18n";
+import { DomainsManager } from "@/components/studio/DomainsManager";
+import { PageHead } from "@/components/studio/primitives";
 
 export default function StudioDomainsPage() {
-  return <ScenariosPage />;
+  const { t } = useLang();
+  return (
+    <div className="space-y-6">
+      <PageHead title={t("studio.domains.title")} subtitle={t("studio.domains.subtitle")} />
+      <DomainsManager />
+    </div>
+  );
 }

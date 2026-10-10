@@ -59,7 +59,14 @@ def test_distill_daemon_appends_schedule_and_persists_at_start():
                                            "state_dir": ".distill-cv",
                                            "skip_exists_check": True}))
     argv = built.argv
-    assert argv[1].endswith("generate_data.py")
+    # distill_daemon wraps generate_data.py inside `python -m kev.console.daemon_runner`
+    # so the master can cancel a long-running schedule child via the loopback
+    # /_internal/distill-cancel endpoint. argv[2] is the module, generate_data.py
+    # appears after `--` so it is forwarded to the daemon verbatim.
+    assert argv[2] == "kev.console.daemon_runner"
+    assert "--" in argv
+    child = argv[argv.index("--") + 1:]
+    assert any(str(p).endswith("generate_data.py") for p in child)
     assert flag(argv, "--schedule") == "03:00"
     assert flag(argv, "--daily-limit") == "200000"
     assert flag(argv, "--state-dir") == ".distill-cv"

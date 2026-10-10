@@ -9,14 +9,13 @@
 
 | 文件 | 场景 | 尺寸轨 | 说明 |
 | --- | --- | --- | --- |
-| `common.py` | 共用底座 | — | 记录构造与自检、配额采样、边界加权采样、阈值表复核 |
-| `engine.py` | 统一 spec 驱动引擎 | — | 读 `specs/<name>.json` + BoundarySampler + RuleEvaluator + PlanAllocator 跑完整记录 |
-| `BoundarySampler` | （engine 子模块） | — | 边界加权采样：先选字段、然后把字段值往临界点压 |
-| `RuleEvaluator` | （engine 子模块） | — | rule operator 白名单（12 个领域算子，simpleeval 沙盒） |
-| `PlanAllocator` | （engine 子模块） | — | 标签计划先于数据构造（category quota + tier split + round-robin） |
-| `Augmentor` | （engine 子模块） | — | 极小对 + 证据缺失软标签增强 |
+| `common.py` | 共用底座 | — | 记录构造与自检、配额采样、边界加权采样、最小对、阈值表复核 |
+| `gen_critical_value.py` | 危急值复核 | 双轨主力 | 阈值表 + 通知时限 + 最小对 + 证据缺失软标签 |
+| `gen_medication_review.py` | 用药/医保审核 | 双轨主力 | 说明书规则引擎（禁忌/超量/重复/特殊人群/适应症） |
+| `gen_triage.py` | 导诊分诊 | 4B 主力 | 科室归属优先级 + 急症红旗；含刻意构造的多症状冲突样本 |
+| `gen_nursing_quality.py` | 护理质量管控 | 双轨主力 | 质控检查表条目 + 严重度/可预防性派生 |
 | `make_goldset.py` | 金标与审计 | — | 分层抽样待人工审校；比对两份独立标注并给出分歧率 |
-| `run_matrix.py` | 双尺寸编排 | — | 读 DB 中场景列表 + `--dry-run` 打印完整命令序列 |
+| `run_matrix.py` | 双尺寸编排 | — | 一个场景一份数据两个模型；`--dry-run` 打印完整命令序列 |
 
 `icd-coding`（病历编码）**没有生成器**，只有 spec：它需要真实 HIS/EMR 结构化摘要与临床知识，
 程序化合成会产出 clinically meaningless 的记录。该场景走 `generate_data.py` 蒸馏 + 人工抽检。
@@ -47,11 +46,15 @@ python3 kev/console/generators/run_matrix.py --scenario critical-value --sizes 8
 **3. 稀缺标签需要显式配额。** 若某档位只有一两个项目能实现（如「当日内」只有 WBC 与 D-Dimer），
 均匀分配会让它落到 5% 以下 —— `CATEGORY_TIER_SPLIT` 就是为此存在的显式数据。
 
-## 新增一个场景：1 步
+## 新增一个场景：3 步
 
-把 `generator` / `distill` / `routing` / `smoke_probe` 4 个字段补到 `docs/medical/specs/<slug>.json`。
-UI 端到端：`/console/scenarios#generator/<slug>`（Generator 标签的 4 个子面板），保存即落库。
-不需要改任何 Python 文件。
+1. 在 `../specs/<name>.json` 写 spec（字段与 `skills/kev-finetune/assets/workload.example.json` 完全一致）。
+2. 在本目录建 `gen_<name>.py`：定义规则表 → 写 `decide()` 派生标签 → 写 `plan_targets()` 规划配额 →
+   写 `build()` 组装记录（用 `common.labelled` 自检）。
+3. 在 `run_matrix.py` 的 `FOUR_B_ONLY`（若该场景只支持 4B）登记，并跑
+   `pytest tests/test_medical_generators.py`。
+
+不需要改 `common.py`。
 
 ## 与 `generate_data.py`（蒸馏）的分工
 
