@@ -1,0 +1,2183 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>kev.studio · 设计预览</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --bg-soft: #111111;
+    --bg-elev: #161616;
+    --bg-elev2: #1c1c1c;
+    --border: #262626;
+    --border-soft: #1f1f1f;
+    --text: #ededed;
+    --text-muted: #8b8b8b;
+    --text-dim: #5c5c5c;
+    --accent: #3b82f6;
+    --accent-soft: #1e3a8a;
+    --green: #22c55e;
+    --green-soft: #14532d;
+    --amber: #f59e0b;
+    --amber-soft: #78350f;
+    --red: #ef4444;
+    --red-soft: #7f1d1d;
+    --purple: #a855f7;
+    --purple-soft: #581c87;
+    --cyan: #06b6d4;
+    --cyan-soft: #164e63;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  code, pre, .mono { font-family: var(--mono); }
+
+  /* ---------- Top nav (simulated IDE chrome) ---------- */
+  .topbar {
+    height: 44px; border-bottom: 1px solid var(--border); background: var(--bg-soft);
+    display: flex; align-items: center; padding: 0 16px; gap: 12px;
+  }
+  .topbar .brand { font-weight: 600; letter-spacing: -0.01em; }
+  .topbar .brand span { color: var(--accent); }
+  .topbar .tabs { display: flex; gap: 4px; margin-left: 24px; }
+  .topbar .tab { padding: 4px 10px; border-radius: 4px; color: var(--text-muted); font-size: 12px; cursor: pointer; }
+  .topbar .tab.active { background: var(--bg-elev); color: var(--text); }
+  .topbar .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .topbar .pill { padding: 3px 8px; border-radius: 999px; font-size: 11px; background: var(--bg-elev); color: var(--text-muted); border: 1px solid var(--border); }
+  .topbar .pill.live { background: var(--green-soft); color: var(--green); border-color: transparent; }
+  .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 4px; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* ---------- Layout: sidebar + main ---------- */
+  .app { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 44px); }
+  .sidebar { border-right: 1px solid var(--border); background: var(--bg-soft); padding: 12px 8px; }
+  .sidebar .group { margin-bottom: 16px; }
+  .sidebar .group-title { padding: 4px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 4px; }
+  .sidebar .item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 4px; color: var(--text-muted); font-size: 13px; cursor: pointer; }
+  .sidebar .item:hover { background: var(--bg-elev); color: var(--text); }
+  .sidebar .item.active { background: var(--accent-soft); color: var(--text); }
+  .sidebar .item .ico { width: 14px; height: 14px; opacity: 0.7; }
+  .sidebar .item .badge { margin-left: auto; background: var(--bg-elev2); color: var(--text-dim); font-size: 10px; padding: 1px 6px; border-radius: 3px; }
+  .sidebar .item .badge.warn { background: var(--amber-soft); color: var(--amber); }
+
+  .main { padding: 24px 32px; }
+  .page-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
+  .page-head h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .page-head .sub { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+  .page-head .actions { display: flex; gap: 8px; }
+
+  /* ---------- Buttons ---------- */
+  .btn { padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-elev); color: var(--text); font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { background: var(--bg-elev2); border-color: #333; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.primary:hover { background: #2563eb; }
+  .btn.danger { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
+  .btn.ghost:hover { background: var(--bg-elev); color: var(--text); }
+  .btn.sm { padding: 3px 8px; font-size: 12px; }
+
+  /* ---------- Card ---------- */
+  .card { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; }
+  .card-head { padding: 12px 16px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: space-between; }
+  .card-head h3 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+  .card-head .desc { color: var(--text-muted); font-size: 12px; }
+  .card-body { padding: 16px; }
+
+  /* ---------- KPI grid ---------- */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .kpi { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; }
+  .kpi .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .kpi .value { font-size: 26px; font-weight: 600; margin: 6px 0 2px; letter-spacing: -0.02em; }
+  .kpi .delta { font-size: 11px; color: var(--text-muted); }
+  .kpi .delta.up { color: var(--green); }
+  .kpi .delta.down { color: var(--red); }
+  .kpi .spark { margin-top: 8px; height: 28px; }
+
+  /* ---------- Section ---------- */
+  .section { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .section.three { grid-template-columns: 2fr 1fr 1fr; }
+
+  /* ---------- Table ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border-soft); }
+  th { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  tr:hover td { background: var(--bg-elev); }
+  td.mono, .mono { font-family: var(--mono); font-size: 12px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---------- Status pill ---------- */
+  .status { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; }
+  .status .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .status.succeeded { background: var(--green-soft); color: var(--green); }
+  .status.succeeded .dot { background: var(--green); }
+  .status.running { background: var(--accent-soft); color: var(--accent); }
+  .status.running .dot { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+  .status.pending { background: var(--bg-elev2); color: var(--text-muted); }
+  .status.pending .dot { background: var(--text-dim); }
+  .status.failed { background: var(--red-soft); color: var(--red); }
+  .status.failed .dot { background: var(--red); }
+  .status.warn { background: var(--amber-soft); color: var(--amber); }
+  .status.warn .dot { background: var(--amber); }
+
+  /* ---------- Form ---------- */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .field .hint { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .field input, .field select, .field textarea {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    border-radius: 4px; padding: 6px 10px; font-size: 13px; font-family: var(--sans);
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--accent); }
+  .field input.mono { font-family: var(--mono); }
+  .field .input-group { display: flex; }
+  .field .input-group input { flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+  .field .input-group .unit { padding: 6px 10px; background: var(--bg-elev); border: 1px solid var(--border); border-left: none; border-top-right-radius: 4px; border-bottom-right-radius: 4px; color: var(--text-muted); font-size: 12px; }
+
+  /* ---------- Argv preview ---------- */
+  .argv {
+    background: #0a0a0a; border: 1px solid var(--border); border-radius: 6px;
+    padding: 14px 16px; font-family: var(--mono); font-size: 12px; line-height: 1.7;
+    color: #d4d4d4; white-space: pre-wrap; word-break: break-all;
+  }
+  .argv .cmd { color: var(--cyan); }
+  .argv .flag { color: var(--purple); }
+  .argv .val { color: var(--amber); }
+  .argv .com { color: var(--text-dim); }
+  .argv .punc { color: var(--text-dim); }
+
+  /* ---------- Gate ---------- */
+  .gate { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 4px; border: 1px solid var(--border-soft); margin-bottom: 6px; }
+  .gate.pass { background: rgba(34, 197, 94, 0.04); border-color: rgba(34, 197, 94, 0.2); }
+  .gate.fail { background: rgba(239, 68, 68, 0.04); border-color: rgba(239, 68, 68, 0.2); }
+  .gate.warn { background: rgba(245, 158, 11, 0.04); border-color: rgba(245, 158, 11, 0.2); }
+  .gate .icon { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; margin-top: 1px; }
+  .gate.pass .icon { background: var(--green); color: #0a0a0a; }
+  .gate.fail .icon { background: var(--red); color: #0a0a0a; }
+  .gate.warn .icon { background: var(--amber); color: #0a0a0a; }
+  .gate .body { flex: 1; }
+  .gate .title { font-size: 13px; font-weight: 500; }
+  .gate .desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .gate .meta { font-size: 11px; color: var(--text-dim); margin-top: 4px; font-family: var(--mono); }
+
+  /* ---------- Job timeline ---------- */
+  .timeline { position: relative; padding-left: 24px; }
+  .timeline::before { content: ""; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 1px; background: var(--border); }
+  .tl-item { position: relative; padding-bottom: 18px; }
+  .tl-item::before { content: ""; position: absolute; left: -22px; top: 5px; width: 9px; height: 9px; border-radius: 50%; background: var(--bg); border: 2px solid var(--border); }
+  .tl-item.done::before { background: var(--green); border-color: var(--green); }
+  .tl-item.running::before { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2); }
+  .tl-item.failed::before { background: var(--red); border-color: var(--red); }
+  .tl-item .ts { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+  .tl-item .name { font-size: 13px; margin-top: 2px; }
+  .tl-item .meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ---------- Log stream ---------- */
+  .log {
+    background: #050505; border: 1px solid var(--border); border-radius: 6px;
+    padding: 14px 16px; font-family: var(--mono); font-size: 12px; line-height: 1.65;
+    color: #d4d4d4; height: 320px; overflow-y: auto;
+  }
+  .log .ln { display: block; white-space: pre-wrap; }
+  .log .ts { color: var(--text-dim); margin-right: 8px; }
+  .log .info { color: #d4d4d4; }
+  .log .warn { color: var(--amber); }
+  .log .err { color: var(--red); }
+  .log .ok { color: var(--green); }
+  .log .stream-stderr { color: var(--amber); }
+  .log .stream-stdout { color: #d4d4d4; }
+  .log .highlight { background: rgba(59, 130, 246, 0.12); display: inline-block; }
+
+  /* ---------- Tabs ---------- */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .tab { padding: 8px 14px; font-size: 13px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  /* ---------- Search bar ---------- */
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .toolbar .search { flex: 1; position: relative; }
+  .toolbar .search input { width: 100%; background: var(--bg-soft); border: 1px solid var(--border); color: var(--text); padding: 7px 10px 7px 30px; border-radius: 4px; font-size: 13px; }
+  .toolbar .search::before { content: "⌕"; position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-dim); }
+  .toolbar .filter { padding: 7px 10px; background: var(--bg-soft); border: 1px solid var(--border); color: var(--text-muted); font-size: 12px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+  .toolbar .filter.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+
+  /* ---------- Drawer (annotation) ---------- */
+  .drawer-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 50; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 640px; background: var(--bg-soft); border-left: 1px solid var(--border); z-index: 51; display: flex; flex-direction: column; }
+  .drawer-head { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .drawer-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .drawer-head .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 20px; }
+  .drawer-foot { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+  .field-group { margin-bottom: 18px; }
+  .field-group .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 12px; font-size: 12px; }
+  .kv .k { color: var(--text-muted); }
+  .kv .v { font-family: var(--mono); color: var(--text); }
+  .json-pre { background: #050505; border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; font-family: var(--mono); font-size: 12px; max-height: 240px; overflow-y: auto; }
+  .json-pre .k { color: var(--cyan); }
+  .json-pre .s { color: var(--amber); }
+  .json-pre .n { color: var(--green); }
+
+  /* ---------- Scenario badge ---------- */
+  .badge-domain { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .badge-domain.medical { background: var(--red-soft); color: var(--red); }
+  .badge-domain.legal { background: var(--purple-soft); color: var(--purple); }
+  .badge-domain.finance { background: var(--cyan-soft); color: var(--cyan); }
+  .badge-domain.general { background: var(--bg-elev2); color: var(--text-muted); }
+
+  /* ---------- Helpers ---------- */
+  .row { display: flex; align-items: center; gap: 8px; }
+  .col { display: flex; flex-direction: column; gap: 8px; }
+  .right { margin-left: auto; }
+  .muted { color: var(--text-muted); }
+  .dim { color: var(--text-dim); }
+  .small { font-size: 12px; }
+  .tiny { font-size: 11px; }
+  .nowrap { white-space: nowrap; }
+  .gap-12 { gap: 12px; }
+  .mb-8 { margin-bottom: 8px; }
+  .mb-16 { margin-bottom: 16px; }
+  .mb-24 { margin-bottom: 24px; }
+  .mt-8 { margin-top: 8px; }
+  .mt-16 { margin-top: 16px; }
+  .hidden { display: none; }
+
+  /* ---------- Job page: 2-col layout ---------- */
+  .job-layout {
+    display: grid; grid-template-columns: 1fr 320px;
+    gap: 16px; min-height: calc(100vh - 200px);
+  }
+  .job-left { min-width: 0; }
+  .job-right { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 120px); overflow-y: auto; }
+
+  /* ---------- Job tabs (left) ---------- */
+  .job-tabs {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border);
+    margin-bottom: 16px; overflow-x: auto;
+  }
+  .job-tab {
+    padding: 10px 14px; font-size: 13px; color: var(--text-muted);
+    cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .job-tab:hover { color: var(--text); }
+  .job-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .job-tab-icon { font-size: 12px; opacity: 0.7; }
+  .job-tab-live { font-size: 10px; color: var(--green); display: inline-flex; align-items: center; }
+  .job-tab.step-tab { background: var(--accent-soft); border-bottom-color: transparent; }
+  .job-tab.step-tab.active { border-bottom-color: var(--accent); }
+  .job-tab.step-tab.hidden { display: none; }
+
+  .job-tab-panels { }
+  .job-tab-panel { display: none; }
+  .job-tab-panel.active { display: block; }
+
+  /* ---------- Pipeline DAG (right) ---------- */
+  .pipeline-panel {
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px;
+  }
+  .pipeline-panel-head {
+    padding: 10px 14px; border-bottom: 1px solid var(--border-soft);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .pipeline-panel-head h3 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+  .pipeline-body { padding: 8px 8px 12px; }
+  .pipe-phase-title {
+    font-size: 9px; color: var(--text-dim); letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 8px 4px 4px;
+  }
+  .pipe-row { display: flex; gap: 4px; align-items: center; justify-content: center; padding: 2px 0; }
+  .pipe-row-split { gap: 2px; }
+  .pipe-or-label { color: var(--text-dim); font-size: 11px; padding: 0 2px; }
+  .pipe-node {
+    flex: 1; min-width: 0; cursor: pointer;
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: 4px; padding: 6px 8px; text-align: left;
+    transition: all 0.12s;
+  }
+  .pipe-node:hover { border-color: var(--text-muted); }
+  .pipe-node-inner { display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 4px; row-gap: 1px; }
+  .pipe-num { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .pipe-name { font-family: var(--mono); font-size: 13px; color: var(--text); line-height: 1.35; white-space: nowrap; }
+  .pipe-name br { display: none; }
+  .pipe-cn { font-family: var(--sans); font-size: 11px; color: var(--text-muted); grid-column: 1 / -1; }
+  /* States */
+  .pipe-node.done { background: var(--green-soft); border-color: var(--green); }
+  .pipe-node.done .pipe-num { color: var(--green); }
+  .pipe-node.done .pipe-name { color: var(--green); }
+  .pipe-node.running { background: var(--accent-soft); border-color: var(--accent); animation: pipe-running 1.4s ease-in-out infinite; }
+  .pipe-node.running .pipe-num { color: var(--accent); }
+  .pipe-node.running .pipe-name { color: var(--accent); }
+  @keyframes pipe-running { 0%,100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); } 50% { box-shadow: 0 0 0 3px rgba(59,130,246,0.25); } }
+  .pipe-node.skipped { background: var(--bg-elev); border-color: var(--border); border-style: dashed; opacity: 0.5; }
+  .pipe-node.skipped .pipe-name { color: var(--text-dim); text-decoration: line-through; }
+  .pipe-node.pending { background: var(--bg-elev); border-color: var(--border); opacity: 0.7; }
+  .pipe-node.failed { background: var(--red-soft); border-color: var(--red); }
+  .pipe-node.failed .pipe-name { color: var(--red); }
+  .pipe-arrow { text-align: center; color: var(--text-dim); font-size: 10px; line-height: 1.2; padding: 1px 0; }
+  .pipe-arrow-sub { color: var(--amber); opacity: 0.5; font-size: 9px; }
+  .pipe-gates { display: flex; gap: 3px; padding: 4px 0; justify-content: center; flex-wrap: wrap; }
+  .pipe-gate { font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 3px; background: var(--bg-elev); color: var(--text-dim); border: 1px solid var(--border); }
+  .pipe-gate.pass { background: var(--green-soft); color: var(--green); border-color: var(--green); }
+  .pipe-gate.fail { background: var(--red-soft); color: var(--red); border-color: var(--red); }
+  .pipe-gate.pending { opacity: 0.6; }
+
+  /* ---------- Lineage graph ---------- */
+  .lineage-graph { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; }
+  .lg-row { display: flex; }
+  .lg-node {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: 4px;
+    padding: 8px 16px; min-width: 200px; text-align: center;
+  }
+  .lg-kind { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--mono); }
+  .lg-name { font-family: var(--mono); font-size: 12px; color: var(--text); margin: 2px 0; }
+  .lg-meta { font-size: 11px; color: var(--text-muted); }
+  .lg-arrow { color: var(--text-dim); font-size: 14px; line-height: 1; }
+
+  /* ---------- Step info card (inside step tab) ---------- */
+  .step-info-block {
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: 6px; padding: 18px 22px; margin-bottom: 16px;
+  }
+  .step-info-block h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+  .step-info-block .step-info-cn { color: var(--text-muted); font-size: 12.5px; margin-bottom: 12px; }
+  .step-info-block .step-info-desc { font-size: 13.5px; line-height: 1.7; color: var(--text); }
+  .step-info-block .step-info-principle {
+    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-soft);
+    font-size: 13px; line-height: 1.65; color: var(--text-muted);
+  }
+  .step-info-block .step-info-principle strong { color: var(--text); font-weight: 600; }
+  .step-info-block .step-info-status {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
+    border-radius: 999px; font-size: 11px; font-weight: 500; margin-top: 8px;
+  }
+  .step-info-block .step-info-status.done { background: var(--green-soft); color: var(--green); }
+  .step-info-block .step-info-status.running { background: var(--accent-soft); color: var(--accent); }
+  .step-info-block .step-info-status.skipped { background: var(--bg-elev2); color: var(--text-dim); border: 1px dashed var(--border); }
+  .step-info-block .step-info-status.pending { background: var(--bg-elev2); color: var(--text-muted); }
+  .step-info-block .step-info-meta { font-size: 11px; color: var(--text-dim); margin-top: 6px; font-family: var(--mono); }
+
+  /* ---------- Graph placeholder (job DAG) ---------- */
+  .dag { padding: 16px; }
+  .dag svg { width: 100%; height: 180px; }
+  .dag .node-rect { fill: var(--bg-elev); stroke: var(--border); }
+  .dag .node-rect.done { fill: var(--green-soft); stroke: var(--green); }
+  .dag .node-rect.running { fill: var(--accent-soft); stroke: var(--accent); }
+  .dag .node-rect.failed { fill: var(--red-soft); stroke: var(--red); }
+  .dag .node-text { fill: var(--text); font-family: var(--mono); font-size: 11px; }
+  .dag .edge { stroke: var(--border); stroke-width: 1; fill: none; }
+  .dag .edge.active { stroke: var(--accent); stroke-width: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- ============== Top bar ============== -->
+<div class="topbar">
+  <div class="brand">kev<span>.studio</span></div>
+  <div class="tabs">
+    <div class="tab active">Critical-Value / Run cn-v1</div>
+    <div class="tab">Triage / Run tr-v1</div>
+    <div class="tab">+ New run</div>
+  </div>
+  <div class="right">
+    <div class="pill"><span class="pulse"></span>FastAPI :8791</div>
+    <div class="pill">SQLite · 12 MB</div>
+    <div class="pill">v0.1.0-dev</div>
+  </div>
+</div>
+
+<!-- ============== Sidebar ============== -->
+<div class="app">
+  <div class="sidebar">
+    <div class="group">
+      <div class="group-title">导航</div>
+      <div class="item active" data-page="overview">
+        <svg class="ico" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+        总览
+      </div>
+      <div class="item" data-page="datasets">
+        <svg class="ico" viewBox="0 0 16 16" fill="currentColor"><ellipse cx="8" cy="3" rx="6" ry="2"/><path d="M2 3v4c0 1.1 2.7 2 6 2s6-.9 6-2V3M2 7v4c0 1.1 2.7 2 6 2s6-.9 6-2V7"/></svg>
+        数据集
+        <span class="badge">2,481</span>
+      </div>
+      <div class="item" data-page="jobs">
+        <svg class="ico" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 4v4l3 2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+        作业
+        <span class="badge">3</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">管理</div>
+      <div class="item" data-page="scenarios">
+        <svg class="ico" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v2H2zM2 7h12v2H2zM2 11h8v2H2z"/></svg>
+        场景
+        <span class="badge">7</span>
+      </div>
+      <div class="item" data-page="apikeys">
+        <svg class="ico" viewBox="0 0 16 16" fill="currentColor"><circle cx="5" cy="11" r="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 10l5-5 2 2-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="11" cy="6" r="1" fill="currentColor"/></svg>
+        API Keys
+        <span class="badge">3</span>
+      </div>
+      <div class="item" data-page="distill">
+        <svg class="ico" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l-1 4H4l3 4-1 6 2-3 2 3-1-6 3-4H9z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        蒸馏配置
+        <span class="badge">3</span>
+      </div>
+      <div class="item" data-page="usage">
+        <svg class="ico" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="9" width="3" height="6"/><rect x="6" y="5" width="3" height="10"/><rect x="11" y="1" width="3" height="14"/></svg>
+        用量
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">系统</div>
+      <div class="item">GPU 锁 · 空闲</div>
+      <div class="item">花费 · $ 0.42 / $ 50</div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- ===================================================== -->
+    <!-- PAGE 1 · OVERVIEW                                       -->
+    <!-- ===================================================== -->
+    <div class="page" data-page="overview">
+      <div class="page-head">
+        <div>
+          <h1>总览</h1>
+          <div class="sub">7 个场景 · 12 个活跃 run · 3 个作业在跑</div>
+        </div>
+        <div class="actions">
+          <button class="btn">导入数据</button>
+          <button class="btn primary">+ 新建作业</button>
+        </div>
+      </div>
+
+      <!-- KPI row -->
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="label">总 records</div>
+          <div class="value">2,481</div>
+          <div class="delta up">↑ 12.4% 较上周</div>
+          <svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="0,22 12,20 25,18 37,15 50,12 62,14 75,10 87,8 100,5" fill="none" stroke="#22c55e" stroke-width="1.5"/></svg>
+        </div>
+        <div class="kpi">
+          <div class="label">本周新增</div>
+          <div class="value">274</div>
+          <div class="delta up">↑ 18 records / 天</div>
+          <svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="0,20 12,18 25,22 37,16 50,12 62,14 75,8 87,10 100,4" fill="none" stroke="#3b82f6" stroke-width="1.5"/></svg>
+        </div>
+        <div class="kpi">
+          <div class="label">活跃 run</div>
+          <div class="value">12</div>
+          <div class="delta">9 succeeded · 1 running · 2 failed</div>
+          <svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="0,12 12,10 25,11 37,8 50,7 62,9 75,6 87,4 100,3" fill="none" stroke="#a855f7" stroke-width="1.5"/></svg>
+        </div>
+        <div class="kpi">
+          <div class="label">本周 LLM 花费</div>
+          <div class="value">$ 8.42</div>
+          <div class="delta down">↓ 22% vs 上周</div>
+          <svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="0,5 12,8 25,10 37,12 50,15 62,18 75,20 87,22 100,24" fill="none" stroke="#f59e0b" stroke-width="1.5"/></svg>
+        </div>
+      </div>
+
+      <!-- Two column section -->
+      <div class="section">
+        <!-- recent jobs -->
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h3>最近作业</h3>
+              <div class="desc">跨场景、跨 run</div>
+            </div>
+            <button class="btn ghost sm">查看全部 →</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>作业</th>
+                <th>场景</th>
+                <th>阶段</th>
+                <th class="num">耗时</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">#4827</td>
+                <td><span class="badge-domain medical">医疗</span> critical-value</td>
+                <td class="mono">train</td>
+                <td class="num">2h 14m</td>
+                <td><span class="status running"><span class="dot"></span>运行中</span></td>
+              </tr>
+              <tr>
+                <td class="mono">#4826</td>
+                <td><span class="badge-domain medical">医疗</span> triage</td>
+                <td class="mono">benchmark</td>
+                <td class="num">14m 22s</td>
+                <td><span class="status succeeded"><span class="dot"></span>完成</span></td>
+              </tr>
+              <tr>
+                <td class="mono">#4825</td>
+                <td><span class="badge-domain legal">法律</span> contract-clause</td>
+                <td class="mono">distill</td>
+                <td class="num">38m 04s</td>
+                <td><span class="status succeeded"><span class="dot"></span>完成</span></td>
+              </tr>
+              <tr>
+                <td class="mono">#4824</td>
+                <td><span class="badge-domain finance">金融</span> risk-flag</td>
+                <td class="mono">generate</td>
+                <td class="num">1m 51s</td>
+                <td><span class="status succeeded"><span class="dot"></span>完成</span></td>
+              </tr>
+              <tr>
+                <td class="mono">#4823</td>
+                <td><span class="badge-domain general">通用</span> sentiment-3class</td>
+                <td class="mono">train</td>
+                <td class="num">3h 02m</td>
+                <td><span class="status failed"><span class="dot"></span>失败</span></td>
+              </tr>
+              <tr>
+                <td class="mono">#4822</td>
+                <td><span class="badge-domain medical">医疗</span> diagnosis</td>
+                <td class="mono">calibrate</td>
+                <td class="num">6m 14s</td>
+                <td><span class="status succeeded"><span class="dot"></span>完成</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- scenarios -->
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h3>场景状态</h3>
+              <div class="desc">按领域</div>
+            </div>
+            <button class="btn ghost sm">+ 新场景</button>
+          </div>
+          <div class="card-body" style="padding-top:0">
+            <div style="margin-bottom:14px">
+              <div class="row mb-8"><span class="badge-domain medical">医疗</span> <span class="muted small">4 个场景</span></div>
+              <div class="kv">
+                <div class="k">critical-value</div><div class="v">1,247 records · v1.2</div>
+                <div class="k">triage</div><div class="v">683 records · v0.9</div>
+                <div class="k">diagnosis</div><div class="v">412 records · v0.4</div>
+                <div class="k">medication-review</div><div class="v">128 records · v0.1</div>
+              </div>
+            </div>
+            <div style="margin-bottom:14px">
+              <div class="row mb-8"><span class="badge-domain legal">法律</span> <span class="muted small">1 个场景</span></div>
+              <div class="kv">
+                <div class="k">contract-clause</div><div class="v">89 records · v0.2</div>
+              </div>
+            </div>
+            <div>
+              <div class="row mb-8"><span class="badge-domain finance">金融</span> <span class="muted small">1 个场景</span></div>
+              <div class="kv">
+                <div class="k">risk-flag</div><div class="v">52 records · v0.1</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- resource -->
+      <div class="section three">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h3>作业时间线</h3>
+              <div class="desc">最近 24 小时</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="dag">
+              <svg viewBox="0 0 600 160" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                  <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M0,0 L10,5 L0,10 z" fill="#262626"/>
+                  </marker>
+                </defs>
+                <!-- edges -->
+                <path class="edge active" d="M 90,30 L 200,30" marker-end="url(#arr)"/>
+                <path class="edge" d="M 270,30 L 380,30" marker-end="url(#arr)"/>
+                <path class="edge" d="M 450,30 L 540,30" marker-end="url(#arr)"/>
+                <path class="edge" d="M 90,90 L 200,90" marker-end="url(#arr)"/>
+                <path class="edge active" d="M 270,90 L 380,90" marker-end="url(#arr)"/>
+                <path class="edge" d="M 450,90 L 540,90" marker-end="url(#arr)"/>
+                <path class="edge" d="M 90,140 L 380,140" marker-end="url(#arr)"/>
+                <!-- row 1 -->
+                <g><rect class="node-rect done" x="10" y="15" width="80" height="30" rx="3"/><text class="node-text" x="50" y="34" text-anchor="middle">plan</text></g>
+                <g><rect class="node-rect done" x="200" y="15" width="70" height="30" rx="3"/><text class="node-text" x="235" y="34" text-anchor="middle">generate</text></g>
+                <g><rect class="node-rect done" x="380" y="15" width="70" height="30" rx="3"/><text class="node-text" x="415" y="34" text-anchor="middle">distill</text></g>
+                <g><rect class="node-rect done" x="540" y="15" width="50" height="30" rx="3"/><text class="node-text" x="565" y="34" text-anchor="middle">gold</text></g>
+                <!-- row 2 -->
+                <g><rect class="node-rect done" x="10" y="75" width="80" height="30" rx="3"/><text class="node-text" x="50" y="94" text-anchor="middle">split</text></g>
+                <g><rect class="node-rect done" x="200" y="75" width="70" height="30" rx="3"/><text class="node-text" x="235" y="94" text-anchor="middle">precheck</text></g>
+                <g><rect class="node-rect running" x="380" y="75" width="70" height="30" rx="3"/><text class="node-text" x="415" y="94" text-anchor="middle">train</text></g>
+                <g><rect class="node-rect" x="540" y="75" width="50" height="30" rx="3"/><text class="node-text" x="565" y="94" text-anchor="middle">bench</text></g>
+                <!-- row 3 -->
+                <g><rect class="node-rect" x="10" y="125" width="80" height="30" rx="3"/><text class="node-text" x="50" y="144" text-anchor="middle">publish</text></g>
+                <g><rect class="node-rect" x="200" y="125" width="70" height="30" rx="3"/><text class="node-text" x="235" y="144" text-anchor="middle">modal</text></g>
+                <g><rect class="node-rect" x="380" y="125" width="70" height="30" rx="3"/><text class="node-text" x="415" y="144" text-anchor="middle">smoke</text></g>
+                <text class="dim" x="0" y="12" font-size="10" font-family="ui-monospace">run #4827 · critical-value · cn-v1</text>
+                <text class="dim" x="0" y="72" font-size="10" font-family="ui-monospace">run #4824 · risk-flag · rf-v1</text>
+                <text class="dim" x="0" y="122" font-size="10" font-family="ui-monospace">deploy branch (waiting on #4827)</text>
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h3>GPU</h3>
+              <div class="desc">NVIDIA RTX 4090 · 24 GB</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="kv" style="grid-template-columns: 1fr 1fr">
+              <div class="k">显存</div><div class="v">8.4 / 24 GB</div>
+              <div class="k">利用率</div><div class="v">37%</div>
+              <div class="k">温度</div><div class="v">64°C</div>
+              <div class="k">活跃进程</div><div class="v">kev.train · pid 4827</div>
+            </div>
+            <div class="mt-16 small muted">下一个等待: #4828 (benchmark)</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h3>本月 LLM 用量</h3>
+              <div class="desc">蒸馏 + 生成 + 评审</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="kv" style="grid-template-columns: 1fr 1fr">
+              <div class="k">本月花费</div><div class="v">$ 24.18</div>
+              <div class="k">本月请求</div><div class="v">8,420</div>
+              <div class="k">输入 token</div><div class="v">2.4 M</div>
+              <div class="k">输出 token</div><div class="v">1.8 M</div>
+            </div>
+            <div class="mt-16 small muted">预算 $50 · 已用 48%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- PAGE 2 · DATASETS (records 表格 + 标注抽屉)            -->
+    <!-- ===================================================== -->
+    <div class="page hidden" data-page="datasets">
+      <div class="page-head">
+        <div>
+          <h1>数据集 · critical-value</h1>
+          <div class="sub">1,247 条 records · 已分配 1,180 · 待标 67 · <span class="muted">场景 v1.2 · schema 自 critical-value 插件</span></div>
+        </div>
+        <div class="actions">
+          <button class="btn">导入 JSONL/CSV</button>
+          <button class="btn">导出</button>
+          <button class="btn primary">+ 生成</button>
+        </div>
+      </div>
+
+      <!-- filters -->
+      <div class="toolbar">
+        <div class="search"><input placeholder="按 id、label、字段值搜索..." /></div>
+        <div class="filter active">split: unassigned · 67</div>
+        <div class="filter">label_warnings · 12</div>
+        <div class="filter">低置信度 · 24</div>
+        <div class="filter">已手动编辑 · 8</div>
+        <div class="filter">+ 添加过滤</div>
+      </div>
+
+      <!-- table -->
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:24px"><input type="checkbox" /></th>
+              <th>id</th>
+              <th>来源</th>
+              <th>patient</th>
+              <th>lab_critical?</th>
+              <th>split</th>
+              <th>置信度</th>
+              <th>标注</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:rgba(59,130,246,0.06)">
+              <td><input type="checkbox" checked /></td>
+              <td class="mono small">cv-7a4f</td>
+              <td><span class="muted small">distill</span></td>
+              <td class="small">F, 65, ward-3</td>
+              <td class="small">K 6.8 ↑↑</td>
+              <td><span class="muted small">unassigned</span></td>
+              <td><span class="status warn"><span class="dot"></span>0.62</span></td>
+              <td class="small dim">—</td>
+              <td><span class="status warn"><span class="dot"></span>待标</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td class="mono small">cv-7a3e</td>
+              <td><span class="muted small">generate</span></td>
+              <td class="small">M, 72, ER</td>
+              <td class="small">Troponin 1.2 ↑</td>
+              <td><span class="muted small">unassigned</span></td>
+              <td><span class="status succeeded"><span class="dot"></span>0.94</span></td>
+              <td class="small dim">—</td>
+              <td><span class="status warn"><span class="dot"></span>待标</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td class="mono small">cv-7a2c</td>
+              <td><span class="muted small">import:lab_data.csv</span></td>
+              <td class="small">F, 58, ICU</td>
+              <td class="small">Hb 5.2 ↓↓</td>
+              <td><span class="muted small">unassigned</span></td>
+              <td><span class="status succeeded"><span class="dot"></span>0.88</span></td>
+              <td class="small dim">—</td>
+              <td><span class="status warn"><span class="dot"></span>待标</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td class="mono small">cv-7a1b</td>
+              <td><span class="muted small">manual</span></td>
+              <td class="small">M, 41, ward-7</td>
+              <td class="small">Glucose 22 ↑↑</td>
+              <td><span class="muted small">unassigned</span></td>
+              <td><span class="status succeeded"><span class="dot"></span>0.99</span></td>
+              <td class="small">user · 02:14</td>
+              <td><span class="status pending"><span class="dot"></span>已改 v2</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td class="mono small">cv-7a09</td>
+              <td><span class="muted small">distill</span></td>
+              <td class="small">F, 33, OPD</td>
+              <td class="small">—</td>
+              <td><span class="muted small">unassigned</span></td>
+              <td><span class="status failed"><span class="dot"></span>0.41</span></td>
+              <td class="small dim">—</td>
+              <td><span class="status failed"><span class="dot"></span>异常</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td class="mono small">cv-79f8</td>
+              <td><span class="muted small">generate</span></td>
+              <td class="small">M, 80, ER</td>
+              <td class="small">Lactate 6.4 ↑↑</td>
+              <td><span class="muted small">unassigned</span></td>
+              <td><span class="status succeeded"><span class="dot"></span>0.91</span></td>
+              <td class="small dim">—</td>
+              <td><span class="status warn"><span class="dot"></span>待标</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td class="mono small">cv-79e7</td>
+              <td><span class="muted small">distill</span></td>
+              <td class="small">F, 50, ward-1</td>
+              <td class="small">INR 5.8 ↑</td>
+              <td><span class="muted small">unassigned</span></td>
+              <td><span class="status succeeded"><span class="dot"></span>0.85</span></td>
+              <td class="small dim">—</td>
+              <td><span class="status warn"><span class="dot"></span>待标</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td class="mono small">cv-79d6</td>
+              <td><span class="muted small">manual</span></td>
+              <td class="small">M, 67, ICU</td>
+              <td class="small">Na 119 ↓</td>
+              <td><span class="muted small">unassigned</span></td>
+              <td><span class="status succeeded"><span class="dot"></span>1.00</span></td>
+              <td class="small">user · 02:18</td>
+              <td><span class="status pending"><span class="dot"></span>已改 v3</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="padding:10px 16px; border-top:1px solid var(--border-soft); display:flex; align-items:center; gap:12px; font-size:12px" class="muted">
+          <span>显示 1-8 / 67</span>
+          <span class="right"></span>
+          <span>已选 1</span>
+          <button class="btn sm">批量标注</button>
+          <button class="btn sm">分配为开发集</button>
+          <button class="btn sm danger">删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- PAGE 3 · TRAIN (stage 表单)                            -->
+    <!-- ===================================================== -->
+    <div class="page hidden" data-page="train">
+      <div class="page-head">
+        <div>
+          <h1>训练 · critical-value / cn-v1</h1>
+          <div class="sub">run 名称: <span class="mono">cn-v1</span> · GPU 阶段 · spawn <span class="mono">kev.train</span> 子进程</div>
+        </div>
+        <div class="actions">
+          <button class="btn">恢复默认值</button>
+          <button class="btn">另存为模板</button>
+          <button class="btn primary" id="submitBtn">提交作业</button>
+        </div>
+      </div>
+
+      <div class="section" style="grid-template-columns: 1fr 1fr;">
+        <!-- 左: form -->
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h3>参数</h3>
+              <div class="desc">由 <span class="mono">critical-value</span> 场景 schema 驱动</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="field">
+                <label>Run 名称</label>
+                <input class="mono" value="cn-v1" />
+              </div>
+              <div class="field">
+                <label>基础模型</label>
+                <select><option>Qwen/Qwen3.5-4B-Base</option><option>Qwen/Qwen3.5-0.8B-Base</option></select>
+                <div class="hint">基础修订: <span class="mono">9d4b1f8a</span></div>
+              </div>
+              <div class="field">
+                <label>训练数据</label>
+                <input value="critical-value · train · 938 records" readonly />
+                <div class="hint">自动从 <span class="mono">records WHERE scenario='critical-value' AND split='train'</span> 导出 JSONL</div>
+              </div>
+              <div class="field">
+                <label>校准数据 (T 拟合)</label>
+                <input value="critical-value · calibration · 120 records" readonly />
+              </div>
+              <div class="field">
+                <label>Epochs</label>
+                <div class="input-group"><input class="mono" value="2" /><div class="unit">epoch</div></div>
+              </div>
+              <div class="field">
+                <label>学习率</label>
+                <div class="input-group"><input class="mono" value="5e-5" /><div class="unit">—</div></div>
+              </div>
+              <div class="field">
+                <label>Batch size</label>
+                <div class="input-group"><input class="mono" value="4" /><div class="unit">× 2 accum</div></div>
+              </div>
+              <div class="field">
+                <label>Dtype</label>
+                <select><option>bf16</option><option>fp32</option></select>
+              </div>
+              <div class="field">
+                <label>LoRA targets</label>
+                <select><option>all</option><option>attn</option><option>qv</option><option>dense</option></select>
+                <div class="hint">混合基础默认 dense（冻结 DeltaNet 投影）</div>
+              </div>
+              <div class="field">
+                <label>None pair 概率</label>
+                <div class="input-group"><input class="mono" value="0.25" /><div class="unit">—</div></div>
+              </div>
+              <div class="field full">
+                <label>None pair 最大 state</label>
+                <div class="input-group"><input class="mono" value="4096" /><div class="unit">tokens</div></div>
+                <div class="hint">仅 state 长度 ≤ 该值的 records 发射 none pair；超过则跳过</div>
+              </div>
+              <div class="field">
+                <label>Anchor 强度</label>
+                <div class="input-group"><input class="mono" value="0.0" /><div class="unit">—</div></div>
+              </div>
+              <div class="field">
+                <label>Permutation KL</label>
+                <div class="input-group"><input class="mono" value="0.0" /><div class="unit">frac</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右: argv + 闸门 -->
+        <div class="col">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h3>生成的 argv</h3>
+                <div class="desc">实时预览 · 提交后 spawn 为子进程</div>
+              </div>
+              <button class="btn sm">复制</button>
+            </div>
+            <div class="card-body">
+              <div class="argv"><span class="cmd">python</span> <span class="punc">-m</span> <span class="cmd">kev.train</span> <span class="com">\</span>
+  <span class="flag">--suite</span> <span class="val">evals/v7/decision-v7</span> <span class="com">\</span>
+  <span class="flag">--base</span> <span class="val">Qwen/Qwen3.5-4B-Base</span> <span class="com">\</span>
+  <span class="flag">--base_revision</span> <span class="val">9d4b1f8a</span> <span class="com">\</span>
+  <span class="flag">--data</span> <span class="val">data/studio/critical-value/train.jsonl</span> <span class="com">\</span>
+  <span class="flag">--calibration</span> <span class="val">data/studio/critical-value/calibration.jsonl</span> <span class="com">\</span>
+  <span class="flag">--epochs</span> <span class="val">2</span> <span class="com">\</span>
+  <span class="flag">--lr</span> <span class="val">5e-5</span> <span class="com">\</span>
+  <span class="flag">--batch</span> <span class="val">4</span> <span class="com">\</span>
+  <span class="flag">--accum</span> <span class="val">2</span> <span class="com">\</span>
+  <span class="flag">--dtype</span> <span class="val">bf16</span> <span class="com">\</span>
+  <span class="flag">--lora</span> <span class="com">\</span>
+  <span class="flag">--lora_targets</span> <span class="val">all</span> <span class="com">\</span>
+  <span class="flag">--p_none_pair</span> <span class="val">0.25</span> <span class="com">\</span>
+  <span class="flag">--none_pair_max_state</span> <span class="val">4096</span> <span class="com">\</span>
+  <span class="flag">--out</span> <span class="val">runs/cn-v1</span></div>
+              <div class="mt-8 small muted">spawn: <span class="mono">cwd=/Users/me/projects, env=studio_env, start_new_session=True, gpu_lock=True</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h3>闸门检查</h3>
+                <div class="desc">G1-G3 数据侧 · 全部通过才允许提交</div>
+              </div>
+              <span class="status succeeded"><span class="dot"></span>3/3 pass</span>
+            </div>
+            <div class="card-body">
+              <div class="gate pass">
+                <div class="icon">✓</div>
+                <div class="body">
+                  <div class="title">G1 · precheck 通过</div>
+                  <div class="desc">无 invalid_lines · 无 schema 违规 · 无 PII 命中</div>
+                  <div class="meta">0 / 938 invalid · 0 / 938 schema_violations · 0 / 938 pii</div>
+                </div>
+              </div>
+              <div class="gate pass">
+                <div class="icon">✓</div>
+                <div class="body">
+                  <div class="title">G2 · records 数 ≥ plan 80%</div>
+                  <div class="desc">实际 938 / plan 1,200 (78.2%) · 阈值 80% · 场景允许降级</div>
+                  <div class="meta">critical-value.gates.g2_min_frac = 0.75</div>
+                </div>
+              </div>
+              <div class="gate pass">
+                <div class="icon">✓</div>
+                <div class="body">
+                  <div class="title">G3 · label_warnings 比例 ≤ 5%</div>
+                  <div class="desc">9 / 938 (0.96%) · 远低于阈值</div>
+                  <div class="meta">critical-value.gates.g3_max_warn_frac = 0.05</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- PAGE 4 · JOB DETAIL (new layout)                        -->
+    <!-- ===================================================== -->
+    <div class="page hidden" data-page="jobs">
+
+      <!-- ====== MAIN CONTENT ====== -->
+      <div class="job-layout" id="jobLayout">
+
+        <!-- LEFT: result area -->
+        <div class="job-left">
+
+          <!-- tabs -->
+          <div class="job-tabs" id="jobTabs">
+            <div class="job-tab active" data-tab="overview">
+              <span class="job-tab-icon">⌂</span>总览
+            </div>
+            <div class="job-tab" data-tab="log">
+              <span class="job-tab-icon">▌</span>日志流
+              <span class="job-tab-live"><span class="pulse"></span>LIVE</span>
+            </div>
+            <div class="job-tab" data-tab="metrics"><span class="job-tab-icon">📈</span>指标</div>
+            <div class="job-tab" data-tab="artifacts"><span class="job-tab-icon">📦</span>产物</div>
+            <div class="job-tab" data-tab="lineage"><span class="job-tab-icon">🔗</span>血缘</div>
+            <div class="job-tab" data-tab="meta"><span class="job-tab-icon">ℹ</span>元数据</div>
+            <!-- step-specific tab (shown when user clicks pipeline node) -->
+            <div class="job-tab step-tab hidden" id="stepTab" data-tab="step">
+              <span class="job-tab-icon">▶</span><span id="stepTabName">plan_size</span>
+            </div>
+          </div>
+
+          <!-- tab panels -->
+          <div class="job-tab-panels">
+
+            <!-- ── OVERVIEW ── -->
+            <div class="job-tab-panel active" data-panel="overview">
+              <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+                <div class="kpi"><div class="label">耗时</div><div class="value">2h 14m</div><div class="delta muted">ETA 17:53</div></div>
+                <div class="kpi"><div class="label">Step</div><div class="value">1876<span style="font-size:16px;color:var(--text-muted)">/1876</span></div><div class="delta muted">100%</div></div>
+                <div class="kpi"><div class="label">Loss</div><div class="value">0.048</div><div class="delta up">↓ 97.8%</div></div>
+                <div class="kpi"><div class="label">Grad Norm</div><div class="value">0.10</div><div class="delta muted">last step</div></div>
+              </div>
+              <div class="section" style="grid-template-columns:1fr 1fr;gap:12px">
+                <div class="card">
+                  <div class="card-head"><h3>训练曲线</h3></div>
+                  <div class="card-body">
+                    <svg viewBox="0 0 360 140" preserveAspectRatio="none" style="width:100%;height:140px">
+                      <defs><pattern id="grid2" width="40" height="20" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 20" fill="none" stroke="#1a1a1a" stroke-width="1"/></pattern></defs>
+                      <rect width="360" height="140" fill="url(#grid2)"/>
+                      <polyline points="0,135 30,130 60,118 90,105 120,92 150,78 180,65 210,52 240,40 270,32 300,24 330,18 360,14" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+                      <circle cx="120" cy="105" r="3" fill="#22c55e"/><text x="125" y="108" fill="#22c55e" font-size="9" font-family="ui-monospace">@500: 0.742</text>
+                      <circle cx="240" cy="52" r="3" fill="#22c55e"/><text x="245" y="55" fill="#22c55e" font-size="9" font-family="ui-monospace">@1000: 0.812</text>
+                      <circle cx="300" cy="24" r="3" fill="#22c55e"/><text x="305" y="27" fill="#22c55e" font-size="9" font-family="ui-monospace">@final: 0.847</text>
+                    </svg>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="card-head"><h3>已落地产物</h3></div>
+                  <table style="font-size:12px">
+                    <thead><tr><th>产物</th><th>大小</th><th>sha256</th></tr></thead>
+                    <tbody>
+                      <tr><td class="mono small">adapter_model.safetensors</td><td class="num small">12.4 MB</td><td class="mono small dim">8b2a…f14e</td></tr>
+                      <tr><td class="mono small">head.pt</td><td class="num small">420 KB</td><td class="mono small dim">c941…8a0d</td></tr>
+                      <tr><td class="mono small">training_metrics.json</td><td class="num small">8.2 MB</td><td class="mono small dim">4d72…9b31</td></tr>
+                      <tr><td class="mono small">calibration/temperature.json</td><td class="num small">2.1 KB</td><td class="mono small dim">2f10…4c8e</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── LOG TAB ── -->
+            <div class="job-tab-panel" data-panel="log">
+              <div class="log" id="log">
+              <span class="ln"><span class="ts">17:02:31</span> <span class="info">[INFO] 启动 kev.train, run=cn-v1, suite=evals/v7/decision-v7</span></span>
+              <span class="ln"><span class="ts">17:02:31</span> <span class="info">[INFO] 加载基础模型 Qwen/Qwen3.5-4B-Base @ 9d4b1f8a (bf16, 8.2 GB)</span></span>
+              <span class="ln"><span class="ts">17:02:33</span> <span class="info">[INFO] 数据: data/studio/critical-value/train.jsonl (938 records, 412,580 字节)</span></span>
+              <span class="ln"><span class="ts">17:02:33</span> <span class="info">[INFO] none-pair: 234 records (state ≤ 4096 tokens, 启用)</span></span>
+              <span class="ln"><span class="ts">17:02:34</span> <span class="info">[INFO] 校准: data/studio/critical-value/calibration.jsonl (120 records)</span></span>
+              <span class="ln"><span class="ts">17:02:35</span> <span class="info">[INFO] LoRA: r=16, alpha=32, target=all, trainable=12,453,824 params (0.3%)</span></span>
+              <span class="ln"><span class="ts">17:02:35</span> <span class="ok">[OK] 配置就绪, GPU 锁已获取</span></span>
+              <span class="ln"><span class="ts">17:02:36</span> <span class="info">[step 1/1876] loss=2.142 grad_norm=1.83 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:02:40</span> <span class="info">[step 2/1876] loss=1.847 grad_norm=1.42 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:02:44</span> <span class="info">[step 3/1876] loss=1.502 grad_norm=1.18 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:02:48</span> <span class="info">[step 4/1876] loss=1.318 grad_norm=0.97 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:02:52</span> <span class="info">[step 5/1876] loss=1.184 grad_norm=0.84 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:02:56</span> <span class="info">[step 6/1876] loss=1.094 grad_norm=0.79 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:03:00</span> <span class="info">[step 7/1876] loss=0.987 grad_norm=0.72 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:03:04</span> <span class="info">[step 8/1876] loss=0.914 grad_norm=0.68 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:03:08</span> <span class="info">[step 9/1876] loss=0.842 grad_norm=0.65 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:03:12</span> <span class="info">[step 10/1876] loss=0.798 grad_norm=0.62 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:03:16</span> <span class="info">[step 11/1876] loss=0.751 grad_norm=0.59 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:03:20</span> <span class="info">[step 12/1876] loss=0.712 grad_norm=0.56 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:03:24</span> <span class="info">[step 13/1876] loss=0.681 grad_norm=0.54 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:03:28</span> <span class="info">[step 14/1876] loss=0.642 grad_norm=0.51 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:03:32</span> <span class="info">[step 15/1876] loss=0.618 grad_norm=0.49 lr=5.0e-5 (0:04)</span></span>
+              <span class="ln"><span class="ts">17:04:00</span> <span class="info">[eval] checkpoint @ step 500 · calibration accuracy=0.742 (3.2s)</span></span>
+              <span class="ln"><span class="ts">17:05:30</span> <span class="info">[step 500/1876] loss=0.182 grad_norm=0.21 lr=5.0e-5 (0:03)</span></span>
+              <span class="ln"><span class="ts">17:05:33</span> <span class="info">[eval] checkpoint @ step 1000 · calibration accuracy=0.812 (3.1s)</span></span>
+              <span class="ln"><span class="ts">17:08:12</span> <span class="info">[step 1000/1876] loss=0.094 grad_norm=0.14 lr=5.0e-5 (0:03)</span></span>
+              <span class="ln"><span class="ts">17:10:50</span> <span class="info">[step 1500/1876] loss=0.061 grad_norm=0.11 lr=5.0e-5 (0:03)</span></span>
+              <span class="ln"><span class="ts">17:13:30</span> <span class="info">[step 1800/1876] loss=0.048 grad_norm=0.10 lr=5.0e-5 (0:03)</span></span>
+              <span class="ln"><span class="ts">17:14:00</span> <span class="info">[eval] final · calibration accuracy=<span class="highlight">0.847</span> · T=1.42 (3.0s)</span></span>
+              <span class="ln"><span class="ts">17:14:01</span> <span class="ok">[OK] 适配器已保存: runs/cn-v1/checkpoint/adapter_model.safetensors (12.4 MB)</span></span>
+              <span class="ln"><span class="ts">17:14:01</span> <span class="ok">[OK] head.pt 已保存 (T=1.42, fit on 120 calibration records)</span></span>
+                <span class="ln"><span class="ts">17:14:02</span> <span class="info">[INFO] 等待下一阶段: benchmark (自动触发)</span></span>
+              </div>
+            </div>
+
+            <!-- ── METRICS ── -->
+            <div class="job-tab-panel" data-panel="metrics">
+              <div class="section" style="grid-template-columns:1fr 1fr;gap:12px">
+                <div class="card">
+                  <div class="card-head"><h3>逐阶段记录</h3></div>
+                  <table style="font-size:12px">
+                    <thead><tr><th>阶段</th><th>开始</th><th class="num">耗时</th><th>结果</th></tr></thead>
+                    <tbody>
+                      <tr><td class="mono small">plan_size</td><td class="small mono">17:02:31</td><td class="num small">0.1s</td><td><span class="status succeeded"><span class="dot"></span>1,200</span></td></tr>
+                      <tr><td class="mono small">generate</td><td class="small mono">17:02:31</td><td class="num small">3.2s</td><td><span class="status succeeded"><span class="dot"></span>938 records</span></td></tr>
+                      <tr><td class="mono small">goldset</td><td class="small mono">17:02:35</td><td class="num small">1.8s</td><td><span class="status succeeded"><span class="dot"></span>200 sampled</span></td></tr>
+                      <tr><td class="mono small">split</td><td class="small mono">17:02:37</td><td class="num small">0.8s</td><td><span class="status succeeded"><span class="dot"></span>938/120/80</span></td></tr>
+                      <tr><td class="mono small">precheck</td><td class="small mono">17:02:38</td><td class="num small">2.1s</td><td><span class="status succeeded"><span class="dot"></span>G1 ✓</span></td></tr>
+                      <tr><td class="mono small">train</td><td class="small mono">17:02:40</td><td class="num small">—</td><td><span class="status running"><span class="dot"></span>进行中</span></td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="card">
+                  <div class="card-head"><h3>校准拟合</h3></div>
+                  <div class="card-body">
+                    <div class="kv" style="grid-template-columns:1fr 1fr">
+                      <div class="k">拟合温度</div><div class="v" style="color:var(--accent)">T = 1.42</div>
+                      <div class="k">拟合来源</div><div class="v mono small">120 calibration records</div>
+                      <div class="k">raw ECE</div><div class="v">0.075</div>
+                      <div class="k">OOF ECE</div><div class="v">0.020</div>
+                      <div class="k">拟合方法</div><div class="v">NLL minimization</div>
+                    </div>
+                    <div style="margin-top:12px;font-size:11px;color:var(--text-dim);line-height:1.6">
+                      raw ECE 是 in-sample 拟合的 ECE；OOF ECE 是 group-disjoint 4-fold 交叉验证的 ECE，两者差值反映过拟合程度。温度通过最小化 NLL 在校准分区上拟合得到。
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── ARTIFACTS ── -->
+            <div class="job-tab-panel" data-panel="artifacts">
+              <div class="card">
+                <div class="card-head">
+                  <div><h3>所有产物</h3><div class="desc">训练完成后由 ArtifactService 自动注册</div></div>
+                  <button class="btn sm">导出清单</button>
+                </div>
+                <table>
+                  <thead><tr><th>产物</th><th>路径</th><th>类型</th><th class="num">大小</th><th class="num">sha256</th></tr></thead>
+                  <tbody>
+                    <tr><td class="mono small">adapter</td><td class="mono small">runs/cn-v1/checkpoint/adapter_model.safetensors</td><td><span class="muted small">LoRA 适配器</span></td><td class="num small">12.4 MB</td><td class="num mono small">8b2a…f14e</td></tr>
+                    <tr><td class="mono small">head.pt</td><td class="mono small">runs/cn-v1/checkpoint/head.pt</td><td><span class="muted small">PointerHead + 温度</span></td><td class="num small">420 KB</td><td class="num mono small">c941…8a0d</td></tr>
+                    <tr><td class="mono small">training_metrics</td><td class="mono small">runs/cn-v1/training_metrics.json</td><td><span class="muted small">逐 step 损失</span></td><td class="num small">8.2 MB</td><td class="num mono small">4d72…9b31</td></tr>
+                    <tr><td class="mono small">calibration_fit</td><td class="mono small">runs/cn-v1/calibration/temperature.json</td><td><span class="muted small">T=1.42, ECE=0.042</span></td><td class="num small">2.1 KB</td><td class="num mono small">2f10…4c8e</td></tr>
+                    <tr><td class="mono small">plan</td><td class="mono small">data/console/plan-critical-value.json</td><td><span class="muted small">plan_size 产物</span></td><td class="num small">0.3 KB</td><td class="num mono small">1a2b…c3d4</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- ── LINEAGE ── -->
+            <div class="job-tab-panel" data-panel="lineage">
+              <div class="card">
+                <div class="card-head"><h3>产物血缘图</h3></div>
+                <div class="card-body">
+                  <div class="lineage-graph">
+                    <div class="lg-row"><div class="lg-node" style="background:var(--green-soft);border-color:var(--green)"><div class="lg-kind">plan</div><div class="lg-name">plan-critical-value</div><div class="lg-meta">1200 records</div></div></div>
+                    <div class="lg-arrow">↓</div>
+                    <div class="lg-row"><div class="lg-node" style="background:var(--green-soft);border-color:var(--green)"><div class="lg-kind">dataset</div><div class="lg-name">critical-value</div><div class="lg-meta">938 records</div></div></div>
+                    <div class="lg-arrow">↓</div>
+                    <div class="lg-row"><div class="lg-node" style="background:var(--green-soft);border-color:var(--green)"><div class="lg-kind">precheck</div><div class="lg-name">critical-value/train</div><div class="lg-meta">G1 ✓</div></div></div>
+                    <div class="lg-arrow">↓</div>
+                    <div class="lg-row"><div class="lg-node" style="background:var(--accent-soft);border-color:var(--accent)"><div class="lg-kind">run</div><div class="lg-name">cn-v1</div><div class="lg-meta">train 进行中</div></div></div>
+                    <div class="lg-arrow" style="opacity:0.4">↓</div>
+                    <div class="lg-row" style="opacity:0.4"><div class="lg-node"><div class="lg-kind">eval</div><div class="lg-name">cn-v1</div><div class="lg-meta">待执行</div></div></div>
+                    <div class="lg-arrow" style="opacity:0.4">↓</div>
+                    <div class="lg-row" style="opacity:0.4"><div class="lg-node"><div class="lg-kind">endpoint</div><div class="lg-name">:8008</div><div class="lg-meta">待部署</div></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── META ── -->
+            <div class="job-tab-panel" data-panel="meta">
+              <div class="section" style="grid-template-columns:1fr 1fr;gap:12px">
+                <div class="card">
+                  <div class="card-head"><h3>作业信息</h3></div>
+                  <div class="card-body">
+                    <div class="kv">
+                      <div class="k">作业 ID</div><div class="v mono small">4827a3f2e1c9b4d</div>
+                      <div class="k">场景</div><div class="v">critical-value</div>
+                      <div class="k">Run</div><div class="v mono small">cn-v1</div>
+                      <div class="k">类型</div><div class="v">train</div>
+                      <div class="k">状态</div><div class="v"><span class="status running"><span class="dot"></span>运行中</span></div>
+                      <div class="k">日志路径</div><div class="v mono small dim">data/console/jobs/4827.log</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="card-head"><h3>训练参数</h3></div>
+                  <div class="card-body">
+                    <div class="kv">
+                      <div class="k">基础模型</div><div class="v mono small">Qwen/Qwen3.5-4B-Base</div>
+                      <div class="k">修订</div><div class="v mono small">9d4b1f8a</div>
+                      <div class="k">方法</div><div class="v">A1 LoRA</div>
+                      <div class="k">Epochs</div><div class="v">2</div>
+                      <div class="k">LR</div><div class="v mono small">5e-5</div>
+                      <div class="k">Batch</div><div class="v">4 × 2 accum</div>
+                      <div class="k">Dtype</div><div class="v">bf16</div>
+                      <div class="k">LoRA targets</div><div class="v">all</div>
+                      <div class="k">p_none_pair</div><div class="v mono small">0.25</div>
+                      <div class="k">none_pair_max_state</div><div class="v mono small">4096 tokens</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── STEP TAB (dynamic) ── -->
+            <div class="job-tab-panel" data-panel="step" id="stepPanel">
+              <div id="stepContent"><!-- injected by JS --></div>
+            </div>
+
+          </div><!-- /job-tab-panels -->
+        </div><!-- /job-left -->
+
+        <!-- RIGHT: pipeline DAG (sticky) -->
+        <div class="job-right" id="jobRight">
+          <div class="pipeline-panel">
+            <div class="pipeline-panel-head">
+              <h3>流水线</h3>
+              <span class="muted tiny">pipeline.md §0.1</span>
+            </div>
+            <div class="pipeline-body">
+
+              <!-- DATA -->
+              <div class="pipe-phase-title">数据</div>
+              <div class="pipe-row"><div class="pipe-node done" data-stage="plan_size" data-stage-cn="算记录数"><div class="pipe-node-inner"><div class="pipe-num">1</div><div class="pipe-name">plan_size<br><span class="pipe-cn">算记录数</span></div></div></div></div>
+              <div class="pipe-arrow">↓</div>
+              <div class="pipe-row pipe-row-split">
+                <div class="pipe-node done" data-stage="generate" data-stage-cn="规则合成"><div class="pipe-node-inner"><div class="pipe-num">2a</div><div class="pipe-name">generate<br><span class="pipe-cn">规则合成</span></div></div></div>
+                <div class="pipe-or-label">∥</div>
+                <div class="pipe-node skipped" data-stage="distill" data-stage-cn="LLM 蒸馏"><div class="pipe-node-inner"><div class="pipe-num">2b</div><div class="pipe-name">distill<br><span class="pipe-cn">LLM 蒸馏</span></div></div></div>
+              </div>
+              <div class="pipe-arrow">↓</div>
+              <div class="pipe-row"><div class="pipe-node done" data-stage="goldset" data-stage-cn="金标抽样"><div class="pipe-node-inner"><div class="pipe-num">3</div><div class="pipe-name">goldset<br><span class="pipe-cn">金标抽样</span></div></div></div></div>
+              <div class="pipe-arrow pipe-arrow-sub">↳</div>
+              <div class="pipe-row"><div class="pipe-node done" data-stage="split" data-stage-cn="切分数据"><div class="pipe-node-inner"><div class="pipe-num">4</div><div class="pipe-name">split<br><span class="pipe-cn">切分数据</span></div></div></div></div>
+              <div class="pipe-arrow">↓</div>
+              <div class="pipe-row"><div class="pipe-node done" data-stage="precheck" data-stage-cn="预检"><div class="pipe-node-inner"><div class="pipe-num">5</div><div class="pipe-name">precheck<br><span class="pipe-cn">预检</span></div></div></div></div>
+              <div class="pipe-arrow">↓</div>
+              <div class="pipe-gates"><div class="pipe-gate pass">G1 ✓</div><div class="pipe-gate pass">G2 ✓</div><div class="pipe-gate pass">G3 ✓</div></div>
+              <div class="pipe-arrow">↓</div>
+
+              <!-- TRAIN -->
+              <div class="pipe-phase-title">训练</div>
+              <div class="pipe-row"><div class="pipe-node running" data-stage="train" data-stage-cn="微调训练"><div class="pipe-node-inner"><div class="pipe-num">6</div><div class="pipe-name">train<br><span class="pipe-cn">微调训练</span></div></div></div></div>
+              <div class="pipe-arrow">↓</div>
+
+              <!-- EVAL -->
+              <div class="pipe-phase-title">评测</div>
+              <div class="pipe-row pipe-row-split">
+                <div class="pipe-node pending" data-stage="baseline" data-stage-cn="零样本对照"><div class="pipe-node-inner"><div class="pipe-num">7</div><div class="pipe-name">baseline<br><span class="pipe-cn">零样本对照</span></div></div></div>
+                <div class="pipe-or-label">→</div>
+                <div class="pipe-node pending" data-stage="benchmark" data-stage-cn="开发集打分"><div class="pipe-node-inner"><div class="pipe-num">8</div><div class="pipe-name">benchmark<br><span class="pipe-cn">开发集打分</span></div></div></div>
+              </div>
+              <div class="pipe-arrow">↓</div>
+              <div class="pipe-row"><div class="pipe-node pending" data-stage="compare" data-stage-cn="配对对比"><div class="pipe-node-inner"><div class="pipe-num">9</div><div class="pipe-name">compare<br><span class="pipe-cn">配对对比</span></div></div></div></div>
+              <div class="pipe-arrow pipe-arrow-sub">↳</div>
+              <div class="pipe-row"><div class="pipe-node pending" data-stage="calibrate" data-stage-cn="温度拟合"><div class="pipe-node-inner"><div class="pipe-num">10</div><div class="pipe-name">calibrate<br><span class="pipe-cn">温度拟合</span></div></div></div></div>
+              <div class="pipe-arrow">↓</div>
+              <div class="pipe-gates"><div class="pipe-gate pass">G4 ✓</div><div class="pipe-gate pass">G5 ✓</div><div class="pipe-gate pending">G6</div><div class="pipe-gate pending">G7</div></div>
+              <div class="pipe-arrow">↓</div>
+
+              <!-- DEPLOY -->
+              <div class="pipe-phase-title">部署</div>
+              <div class="pipe-row"><div class="pipe-node pending" data-stage="image" data-stage-cn="构建镜像"><div class="pipe-node-inner"><div class="pipe-num">11</div><div class="pipe-name">image<br><span class="pipe-cn">构建镜像</span></div></div></div></div>
+              <div class="pipe-arrow">↓</div>
+              <div class="pipe-row"><div class="pipe-node pending" data-stage="deploy" data-stage-cn="启动端点"><div class="pipe-node-inner"><div class="pipe-num">12</div><div class="pipe-name">deploy<br><span class="pipe-cn">启动端点</span></div></div></div></div>
+              <div class="pipe-arrow">↓</div>
+              <div class="pipe-row pipe-row-split">
+                <div class="pipe-node pending" data-stage="smoke" data-stage-cn="冒烟测试"><div class="pipe-node-inner"><div class="pipe-num">13</div><div class="pipe-name">smoke<br><span class="pipe-cn">冒烟测试</span></div></div></div>
+                <div class="pipe-or-label">/</div>
+                <div class="pipe-node pending" data-stage="publish" data-stage-cn="发布 Hub"><div class="pipe-node-inner"><div class="pipe-num">14a</div><div class="pipe-name">publish<br><span class="pipe-cn">发布 Hub</span></div></div></div>
+              </div>
+              <div class="pipe-row pipe-row-split" style="padding-left:32px">
+                <div class="pipe-node pending" data-stage="modal" data-stage-cn="Modal 远端"><div class="pipe-node-inner"><div class="pipe-num">14b</div><div class="pipe-name">modal<br><span class="pipe-cn">Modal 远端</span></div></div></div>
+              </div>
+
+            </div>
+          </div>
+        </div><!-- /job-right -->
+
+      </div><!-- /job-layout -->
+    </div><!-- /PAGE 4 -->
+
+    <!-- ===================================================== -->
+    <!-- PAGE 5 · API KEYS                                      -->
+    <!-- ===================================================== -->
+    <div class="page hidden" data-page="apikeys">
+      <div class="page-head">
+        <div>
+          <h1>API Keys</h1>
+          <div class="sub">kev-proxy 的 Bearer 凭据 · 凭据即 key_id · 前端不持有任何明文密钥</div>
+        </div>
+        <div class="actions">
+          <button class="btn">导入/导出</button>
+          <button class="btn primary">+ 新建 Key</button>
+        </div>
+      </div>
+
+      <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="kpi">
+          <div class="label">活跃 Key</div>
+          <div class="value">3</div>
+          <div class="delta muted">总数 5 · 已撤销 2</div>
+        </div>
+        <div class="kpi">
+          <div class="label">本月调用</div>
+          <div class="value">8,420</div>
+          <div class="delta up">↑ 22% vs 上月</div>
+        </div>
+        <div class="kpi">
+          <div class="label">本月 Token</div>
+          <div class="value">4.2 M</div>
+          <div class="delta muted">in 2.4M · out 1.8M</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h3>所有 Key</h3>
+            <div class="desc">点 "复制 id" 即得 Bearer 凭据（id 既是路由也是密码）</div>
+          </div>
+          <div class="row">
+            <div class="filter active" style="padding:3px 8px; background:var(--bg-elev); border:1px solid var(--border); border-radius:4px; font-size:11px;">全部</div>
+            <div class="filter" style="padding:3px 8px; font-size:11px; color:var(--text-muted)">活跃</div>
+            <div class="filter" style="padding:3px 8px; font-size:11px; color:var(--text-muted)">已撤销</div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>前缀</th>
+              <th>id (凭据)</th>
+              <th class="num">本月调用</th>
+              <th class="num">in / out token</th>
+              <th>上次使用</th>
+              <th>状态</th>
+              <th class="right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>playground-prod</td>
+              <td class="mono small">kev_a3f2…</td>
+              <td>
+                <div class="row">
+                  <span class="mono small dim">8a3f2e1c9b4d…</span>
+                  <button class="btn sm ghost" style="padding:1px 6px; font-size:11px">复制</button>
+                </div>
+              </td>
+              <td class="num small">4,820</td>
+              <td class="num small">1.2M / 0.9M</td>
+              <td class="small muted">2 min ago</td>
+              <td><span class="status succeeded"><span class="dot"></span>活跃</span></td>
+              <td class="right">
+                <button class="btn sm">用量</button>
+                <button class="btn sm danger">撤销</button>
+              </td>
+            </tr>
+            <tr>
+              <td>eval-bench-ci</td>
+              <td class="mono small">kev_71bc…</td>
+              <td>
+                <div class="row">
+                  <span class="mono small dim">71bc4d8a902f…</span>
+                  <button class="btn sm ghost" style="padding:1px 6px; font-size:11px">复制</button>
+                </div>
+              </td>
+              <td class="num small">2,418</td>
+              <td class="num small">0.8M / 0.6M</td>
+              <td class="small muted">14 min ago</td>
+              <td><span class="status succeeded"><span class="dot"></span>活跃</span></td>
+              <td class="right">
+                <button class="btn sm">用量</button>
+                <button class="btn sm danger">撤销</button>
+              </td>
+            </tr>
+            <tr>
+              <td>local-dev</td>
+              <td class="mono small">kev_2e9a…</td>
+              <td>
+                <div class="row">
+                  <span class="mono small dim">2e9a7f1b34c8…</span>
+                  <button class="btn sm ghost" style="padding:1px 6px; font-size:11px">复制</button>
+                </div>
+              </td>
+              <td class="num small">1,182</td>
+              <td class="num small">0.4M / 0.3M</td>
+              <td class="small muted">1h ago</td>
+              <td><span class="status succeeded"><span class="dot"></span>活跃</span></td>
+              <td class="right">
+                <button class="btn sm">用量</button>
+                <button class="btn sm danger">撤销</button>
+              </td>
+            </tr>
+            <tr style="opacity:0.55">
+              <td>old-cron</td>
+              <td class="mono small">kev_d91e…</td>
+              <td><span class="mono small dim">d91e3a4f5b67…</span></td>
+              <td class="num small">0</td>
+              <td class="num small">—</td>
+              <td class="small muted">2026-09-21</td>
+              <td><span class="status failed"><span class="dot"></span>已撤销</span></td>
+              <td class="right">
+                <button class="btn sm">恢复</button>
+                <button class="btn sm">删除</button>
+              </td>
+            </tr>
+            <tr style="opacity:0.55">
+              <td>test-key-1</td>
+              <td class="mono small">kev_44c2…</td>
+              <td><span class="mono small dim">44c2a8b91d03…</span></td>
+              <td class="num small">0</td>
+              <td class="num small">—</td>
+              <td class="small muted">2026-09-15</td>
+              <td><span class="status failed"><span class="dot"></span>已撤销</span></td>
+              <td class="right">
+                <button class="btn sm">恢复</button>
+                <button class="btn sm">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card mt-16">
+        <div class="card-head">
+          <div>
+            <h3>凭据安全模型</h3>
+            <div class="desc">为什么 id 既是路由也是密码</div>
+          </div>
+        </div>
+        <div class="card-body" style="font-size:13px; line-height:1.7; color:var(--text-muted)">
+          <div style="margin-bottom:8px"><span style="color:var(--green)">▸</span> 创建后仅返回 1 次明文 key（kev_xxxx...），随后只显示 <span class="mono">id</span>（8a3f...）。</div>
+          <div style="margin-bottom:8px"><span style="color:var(--green)">▸</span> 浏览器调 <span class="mono">/console/api/kev/*</span> 时，把 id 当 Bearer 提交：<span class="mono">Authorization: Bearer 8a3f2e1c9b4d...</span></div>
+          <div style="margin-bottom:8px"><span style="color:var(--green)">▸</span> 服务端按 id 查表，存在且 active 即放行。前端永不接触任何 64 字符的明文密钥。</div>
+          <div><span style="color:var(--green)">▸</span> 撤销 = 软删（<span class="mono">active=0</span>），可恢复；硬删 = 物理删除，永久。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- PAGE 6 · USAGE                                         -->
+    <!-- ===================================================== -->
+    <div class="page hidden" data-page="usage">
+      <div class="page-head">
+        <div>
+          <h1>用量</h1>
+          <div class="sub">kev-proxy 转发到 kev.serve 的请求聚合 · 按 key / 端点 / 时间</div>
+        </div>
+        <div class="actions">
+          <div class="filter active" style="padding:5px 10px; background:var(--bg-elev); border:1px solid var(--border); border-radius:4px; font-size:12px;">最近 7 天</div>
+          <div class="filter" style="padding:5px 10px; font-size:12px; color:var(--text-muted)">本月</div>
+          <div class="filter" style="padding:5px 10px; font-size:12px; color:var(--text-muted)">自定义</div>
+          <button class="btn">导出 CSV</button>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="label">总调用</div>
+          <div class="value">8,420</div>
+          <div class="delta up">↑ 12.4%</div>
+          <svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="0,22 12,20 25,18 37,15 50,12 62,14 75,10 87,8 100,5" fill="none" stroke="#3b82f6" stroke-width="1.5"/></svg>
+        </div>
+        <div class="kpi">
+          <div class="label">总 Token</div>
+          <div class="value">4.2 M</div>
+          <div class="delta muted">in 2.4M · out 1.8M</div>
+          <svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="0,20 12,18 25,16 37,14 50,12 62,11 75,9 87,7 100,5" fill="none" stroke="#22c55e" stroke-width="1.5"/></svg>
+        </div>
+        <div class="kpi">
+          <div class="label">P99 延迟</div>
+          <div class="value">428 ms</div>
+          <div class="delta up">↓ 18 ms 较上周</div>
+          <svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="0,5 12,7 25,9 37,8 50,12 62,11 75,14 87,12 100,15" fill="none" stroke="#a855f7" stroke-width="1.5"/></svg>
+        </div>
+        <div class="kpi">
+          <div class="label">错误率</div>
+          <div class="value">0.42%</div>
+          <div class="delta">35 / 8,420 · 大半为 422 (overlong)</div>
+          <svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="0,24 12,23 25,25 37,24 50,23 62,25 75,24 87,25 100,26" fill="none" stroke="#22c55e" stroke-width="1.5"/></svg>
+        </div>
+      </div>
+
+      <div class="section three" style="grid-template-columns: 2fr 1fr;">
+        <div class="card">
+          <div class="card-head">
+            <div><h3>按 Key 时间序列</h3><div class="desc">调用次数 · Token · 延迟 切换显示</div></div>
+            <div class="row">
+              <div class="filter active" style="padding:2px 8px; font-size:11px; background:var(--accent-soft); border:1px solid var(--accent); border-radius:3px;">调用数</div>
+              <div class="filter" style="padding:2px 8px; font-size:11px; color:var(--text-muted)">Token</div>
+              <div class="filter" style="padding:2px 8px; font-size:11px; color:var(--text-muted)">延迟</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <svg viewBox="0 0 700 200" preserveAspectRatio="none" style="width:100%; height:200px">
+              <defs>
+                <pattern id="grid" width="50" height="25" patternUnits="userSpaceOnUse">
+                  <path d="M 50 0 L 0 0 0 25" fill="none" stroke="#1f1f1f" stroke-width="1"/>
+                </pattern>
+              </defs>
+              <rect width="700" height="200" fill="url(#grid)"/>
+              <!-- axis labels -->
+              <text x="10" y="14" fill="#5c5c5c" font-size="10" font-family="ui-monospace">calls / day</text>
+              <text x="690" y="195" fill="#5c5c5c" font-size="10" font-family="ui-monospace" text-anchor="end">10-01 → 10-07</text>
+              <!-- 3 stacked lines (3 keys) -->
+              <polyline points="50,140 150,130 250,118 350,108 450,95 550,82 650,72" fill="none" stroke="#3b82f6" stroke-width="2"/>
+              <polyline points="50,160 150,150 250,148 350,135 450,128 550,118 650,108" fill="none" stroke="#22c55e" stroke-width="2"/>
+              <polyline points="50,180 150,176 250,170 350,168 450,160 550,154 650,148" fill="none" stroke="#a855f7" stroke-width="2"/>
+              <!-- legend -->
+              <g transform="translate(540, 30)">
+                <rect x="0" y="0" width="6" height="2" fill="#3b82f6"/><text x="12" y="4" fill="#8b8b8b" font-size="10" font-family="ui-monospace">playground-prod</text>
+                <rect x="0" y="14" width="6" height="2" fill="#22c55e"/><text x="12" y="18" fill="#8b8b8b" font-size="10" font-family="ui-monospace">eval-bench-ci</text>
+                <rect x="0" y="28" width="6" height="2" fill="#a855f7"/><text x="12" y="32" fill="#8b8b8b" font-size="10" font-family="ui-monospace">local-dev</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div><h3>按端点</h3></div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>端点</th><th class="num">调用</th><th class="num">P99</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="mono small">/systemone</td><td class="num small">6,820</td><td class="num small">412</td></tr>
+              <tr><td class="mono small">/models</td><td class="num small">1,184</td><td class="num small">12</td></tr>
+              <tr><td class="mono small">/permute</td><td class="num small">318</td><td class="num small">528</td></tr>
+              <tr><td class="mono small">/separate</td><td class="num small">98</td><td class="num small">680</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="card-head">
+          <div><h3>按 Key 明细</h3></div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th class="num">调用</th>
+              <th class="num">in token</th>
+              <th class="num">out token</th>
+              <th class="num">avg 延迟</th>
+              <th class="num">P99 延迟</th>
+              <th>上次使用</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>playground-prod</td>
+              <td class="num small">4,820</td>
+              <td class="num small">1.2 M</td>
+              <td class="num small">0.9 M</td>
+              <td class="num small">128 ms</td>
+              <td class="num small">412 ms</td>
+              <td class="small muted">2 min ago</td>
+            </tr>
+            <tr>
+              <td>eval-bench-ci</td>
+              <td class="num small">2,418</td>
+              <td class="num small">0.8 M</td>
+              <td class="num small">0.6 M</td>
+              <td class="num small">204 ms</td>
+              <td class="num small">528 ms</td>
+              <td class="small muted">14 min ago</td>
+            </tr>
+            <tr>
+              <td>local-dev</td>
+              <td class="num small">1,182</td>
+              <td class="num small">0.4 M</td>
+              <td class="num small">0.3 M</td>
+              <td class="num small">98 ms</td>
+              <td class="num small">285 ms</td>
+              <td class="small muted">1h ago</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- PAGE 7 · DISTILL CONFIG                                -->
+    <!-- ===================================================== -->
+    <div class="page hidden" data-page="distill">
+      <div class="page-head">
+        <div>
+          <h1>蒸馏配置</h1>
+          <div class="sub">LLM provider + 密钥库 · 密钥落 <span class="mono">data/studio/secrets/distill.json</span> · DB 只存元数据 + 掩码</div>
+        </div>
+        <div class="actions">
+          <button class="btn">导入 provider</button>
+          <button class="btn primary">+ 新建 provider</button>
+        </div>
+      </div>
+
+      <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="kpi">
+          <div class="label">活跃 provider</div>
+          <div class="value">3</div>
+          <div class="delta muted">openai / anthropic / deepseek</div>
+        </div>
+        <div class="kpi">
+          <div class="label">密钥总数</div>
+          <div class="value">11</div>
+          <div class="delta muted">活跃 9 · 限额 500K tokens/key/day</div>
+        </div>
+        <div class="kpi">
+          <div class="label">本月花费</div>
+          <div class="value">$ 24.18</div>
+          <div class="delta down">↓ 22% vs 上月</div>
+        </div>
+        <div class="kpi">
+          <div class="label">本月 token</div>
+          <div class="value">8.4 M</div>
+          <div class="delta muted">in 5.2M · out 3.2M</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div><h3>Provider 列表</h3><div class="desc">每个 provider 可挂多个 key · 蒸馏时按 round-robin 轮转</div></div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>模型</th>
+              <th>Base URL</th>
+              <th class="num">key 数</th>
+              <th class="num">日限额 / key</th>
+              <th>本月 token</th>
+              <th>状态</th>
+              <th class="right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>openai-prod</td>
+              <td class="mono small">gpt-4o-mini-2024-07-18</td>
+              <td class="mono small dim">api.openai.com/v1</td>
+              <td class="num small">5</td>
+              <td class="num small">500 K</td>
+              <td class="small">4.2 M</td>
+              <td><span class="status succeeded"><span class="dot"></span>活跃</span></td>
+              <td class="right">
+                <button class="btn sm">用量</button>
+                <button class="btn sm">编辑</button>
+                <button class="btn sm danger">停用</button>
+              </td>
+            </tr>
+            <tr>
+              <td>anthropic-prod</td>
+              <td class="mono small">claude-3-5-sonnet-20241022</td>
+              <td class="mono small dim">api.anthropic.com/v1</td>
+              <td class="num small">3</td>
+              <td class="num small">500 K</td>
+              <td class="small">2.8 M</td>
+              <td><span class="status succeeded"><span class="dot"></span>活跃</span></td>
+              <td class="right">
+                <button class="btn sm">用量</button>
+                <button class="btn sm">编辑</button>
+                <button class="btn sm danger">停用</button>
+              </td>
+            </tr>
+            <tr>
+              <td>deepseek-budget</td>
+              <td class="mono small">deepseek-chat</td>
+              <td class="mono small dim">api.deepseek.com/v1</td>
+              <td class="num small">1</td>
+              <td class="num small">500 K</td>
+              <td class="small">1.4 M</td>
+              <td><span class="status succeeded"><span class="dot"></span>活跃</span></td>
+              <td class="right">
+                <button class="btn sm">用量</button>
+                <button class="btn sm">编辑</button>
+                <button class="btn sm danger">停用</button>
+              </td>
+            </tr>
+            <tr style="opacity:0.55">
+              <td>openai-experiment</td>
+              <td class="mono small">gpt-4o-2024-08-06</td>
+              <td class="mono small dim">api.openai.com/v1</td>
+              <td class="num small">2</td>
+              <td class="num small">—</td>
+              <td class="small dim">已停用</td>
+              <td><span class="status failed"><span class="dot"></span>已停用</span></td>
+              <td class="right">
+                <button class="btn sm">恢复</button>
+                <button class="btn sm">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 编辑表单 (inline 展开) -->
+      <div class="card mt-16">
+        <div class="card-head">
+          <div><h3>编辑 · openai-prod</h3><div class="desc">密钥只在「提供新的非空列表」时替换；否则保留服务端既有密钥</div></div>
+        </div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="field">
+              <label>名称</label>
+              <input class="mono" value="openai-prod" />
+            </div>
+            <div class="field">
+              <label>模型</label>
+              <input class="mono" value="gpt-4o-mini-2024-07-18" />
+            </div>
+            <div class="field full">
+              <label>Base URL</label>
+              <input class="mono" value="https://api.openai.com/v1" />
+            </div>
+            <div class="field">
+              <label>日限额 / key</label>
+              <div class="input-group"><input class="mono" value="500000" /><div class="unit">tokens</div></div>
+            </div>
+            <div class="field">
+              <label>轮转策略</label>
+              <select><option>round-robin（推荐）</option><option>least-used</option><option>random</option></select>
+            </div>
+            <div class="field full">
+              <label>API Keys（已配置 5 个 · 留空表示保留）</label>
+              <textarea class="mono" rows="4" placeholder="sk-... &#10;sk-... &#10;(空 = 不替换)"></textarea>
+              <div class="hint">当前掩码: <span class="mono" style="color:var(--amber)">sk-…AbCd</span> · <span class="mono" style="color:var(--amber)">sk-…EfGh</span> · <span class="mono" style="color:var(--amber)">sk-…IjKl</span> · <span class="mono" style="color:var(--amber)">sk-…MnOp</span> · <span class="mono" style="color:var(--amber)">sk-…QrSt</span></div>
+            </div>
+          </div>
+          <div class="row mt-16">
+            <button class="btn">取消</button>
+            <div class="right"></div>
+            <button class="btn">测试连接</button>
+            <button class="btn primary">保存</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="card-head">
+          <div><h3>本月用量（按 key 维度）</h3><div class="desc">采集自 <span class="mono">distill_usage</span> 表 · 蒸馏作业完成后由 <span class="mono">_ingest_distill_usage</span> 回填</div></div>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Provider</th><th>Key 掩码</th><th class="num">tokens</th><th class="num">天数</th><th>末次使用</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>openai-prod</td><td class="mono small">sk-…AbCd</td><td class="num small">1,420,318</td><td class="num small">7</td><td class="small muted">今天</td></tr>
+            <tr><td>openai-prod</td><td class="mono small">sk-…EfGh</td><td class="num small">1,180,402</td><td class="num small">7</td><td class="small muted">今天</td></tr>
+            <tr><td>anthropic-prod</td><td class="mono small">sk-…WxYz</td><td class="num small">980,128</td><td class="num small">7</td><td class="small muted">昨天</td></tr>
+            <tr><td>deepseek-budget</td><td class="mono small">sk-…7gHj</td><td class="num small">628,402</td><td class="num small">5</td><td class="small muted">今天</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- PAGE 8 · SCENARIOS (双层: domain → scenario)            -->
+    <!-- ===================================================== -->
+    <div class="page hidden" data-page="scenarios">
+      <div class="page-head">
+        <div>
+          <h1>场景管理</h1>
+          <div class="sub">域 → 场景 双层结构 · 中英双语 label · spec 既可落库也可引用路径</div>
+        </div>
+        <div class="actions">
+          <button class="btn">导出全部 spec</button>
+          <button class="btn">+ 新建域</button>
+          <button class="btn primary">+ 新建场景</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="search"><input placeholder="按 slug / label 搜索场景..." /></div>
+        <div class="filter active">全部域 · 4</div>
+        <div class="filter">仅医疗</div>
+        <div class="filter">有 spec</div>
+        <div class="filter">缺 spec</div>
+      </div>
+
+      <div class="section" style="grid-template-columns: 1fr 1fr;">
+        <!-- 域: 医疗 -->
+        <div class="card">
+          <div class="card-head">
+            <div class="row">
+              <span class="badge-domain medical">医疗</span>
+              <h3 style="margin-left:8px">medical</h3>
+              <span class="muted small">· 4 个场景</span>
+            </div>
+            <div class="row">
+              <button class="btn sm">+ 场景</button>
+              <button class="btn sm">编辑域</button>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>slug</th><th>中文</th><th>English</th><th class="num">题数</th><th>spec</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono small">critical-value</td>
+                <td class="small">危急值</td>
+                <td class="small dim">Critical Value</td>
+                <td class="num small">3</td>
+                <td><span class="status succeeded"><span class="dot"></span>v1.2</span></td>
+              </tr>
+              <tr>
+                <td class="mono small">triage</td>
+                <td class="small">分诊</td>
+                <td class="small dim">Triage</td>
+                <td class="num small">2</td>
+                <td><span class="status succeeded"><span class="dot"></span>v0.9</span></td>
+              </tr>
+              <tr>
+                <td class="mono small">diagnosis</td>
+                <td class="small">辅助诊断</td>
+                <td class="small dim">Diagnosis</td>
+                <td class="num small">4</td>
+                <td><span class="status warn"><span class="dot"></span>v0.4</span></td>
+              </tr>
+              <tr>
+                <td class="mono small">medication-review</td>
+                <td class="small">用药审核</td>
+                <td class="small dim">Medication Review</td>
+                <td class="num small">2</td>
+                <td><span class="status warn"><span class="dot"></span>v0.1</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 域: 法律 -->
+        <div class="card">
+          <div class="card-head">
+            <div class="row">
+              <span class="badge-domain legal">法律</span>
+              <h3 style="margin-left:8px">legal</h3>
+              <span class="muted small">· 1 个场景</span>
+            </div>
+            <div class="row">
+              <button class="btn sm">+ 场景</button>
+              <button class="btn sm">编辑域</button>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>slug</th><th>中文</th><th>English</th><th class="num">题数</th><th>spec</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono small">contract-clause</td>
+                <td class="small">合同条款</td>
+                <td class="small dim">Contract Clause</td>
+                <td class="num small">3</td>
+                <td><span class="status warn"><span class="dot"></span>v0.2</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 域: 金融 -->
+        <div class="card">
+          <div class="card-head">
+            <div class="row">
+              <span class="badge-domain finance">金融</span>
+              <h3 style="margin-left:8px">finance</h3>
+              <span class="muted small">· 1 个场景</span>
+            </div>
+            <div class="row">
+              <button class="btn sm">+ 场景</button>
+              <button class="btn sm">编辑域</button>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>slug</th><th>中文</th><th>English</th><th class="num">题数</th><th>spec</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono small">risk-flag</td>
+                <td class="small">风险标记</td>
+                <td class="small dim">Risk Flag</td>
+                <td class="num small">2</td>
+                <td><span class="status warn"><span class="dot"></span>v0.1</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 域: 通用 -->
+        <div class="card">
+          <div class="card-head">
+            <div class="row">
+              <span class="badge-domain general">通用</span>
+              <h3 style="margin-left:8px">general</h3>
+              <span class="muted small">· 1 个场景</span>
+            </div>
+            <div class="row">
+              <button class="btn sm">+ 场景</button>
+              <button class="btn sm">编辑域</button>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>slug</th><th>中文</th><th>English</th><th class="num">题数</th><th>spec</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono small">sentiment-3class</td>
+                <td class="small">三分类情感</td>
+                <td class="small dim">Sentiment 3-class</td>
+                <td class="num small">1</td>
+                <td><span class="status warn"><span class="dot"></span>v0.1</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 单个场景的 spec 编辑器 -->
+      <div class="card mt-16">
+        <div class="card-head">
+          <div>
+            <h3>critical-value · spec</h3>
+            <div class="desc">v1.2 (当前) · 12 个历史版本 · 落库于 <span class="mono">scenarios.spec_json</span></div>
+          </div>
+          <div class="row">
+            <button class="btn sm">历史</button>
+            <button class="btn sm">下载 .json</button>
+            <button class="btn sm">重新加载</button>
+            <button class="btn primary sm">保存 v1.3</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="row" style="margin-bottom:10px; align-items:flex-start; gap:12px">
+            <div class="json-pre" style="flex:1; min-height:280px"><span class="punc">{</span>
+  <span class="k">"slug"</span><span class="punc">:</span> <span class="s">"critical-value"</span><span class="punc">,</span>
+  <span class="k">"label_zh"</span><span class="punc">:</span> <span class="s">"危急值"</span><span class="punc">,</span>
+  <span class="k">"label_en"</span><span class="punc">:</span> <span class="s">"Critical Value"</span><span class="punc">,</span>
+  <span class="k">"state_schema"</span><span class="punc">:</span> <span class="punc">{</span>
+    <span class="k">"patient"</span><span class="punc">:</span> <span class="s">"object"</span><span class="punc">,</span>
+    <span class="k">"lab_values"</span><span class="punc">:</span> <span class="s">"array"</span>
+  <span class="punc">},</span>
+  <span class="k">"questions"</span><span class="punc">:</span> <span class="punc">[</span>
+    <span class="punc">{</span>
+      <span class="k">"id"</span><span class="punc">:</span> <span class="s">"critical_level"</span><span class="punc">,</span>
+      <span class="k">"prompt"</span><span class="punc">:</span> <span class="s">"该检验结果属于哪一级危急值？"</span><span class="punc">,</span>
+      <span class="k">"options"</span><span class="punc">:</span> <span class="punc">[</span><span class="s">"low"</span><span class="punc">,</span> <span class="s">"medium"</span><span class="punc">,</span> <span class="s">"high"</span><span class="punc">,</span> <span class="s">"critical"</span><span class="punc">]</span>
+    <span class="punc">}</span>
+  <span class="punc">],</span>
+  <span class="k">"gates"</span><span class="punc">:</span> <span class="punc">{</span>
+    <span class="k">"g2_min_frac"</span><span class="punc">:</span> <span class="n">0.75</span><span class="punc">,</span>
+    <span class="k">"g3_max_warn_frac"</span><span class="punc">:</span> <span class="n">0.05</span>
+  <span class="punc">}</span>
+<span class="punc">}</span></div>
+            <div style="width:240px; flex-shrink:0">
+              <div class="card" style="background:var(--bg-elev)">
+                <div class="card-body">
+                  <div class="small muted mb-8">编辑说明</div>
+                  <ul style="font-size:11px; color:var(--text-muted); line-height:1.6; padding-left:16px; margin:0">
+                    <li>JSON Schema 校验在保存时触发</li>
+                    <li>保存即创建新版本号（v1.3）</li>
+                    <li>已有 records 不受影响</li>
+                    <li>已提交的训练将引用旧版本</li>
+                    <li>新训练会读最新版本</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ===== Page routing (sidebar only) =====
+  const pages = document.querySelectorAll('.page');
+  const sidebarItems = document.querySelectorAll('.sidebar .item[data-page]');
+  const topbarTabs = document.querySelectorAll('.topbar .tab');
+
+  function showPage(name) {
+    pages.forEach(p => p.classList.toggle('hidden', p.dataset.page !== name));
+    sidebarItems.forEach(i => i.classList.toggle('active', i.dataset.page === name));
+    window.scrollTo(0, 0);
+  }
+  sidebarItems.forEach(i => i.addEventListener('click', () => showPage(i.dataset.page)));
+  topbarTabs.forEach(t => t.addEventListener('click', () => {
+    topbarTabs.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+  }));
+
+  // ===== Job page: tab switching (overview/log/metrics/...) =====
+  const jobTabs = document.querySelectorAll('.job-tabs .job-tab');
+  const jobPanels = document.querySelectorAll('.job-tab-panels .job-tab-panel');
+  jobTabs.forEach(tab => {
+    if (tab.classList.contains('step-tab')) return; // handled separately
+    tab.addEventListener('click', () => {
+      jobTabs.forEach(t => { if (!t.classList.contains('step-tab')) t.classList.remove('active'); });
+      jobPanels.forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelector(`.job-tab-panels [data-panel="${tab.dataset.tab}"]`).classList.add('active');
+    });
+  });
+
+  // ===== Step info: each pipeline node has Chinese name + English + description =====
+  const STEP_INFO = {
+    plan_size: {
+      cn: '算记录数', phase: 'data', gate: '—',
+      desc: '读取 scenario spec，根据 spec 的 questions 数量 + 蒸馏配额 + 题目多样性，估算需要的训练记录数。',
+      principle: '<strong>原理</strong>：plan_size.py 根据 spec 的元信息（题目数、选项数、每题期望样本量）粗估一个总记录数。输出供 G2 闸门使用——split 切分后必须达到该目标（允许场景级降级阈值）。这个阶段<strong>不输出</strong>训练数据，只输出"应该生成多少条"的计划。',
+      status: 'done', meta: '完成 17:02:31 · 0.1s · 建议 1,200 records'
+    },
+    generate: {
+      cn: '规则合成', phase: 'data', gate: '—',
+      desc: '按 spec 的状态生成器 + 题目裁决规则，程序化合成训练数据。零 LLM 调用、可重复。',
+      principle: '<strong>原理</strong>：generate.py 读 scenario spec，调用 spec 注册的 StateGenerator 抽样状态，调用 RuleSet 的裁决函数对每个 question 给出 ground-truth 标签。优势是零成本 + 完全可复现 + 无 PII 风险；劣势是覆盖度受规则表达力限制。',
+      status: 'done', meta: '完成 17:02:31 · 3.2s · 输出 938 records'
+    },
+    distill: {
+      cn: 'LLM 蒸馏', phase: 'data', gate: '—',
+      desc: '用 LLM（gpt-4o / claude / deepseek）按 spec 的 questions 生成 labels。覆盖度高于 generate，但成本与 PII 风险都更高。',
+      principle: '<strong>原理</strong>：distill 调 LLM API，prompt = domain + state + state_example + questions + guidance + variety + few-shot examples（来自 --examples）。label 配额按 questions 自动均衡，每日 token 上限由 provider 的 daily_limit 软约束。本场景未选择（走 generate），故标记为 skipped。',
+      status: 'skipped', meta: '未执行 · 本场景选择 generate 路径'
+    },
+    goldset: {
+      cn: '金标抽样', phase: 'data', gate: '—',
+      desc: '从训练集随机抽 200 条做金标，用于人工复核或 groundset_audit 跨模型分歧审计。',
+      principle: '<strong>原理</strong>：从 dataset 按 n=200 seed=0 抽样，输出 *.gold.jsonl。配套的 goldset_audit 拿两份金标做 A/B 比较，差异率超阈值（默认 0.05）则作业失败——这能捕捉"模型 A 漏判了某类样本"这类系统性问题。',
+      status: 'done', meta: '完成 17:02:35 · 1.8s · 200 条'
+    },
+    split: {
+      cn: '切分数据', phase: 'data', gate: 'G2, G3',
+      desc: '把数据集切分为 train / calibration / development 三份，生成 summary.json。',
+      principle: '<strong>原理</strong>：按 calibration=0.15 / development=0.15 的比例随机切分（seed=0），输出 {data_dir}/{train,calibration,development}.jsonl + summary.json。G2 校验 records 数 == plan.total_records，G3 校验 label_warnings 比例 ≤ 5%。',
+      status: 'done', meta: '完成 17:02:37 · 0.8s · 938/120/80'
+    },
+    precheck: {
+      cn: '预检', phase: 'data', gate: 'G1',
+      desc: '用分词器校验每个 record 的 state 是否超出模型上下文上限。',
+      principle: '<strong>原理</strong>：用目标模型的 tokenizer 把每条 record 的 state 编码为 token 序列，超出 MAX_STATE（默认 65,536）的标记为 over_limit。G1 闸门要求 over_limit == 0 才能进入训练——否则训练会因为序列被截断而学不到完整 state 的依赖。',
+      status: 'done', meta: '完成 17:02:38 · 2.1s · G1 ✓'
+    },
+    train: {
+      cn: '微调训练', phase: 'train', gate: '—',
+      desc: '在 base + LoRA / 全参数下，用 train.jsonl 跑 SFT。输出 adapter_model.safetensors + head.pt。',
+      principle: '<strong>原理</strong>：A1（LoRA 热启动，推荐）/ A2（LoRA 裸基座）/ B（全参数）。本场景走 A1，lr=5e-5，batch=4×2accum，dtype=bf16，p_none_pair=0.25 配 none_pair_max_state=4096 让长 state 的 record 不发射 none pair。训练过程中按 500/1000/final 三个 checkpoint 在 calibration 集上做 accuracy 评估，写入 training_metrics.json。',
+      status: 'running', meta: '进行中 · step 1876/1876 · loss 0.048'
+    },
+    baseline: {
+      cn: '零样本对照', phase: 'eval', gate: 'G4, G5',
+      desc: '用基线模型（默认 kev-0.8b）在 development.jsonl 上跑一次 benchmark，输出对照基线。',
+      principle: '<strong>原理</strong>：与正式 benchmark <strong>用同一份 development 文件</strong>，否则 compare 会因 suite_sha256 不一致而失败（gates.py 与 eval.py 双向校验）。baseline 必须先跑——它是 compare 的 reference 侧。',
+      status: 'pending', meta: '待执行 · 预计 14 分钟'
+    },
+    benchmark: {
+      cn: '开发集打分', phase: 'eval', gate: 'G4, G5, G6',
+      desc: '用训练后的 run:cn-v1 在 development.jsonl 上跑 benchmark，输出 rows.json + report.json。',
+      principle: '<strong>原理</strong>：与 baseline 同一份 development.jsonl，对每条 record 计算预测分布 + 选择。report.json 含 accuracy、ECE、Brier、NLL、选择性覆盖、AURC、permutation、isolation 等指标。<strong>单次 benchmark 没有 bootstrap</strong>——G4/G6 都需要 compare 配对 bootstrap 才能判。',
+      status: 'pending', meta: '待执行 · 预计 18 分钟'
+    },
+    compare: {
+      cn: '配对对比', phase: 'eval', gate: 'G4, G6',
+      desc: 'candidate（cn-v1-eval）vs reference（cn-v1-baseline-eval）做 2,000 resamples 配对 bootstrap。',
+      principle: '<strong>原理</strong>：在每条 record 上配对两侧预测，计算 paired_flip、accuracy_diff、ECE_diff 等指标的 95% CI。G4 要求 CI95 下限 > 0（候选模型显著优于 baseline）。G6 读 <code>regression:{run}</code> 产物（公开套件模式），CI95 下限 >= -0.02（REGRESSION_TOLERANCE）。',
+      status: 'pending', meta: '待执行 · 预计 22 分钟'
+    },
+    calibrate: {
+      cn: '温度拟合', phase: 'eval', gate: 'G7',
+      desc: '在 calibration 集上最小化 NLL，拟合一个标量温度 T，存到 head.pt["temperature"]。',
+      principle: '<strong>原理</strong>：calibrate 调 kev.metrics.temperature_fit，对 raw logits / T 做网格搜索，最小化 NLL。拟合结果落到 head.pt["temperature"]，部署时 PointerHead 用它缩放 logits。G7 要求 arms.workload_oof.ece <= arms.shipped.ece——workload OOF 是 4-fold group-disjoint 交叉验证的 ECE，shipped 是 base 模型原 head 温度下的 ECE。',
+      status: 'pending', meta: '待执行 · 预计 6 分钟'
+    },
+    image: {
+      cn: '构建镜像', phase: 'deploy', gate: 'G4, G5, G6, G7',
+      desc: '把 run:cn-v1 + base 打成 Docker 镜像，标记 image:kev-cn-v1:{T}。',
+      principle: '<strong>原理</strong>：image 阶段读 head.pt["temperature"]，把它作为镜像 tag 的一部分（T 变了就出新镜像）。闸门 G4–G7 全部通过才能构建——这四道闸是模型质量的总闸，确保发布到生产环境的每一个模型都通过了 bootstrap CI、温度、回归、OOF 校准。',
+      status: 'pending', meta: '待执行'
+    },
+    deploy: {
+      cn: '启动端点', phase: 'deploy', gate: 'G4–G7',
+      desc: '把镜像 run 起来，在 8008 端口暴露 /v1/systemone 端点。',
+      principle: '<strong>原理</strong>：deploy 是长驻作业（persist=start），spawn 后立刻注册 endpoint:8008 产物。busy_port 预检避免端口冲突。Temperature 由 head.pt 决定，<strong>不读 KEV_TEMPERATURE</strong>——必须显式传，避免环境变量污染。',
+      status: 'pending', meta: '待执行'
+    },
+    smoke: {
+      cn: '冒烟测试', phase: 'deploy', gate: '—',
+      desc: '5 个固定场景各 1 例，验证端点返回 p 分布合理、argmax 形状正确。',
+      principle: '<strong>原理</strong>：smoke.py 调 /v1/systemone 5 次，看 confidence 分布 + 选项集合是否覆盖 ground-truth，输出 smoke:{run}.json。fail 不是阻塞错误——只标记"端点基本可用"，详细准确性留给后续 benchmark。',
+      status: 'pending', meta: '待执行'
+    },
+    publish: {
+      cn: '发布 Hub', phase: 'deploy', gate: '—',
+      desc: '把 run + adapter + head.pt + tokenizer 推到 Hugging Face Hub 仓库。',
+      principle: '<strong>原理</strong>：kev.publish 调 HF Hub API（HF_TOKEN 注入 spawn），按 --private / --tag / --revision / --replace 控制。--replace 删除仓库中旧文件，只保留当前 commit 的内容——这避免了 LoRA / full-weight 混存导致 loader 选错格式。',
+      status: 'pending', meta: '待执行 · 待选 target repo'
+    },
+    modal: {
+      cn: 'Modal 远端', phase: 'deploy', gate: '—',
+      desc: '把镜像部署到 Modal 云 GPU（L4/H100/B200），端点不在本地 endpoint 产物中。',
+      principle: '<strong>原理</strong>：modal.py 走 KEV_SERVE_RUN + KEV_GPU 环境变量，无 argparse。Modal 部署成功后会注册 endpoint:modal-{run} 产物（meta.modal=true），部署页用"Modal"徽标区分本地与远端。',
+      status: 'pending', meta: '待执行'
+    },
+  };
+
+  const stepTab = document.getElementById('stepTab');
+  const stepTabName = document.getElementById('stepTabName');
+  const stepContent = document.getElementById('stepContent');
+
+  function showStepInfo(stage, stageCN) {
+    const info = STEP_INFO[stage];
+    if (!info) return;
+    // 切换到 step tab
+    jobTabs.forEach(t => { if (!t.classList.contains('step-tab')) t.classList.remove('active'); });
+    jobPanels.forEach(p => p.classList.remove('active'));
+    stepTab.classList.remove('hidden');
+    stepTab.classList.add('active');
+    stepTabName.textContent = `${info.cn} [${stage}]`;
+    document.querySelector('[data-panel="step"]').classList.add('active');
+
+    // 渲染内容
+    const statusClass = info.status;
+    const statusLabel = ({done:'已完成', running:'执行中', skipped:'已跳过', pending:'未执行'})[info.status] || '未知';
+    stepContent.innerHTML = `
+      <div class="step-info-block">
+        <h3>${info.cn} [${stage}]</h3>
+        <div class="step-info-cn">阶段: ${info.phase} · 闸门: ${info.gate}</div>
+        <div class="step-info-desc">${info.desc}</div>
+        <div class="step-info-status ${statusClass}">
+          <span class="dot"></span>${statusLabel}
+        </div>
+        <div class="step-info-meta">${info.meta}</div>
+        <div class="step-info-principle">${info.principle}</div>
+      </div>
+      <div class="step-info-block" style="opacity:${info.status==='done'||info.status==='running'?1:0.5}">
+        <h3>执行结果</h3>
+        <div class="step-info-cn">仅当步骤已执行或执行中时显示</div>
+        ${info.status==='skipped'||info.status==='pending' ?
+          '<div class="step-info-desc muted">本步骤尚未执行或被跳过，无可显示结果。</div>' :
+          (info.status==='running' ?
+            '<div class="step-info-desc">作业正在运行，详细实时输出请切换到 <code>日志流</code> tab。</div>' :
+            '<div class="step-info-desc">步骤已成功完成。详细产物、参数、指标请切换到对应 tab（产物 / 指标 / 血缘 / 元数据）查看。</div>')
+        }
+      </div>
+      <div class="step-info-block">
+        <h3>相关产物</h3>
+        <div class="step-info-desc">该步骤产生或消费的产物（来自 <span class="mono">artifacts.py:38-64</span>）</div>
+        <table style="margin-top:8px;font-size:12px">
+          <thead><tr><th>产物 id</th><th>路径</th><th>方向</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">${stage === 'train' ? 'run:cn-v1' : 'plan:critical-value'}</td><td class="mono small dim">${stage === 'train' ? 'runs/cn-v1/' : 'data/console/plan-critical-value.json'}</td><td><span class="status succeeded"><span class="dot"></span>out</span></td></tr>
+            <tr><td class="mono">dataset:critical-value/train</td><td class="mono small dim">data/critical-value/train.jsonl</td><td><span class="muted small">in</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  document.querySelectorAll('.pipe-node').forEach(node => {
+    node.addEventListener('click', () => {
+      showStepInfo(node.dataset.stage, node.dataset.stageCn);
+    });
+  });
+
+  // ===== Simulated SSE log stream =====
+  const log = document.getElementById('log');
+  let step = 1876;
+  setInterval(() => {
+    if (!log) return;
+    step++;
+    const loss = (0.04 + Math.random() * 0.01).toFixed(3);
+    const grad = (0.08 + Math.random() * 0.04).toFixed(2);
+    const ts = new Date().toLocaleTimeString();
+    const line = document.createElement('span');
+    line.className = 'ln';
+    line.innerHTML = `<span class="ts">${ts}</span> <span class="info">[step ${step}/1876] loss=${loss} grad_norm=${grad} lr=5.0e-5 (0:03)</span>`;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+    while (log.children.length > 60) log.removeChild(log.firstChild);
+  }, 1200);
+</script>
+
+</body>
+</html>
