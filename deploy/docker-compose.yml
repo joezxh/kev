@@ -1,0 +1,147 @@
+# ============================================================================
+# Kev — single-stack deploy (kev-server + kev-playground).
+#
+# One command brings everything up:
+#   docker compose -f deploy/docker-compose.yml up -d --build
+# (or run deploy/up.ps1 on Windows / deploy/up.sh on Linux).
+#
+# What runs:
+#   - kev-server   (build: deploy/Dockerfile.0.8B)  listens on 8008.
+#                  Serves the TypeSafe /v1/* inference API AND, on the SAME port,
+#                  the kev-console orchestration surface at /console/api (mounted
+#                  inside kev.serve — no separate container, no host 8790).
+#   - kev-playground (build: deploy/Dockerfile.playground) listens on 3030->3000.
+#                  Talks to kev-server ONLY through the in-network service name
+#                  http://kev-server:8008 — for both model calls (/kev/*) and the
+#                  console UI (/api/console/* -> /console/api). No host ports or
+#                  CORS between them.
+#
+# Model selection (kev-server):
+#   - default (Hub id):  jaredpalmer/kev-0.8b            (downloaded to HF cache volume)
+#   - local checkpoint:  KEV_RUN=/kev/runs/kev-0.8b-local (mount ./runs)
+#   - 4B instead of 0.8B: KEV_RUN=jaredpalmer/kev-4b      (or a local 4B run dir)
+# Set KEV_RUN on the `docker compose` command line / .env to switch.
+#
+# Only one stack should run at a time (it claims host ports 8008 and 3030 and the
+# kev-net bridge). `docker compose -f deploy/docker-compose.yml down` stops it.
+# ============================================================================
+
+services:
+  kev-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.0.8B
+      args:
+        PYTHON_IMAGE: "${PYTHON_IMAGE:-python:3.13-slim-bookworm}"
+        PIP_INDEX_URL: "${PIP_INDEX_URL:-}"
+    image: kev-server:latest
+    container_name: kev-server
+
+    ports:
+      - "8008:8008"
+
+    environment:
+      # ===== checkpoint (Hub id by default; set KEV_RUN to a local run dir) =====
+      - KEV_RUN=${KEV_RUN:-jaredpalmer/kev-0.8b}
+
+      # ===== serving knobs (all read by kev.serve) =====
+      - KEV_DTYPE=${KEV_DTYPE:-bf16}
+      - KEV_PREFIX_CACHE=${KEV_PREFIX_CACHE:-4}
+      - KEV_CUDA_GRAPHS=${KEV_CUDA_GRAPHS:-}
+      - KEV_FUSED=${KEV_FUSED:-}
+      - KEV_DATE_FACTS=${KEV_DATE_FACTS:-0}
+      - KEV_TRUNCATE_STATES=${KEV_TRUNCATE_STATES:-0}
+      - KEV_API_KEY=${KEV_API_KEY:-}
+      - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
+      - HF_HUB_DISABLE_XET=${HF_HUB_DISABLE_XET:-}
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}
+
+      # ===== console (mounted on this same container's 8008) =====
+      # console's kev proxy targets the server; 127.0.0.1:8008 inside this
+      # container is kev.serve itself, so no extra hop is needed.
+      - KEV_SERVE_URL=${KEV_SERVE_URL:-http://127.0.0.1:8008}
+      # persist the orchestration DB / artifacts under /kev/data (volume below).
+      # NOTE: KEV_CONSOLE_DB is a FILE PATH (sqlite), not a sqlalchemy URL.
+      - KEV_CONSOLE_DB=${KEV_CONSOLE_DB:-/kev/data/console/kev-console.db}
+
+    volumes:
+      - kev-hf-cache:/root/.cache/huggingface
+      - ./runs:/kev/runs
+      - kev-console-data:/kev/data
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,os,sys; req=urllib.request.Request('http://127.0.0.1:8008/v1/models', headers={'Authorization': 'Bearer ' + os.environ.get('KEV_API_KEY','')}); sys.exit(0 if urllib.request.urlopen(req, timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s
+
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "3"
+    networks:
+      - kev-net
+
+  # ----------------------------------------------------------------------------
+  # Playground: the Next.js demo UI (kev / chess / console tabs). It talks to
+  # kev-server only through the in-network hostname below — no host ports or CORS.
+  # /kev/* proxies to KEV_API; /api/console/* proxies to KEV_CONSOLE_API (both
+  # resolve to kev-server:8008, since console is mounted on the same port).
+  # ----------------------------------------------------------------------------
+  playground:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.playground
+      args:
+        NPM_REGISTRY: "${NPM_REGISTRY:-https://registry.npmmirror.com}"
+    image: kev-playground:latest
+    container_name: kev-playground
+
+    ports:
+      - "3030:3000"
+
+    environment:
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
+      - KEV_API=http://kev-server:8008
+      # console is mounted on kev-server:8008 -> same host, same port.
+      - KEV_CONSOLE_API=http://kev-server:8008/console/api
+
+    # Mount the repo's repowiki export so the /docs viewer has content at runtime.
+    volumes:
+      - ../.qoder/repowiki:/.qoder/repowiki:ro
+
+    depends_on:
+      kev-server:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "3"
+    networks:
+      - kev-net
+
+# Shared bridge network: compose resolves `kev-server` / `playground` by name.
+networks:
+  kev-net:
+    name: kev-net
+
+volumes:
+  kev-hf-cache:
+    name: kev-hf-cache
+  kev-console-data:
+    name: kev-console-data

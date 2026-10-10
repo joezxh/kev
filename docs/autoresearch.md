@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./autoresearch.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+  <a href="./autoresearch_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+</p>
+
 # Running an unattended research session
 
 This is the operating program for a research session that runs without a human watching: an overnight session, or a

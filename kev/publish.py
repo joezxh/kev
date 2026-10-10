@@ -39,7 +39,8 @@ def stale_layout(api, repo, revision, full):
     return sorted(f for f in files if other(f))
 
 
-def main():
+def parse_args(argv: list | None = None) -> argparse.Namespace:
+    """CLI entry's argparse block, extracted so main() can pass a Namespace to run() directly."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
     ap.add_argument("--repo", required=True, help="e.g. jaredpalmer/kev-0.5b")
@@ -49,8 +50,21 @@ def main():
     ap.add_argument("--tag", help="create this Hub tag on the uploaded commit (versioned release, e.g. v0.2)")
     ap.add_argument("--revision", help="upload to this branch instead of main (created if missing); for candidates that must not replace the released weights")
     ap.add_argument("--replace", action="store_true", help="delete every file of the target revision this upload does not carry, in the same commit (tag the previous version first)")
-    a = ap.parse_args()
+    return ap.parse_args(argv)
 
+
+def main():
+    a = parse_args()
+    return run(a)
+
+
+def run(a: argparse.Namespace) -> int:
+    """Pure-function entry point: takes a parsed Namespace, returns a process exit code.
+
+    The CLI entry is unchanged: `python -m kev.publish` still calls main() which now
+    returns run()'s int. The upload logic (layout check, symlinks for shards, README
+    frontmatter fill, the upload_folder call, optional tag) is the same as before.
+    """
     checkpoint, run_name = Checkpoint(a.run), os.path.basename(a.run.rstrip("/"))
     base, full = checkpoint.meta.base, checkpoint.full
     api = HfApi()
@@ -100,7 +114,8 @@ def main():
         if a.tag:
             api.create_tag(a.repo, tag=a.tag, repo_type="model", tag_message=msg, exist_ok=False, revision=a.revision)
             print(f"tagged {a.repo}@{a.tag}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

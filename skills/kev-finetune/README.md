@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./README.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+  <a href="./README_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+</p>
+
 # kev-finetune
 
 Fine-tune an open Jev-style decision model on your own questions, get calibrated probabilities, and serve it as a
@@ -61,6 +66,7 @@ scripts/plan_size.py          how many records for a significant comparison; pos
 scripts/split_data.py         validate + split by state (optional real holdout)
 scripts/kev_modal.py          Modal app: validate, train, evaluate, compare, pull, publish, teardown, Serve
 references/                   data-format, data-generation, hill-climbing, deploy
+references/*_CN.md            Simplified Chinese translations of those four (index in README_CN.md)
 assets/workload.example.json  a complete spec to copy
 ```
 

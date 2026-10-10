@@ -2,24 +2,38 @@
 // the position (board, FEN, history) is the state. A Score question rates the position in the same pass.
 import { Chess, type Move } from "chess.js";
 import { api, type SystemOneRequest, type SystemOneResponse } from "@/lib/kev";
+import type { Lang } from "@/lib/i18n";
 
-export const PIECE_NAMES: Record<string, string> = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
-export const EVAL_LEVELS = ["Black is clearly winning", "Black is better", "Roughly equal", "White is better", "White is clearly winning"];
+const PIECE_NAMES: Record<Lang, Record<string, string>> = {
+  en: { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" },
+  zh: { p: "兵", n: "马", b: "象", r: "车", q: "后", k: "王" },
+};
 
-export function describeMove(m: Move): string {
-  const parts = [`${PIECE_NAMES[m.piece]} ${m.from} to ${m.to}`];
-  if (m.captured) parts.push(`captures ${PIECE_NAMES[m.captured]}`);
-  if (m.promotion) parts.push(`promotes to ${PIECE_NAMES[m.promotion]}`);
-  if (m.flags.includes("k") || m.flags.includes("q")) parts[0] = m.flags.includes("k") ? "castles kingside" : "castles queenside";
-  if (m.san.endsWith("#")) parts.push("checkmate");
-  else if (m.san.endsWith("+")) parts.push("gives check");
+export function evalLevels(lang: Lang): string[] {
+  return lang === "zh"
+    ? ["黑方明显占优", "黑方略优", "大致均势", "白方略优", "白方明显占优"]
+    : ["Black is clearly winning", "Black is better", "Roughly equal", "White is better", "White is clearly winning"];
+}
+
+export function sideLabel(lang: Lang, turn: "w" | "b"): string {
+  return lang === "zh" ? (turn === "w" ? "白方" : "黑方") : (turn === "w" ? "White" : "Black");
+}
+
+export function describeMove(m: Move, lang: Lang): string {
+  const PN = PIECE_NAMES[lang];
+  const parts = [`${PN[m.piece]} ${m.from} to ${m.to}`];
+  if (m.captured) parts.push(`captures ${PN[m.captured]}`);
+  if (m.promotion) parts.push(`promotes to ${PN[m.promotion]}`);
+  if (m.flags.includes("k") || m.flags.includes("q")) parts[0] = m.flags.includes("k") ? (lang === "zh" ? "王翼易位" : "castles kingside") : (lang === "zh" ? "后翼易位" : "castles queenside");
+  if (m.san.endsWith("#")) parts.push(lang === "zh" ? "将死" : "checkmate");
+  else if (m.san.endsWith("+")) parts.push(lang === "zh" ? "将军" : "gives check");
   return parts.join(", ");
 }
 
-export function positionState(chess: Chess) {
-  const side = chess.turn() === "w" ? "White" : "Black";
+export function positionState(chess: Chess, lang: Lang = "en") {
+  const side = sideLabel(lang, chess.turn());
   const history = chess.history();
-  const moves = history.length ? history.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${m}` : m)).join(" ") : "(game start)";
+  const moves = history.length ? history.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${m}` : m)).join(" ") : (lang === "zh" ? "（对局开始）" : "(game start)");
   return {
     game: "chess",
     side_to_move: side,
@@ -30,26 +44,30 @@ export function positionState(chess: Chess) {
   };
 }
 
-export function buildRequest(chess: Chess): { req: SystemOneRequest; legal: Move[] } {
+export function buildRequest(chess: Chess, lang: Lang = "en"): { req: SystemOneRequest; legal: Move[] } {
   const legal = chess.moves({ verbose: true });
-  const side = chess.turn() === "w" ? "White" : "Black";
+  const side = sideLabel(lang, chess.turn());
+  const moveInstruction = lang === "zh"
+    ? `你执${side}。请为${side}选择当前局面下的最佳合法走法。优先吃掉无保护的子、能赢子的将军，以及向中心发展的走子。`
+    : `You are playing ${side}. Choose the best legal move for ${side} in this position. Prefer captures of undefended pieces, checks that win material, and moves that develop pieces toward the center.`;
+  const evalInstruction = lang === "zh" ? "在走子之前，当前局势谁占优？" : "Who is better in this position, before the move is played?";
   const criteria: Record<string, string> = {};
-  for (const m of legal) criteria[m.san] = describeMove(m);
+  for (const m of legal) criteria[m.san] = describeMove(m, lang);
   return {
     legal,
     req: {
-      state: positionState(chess),
+      state: positionState(chess, lang),
       model: "kev-latest",
       questions: {
         move: {
           type: "choice",
-          instructions: `You are playing ${side}. Choose the best legal move for ${side} in this position. Prefer captures of undefended pieces, checks that win material, and moves that develop pieces toward the center.`,
+          instructions: moveInstruction,
           criteria,
         },
         evaluation: {
           type: "score",
-          instructions: "Who is better in this position, before the move is played?",
-          criteria: EVAL_LEVELS,
+          instructions: evalInstruction,
+          criteria: evalLevels(lang),
         },
       },
     },
@@ -68,8 +86,8 @@ export type ModelMove = {
   n_legal: number;
 };
 
-export async function askModel(chess: Chess, sample = false): Promise<ModelMove> {
-  const { req, legal } = buildRequest(chess);
+export async function askModel(chess: Chess, sample = false, lang: Lang = "en"): Promise<ModelMove> {
+  const { req, legal } = buildRequest(chess, lang);
   const r: SystemOneResponse = await api.systemOne(req);
   const a = r.answers.move;
   const e = r.answers.evaluation;

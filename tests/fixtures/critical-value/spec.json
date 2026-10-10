@@ -1,0 +1,606 @@
+{
+  "name": "critical-value",
+  "domain": "医院检验科与影像科报告复核。检验项目包括血钾、血钠、空腹血糖、肌酐、尿素氮、血气 pH、血红蛋白、血小板计数、白细胞计数、肌钙蛋白、D-二聚体。报告为中文，关键缩写与英文项目名混排（K+、Na+、GLU、Cr、pH、Hb、PLT、WBC、cTn、D-Dimer）。患者为门诊与住院混合，含成人、孕产妇与儿童。",
+  "state": "一份已出具的检验或影像报告的结构化摘要：患者年龄性别、临床背景主诉（1 句）、检验项目名称与实测值（含单位）、是否含参考区间、以及报告是否遗漏了判读所需的患者信息（年龄/采样时间/单位）。不含医生结论。",
+  "state_example": {
+    "patient": "female 67",
+    "context": "胸闷 3 天，血压 168/95 mmHg，既往 2 型糖尿病",
+    "labs": {
+      "K+": "2.9 mmol/L",
+      "Na+": "141 mmol/L",
+      "GLU": "9.8 mmol/L",
+      "Cr": "96 umol/L",
+      "pH": "7.36",
+      "Hb": "132 g/L",
+      "PLT": "213 x10^9/L",
+      "WBC": "6.4 x10^9/L"
+    },
+    "ref_ranges_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "is_critical": {
+      "type": "noul",
+      "instructions": "该报告中的任一检验项目是否触及危急值（需要立即临床干预）？",
+      "criteria": {
+        "true": "至少一个项目超出危急值上下限，需要立即通知并干预",
+        "false": "所有项目均在危急值范围内"
+      }
+    },
+    "notify_within": {
+      "type": "score",
+      "instructions": "危急值应在多长时间内通知到主管医师？",
+      "criteria": [
+        "立即（15 分钟内）",
+        "1 小时内",
+        "当日内",
+        "无需通知（全部项目均未触及危急值）"
+      ]
+    },
+    "critical_item": {
+      "type": "choice",
+      "instructions": "触发危急值判定的是哪一类检验项目？",
+      "criteria": {
+        "none": "无（全部项目均未触及危急值）",
+        "electrolyte": "电解质（血钾 K+、血钠 Na+）",
+        "renal": "肾功能（肌酐 Cr、尿素氮）",
+        "glucose_gas": "血糖与血气（血糖 GLU、血气 pH）",
+        "cbc": "血常规（血红蛋白 Hb、血小板 PLT、白细胞 WBC）",
+        "cardiac_coag": "心肌与凝血（肌钙蛋白 cTn、D-二聚体）"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "报告是否提供了判定危急值所需的全部要素（项目名、数值、单位、参考区间或判定标准）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照阈值判定",
+        "false": "缺少单位、参考区间或项目名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "危急值是本场景唯一判据：任一项目超出下表上下限即为 is_critical=true，label 取导致判定的那个项目。阈值（示例口径，实际以本院检验科危急值清单为准）：K+ <2.8 或 >6.2 mmol/L；Na+ <120 或 >160 mmol/L；GLU <2.8 或 >16.7 mmol/L；Cr >442 umol/L；pH <7.20 或 >7.60；Hb <50 或 >200 g/L；PLT <30 或 >1000 x10^9/L；WBC <1.5 或 >30 x10^9/L；cTn >0.04 ng/mL；D-Dimer >5 mg/L FEU。notify_within 由触发的项目决定，等级从 0（立即）到 3（当日内）：立即 15 分钟内适用于 K+>6.5、Na+>160 或 <120、pH<7.20、GLU>16.7 或 <2.8、cTn 升高伴胸痛、Hb<50；1 小时内的项目包括 K+ 在 2.8-3.0 或 6.2-6.5、Cr 在 442-600、PLT 在 30-50、Hb 在 50-70；其余触及危急值但未落入上述区间的为 2 小时内；仅 D-Dimer 孤立升高或 WBC 轻度异常为当日内。多个项目同时危急时 severity 取最快的一档，critical_item 取最快档中的项目。evidence_sufficient 为 false 时（缺单位、缺参考区间、缺项目名），is_critical 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 critical_item 不得凭猜测填写——证据不足即无把握。cr 阈值受年龄与性别影响很大，生成老年女性样本时 Cr 需明显更高才判危急，务必让数值与年龄方向一致。",
+  "variety": [
+    "科室来源：检验科、影像科、急诊、住院病房、门诊、体检中心",
+    "危急值项目数（对应 is_critical 与 critical_item）：0 项全部正常、1 项触及、2 项同时触及、3 项以上同时触及、同一项目高低双侧都触及（如 K+ 同时 <2.8 且 >6.2 不可能，须只取真实方向）",
+    "触发项目的六类归属（critical_item 逐项覆盖）：electrolyte（K+、Na+）、renal（Cr、尿素氮）、glucose_gas（GLU、pH）、cbc（Hb、PLT、WBC）、cardiac_coag（cTn、D-Dimer）、none（全部正常）",
+    "电解质取值档（须与阈值方向一致）：K+ 正常 3.5-5.0 / 偏低 2.8-3.0 / 危急低 <2.8 / 偏高 6.2-6.5 / 危急高 >6.5；Na+ 正常 135-145 / 危急低 <120 / 危急高 >160",
+    "肾功能与代谢取值档：Cr 正常 44-106 / 危急 442-600 / >600（老年女性基线更高，需明显更高才判危急）；GLU 正常 3.9-6.1 / 危急低 <2.8 / 危急高 >16.7；pH 正常 7.35-7.45 / 7.20-7.35 / <7.20 / >7.60",
+    "血常规与心肌凝血取值档：Hb 正常 115-150 / 50-70 / <50；PLT 正常 125-350 / 30-50 / <30；WBC 正常 3.5-9.5 / 1.5-3.0 / <1.5 / >30；cTn <0.04 正常 / 0.04-0.1 升高 / >0.1 明显升高；D-Dimer <0.5 正常 / 0.5-5 升高 / >5 mg/L FEU",
+    "通知时长档（notify_within 四档全覆盖）：0 立即（K+>6.5、Na+>160 或 <120、pH<7.20、GLU>16.7 或 <2.8、Hb<50）/ 1 小时内（K+ 2.8-3.0 或 6.2-6.5、Cr 442-600、PLT 30-50、Hb 50-70）/ 2 小时内（其余触及危急值项目）/ 3 当日内（孤立 D-Dimer 升高、WBC 轻度异常）",
+    "报告完整度（对应 evidence_sufficient）：要素齐全、缺单位、缺参考区间、缺项目名、缺采样时间、缺患者年龄、两项以上同时缺失；evidence_sufficient=false 时 is_critical 必须用软标签且 critical_item 不得凭猜测填写",
+    "患者人群：成人、儿童、孕产妇、老年（Cr 基线高）、肾功能不全者、透析患者",
+    "临床背景：胸痛、呼吸困难、乏力、头晕、恶心呕吐、无明显症状（体检偶然发现）",
+    "数值表述：带单位（mmol/L、g/L、x10^9/L、ng/mL、mg/L FEU）、仅给数值无单位、中文叙述夹英文缩写（K+、Cr、cTn、D-Dimer）、参考区间与实测值并列",
+    "易错陷阱：老年女性 Cr 需明显高于 442 才判危急、儿童 Cr 基线低更易达危急、Hb 与 PLT 同时低下时不得只取其一、cTn 升高需结合胸痛才落在「立即」档"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "K+",
+        "unit": "mmol/L",
+        "decimals": 1,
+        "normal": [
+          3.5,
+          5.3
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              2.8
+            ]
+          ],
+          "high": [
+            [
+              6.2,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "electrolyte"
+      },
+      {
+        "name": "Na+",
+        "unit": "mmol/L",
+        "decimals": 1,
+        "normal": [
+          137.0,
+          147.0
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              120.0
+            ]
+          ],
+          "high": [
+            [
+              160.0,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "electrolyte"
+      },
+      {
+        "name": "GLU",
+        "unit": "mmol/L",
+        "decimals": 1,
+        "normal": [
+          3.9,
+          6.1
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              2.8
+            ]
+          ],
+          "high": [
+            [
+              16.7,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "glucose_gas"
+      },
+      {
+        "name": "Cr",
+        "unit": "umol/L",
+        "decimals": 1,
+        "normal": [
+          44.0,
+          106.0
+        ],
+        "critical": {
+          "low": [],
+          "high": [
+            [
+              442.0,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "renal"
+      },
+      {
+        "name": "pH",
+        "unit": "",
+        "decimals": 2,
+        "normal": [
+          7.35,
+          7.45
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              7.2
+            ]
+          ],
+          "high": [
+            [
+              7.6,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "glucose_gas"
+      },
+      {
+        "name": "Hb",
+        "unit": "g/L",
+        "decimals": 1,
+        "normal": [
+          115.0,
+          175.0
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              50.0
+            ]
+          ],
+          "high": [
+            [
+              200.0,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "cbc"
+      },
+      {
+        "name": "PLT",
+        "unit": "x10^9/L",
+        "decimals": 1,
+        "normal": [
+          125.0,
+          350.0
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              30.0
+            ]
+          ],
+          "high": [
+            [
+              1000.0,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "cbc"
+      },
+      {
+        "name": "WBC",
+        "unit": "x10^9/L",
+        "decimals": 1,
+        "normal": [
+          3.5,
+          9.5
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              1.5
+            ]
+          ],
+          "high": [
+            [
+              30.0,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "cbc"
+      },
+      {
+        "name": "cTn",
+        "unit": "ng/mL",
+        "decimals": 3,
+        "normal": [
+          0.0,
+          0.04
+        ],
+        "critical": {
+          "low": [],
+          "high": [
+            [
+              0.04,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "cardiac_coag"
+      },
+      {
+        "name": "D-Dimer",
+        "unit": "mg/L FEU",
+        "decimals": 3,
+        "normal": [
+          0.0,
+          0.5
+        ],
+        "critical": {
+          "low": [],
+          "high": [
+            [
+              5.0,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "cardiac_coag"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6,
+        "weight_normal": 1.0,
+        "weight_trigger_extra": 0.35,
+        "max_trigger_extra": 2,
+        "max_trigger_tier_drift": 0
+      }
+    ],
+    "categories": {
+      "electrolyte": [
+        "K+",
+        "Na+"
+      ],
+      "renal": [
+        "Cr"
+      ],
+      "glucose_gas": [
+        "GLU",
+        "pH"
+      ],
+      "cbc": [
+        "Hb",
+        "PLT",
+        "WBC"
+      ],
+      "cardiac_coag": [
+        "cTn",
+        "D-Dimer"
+      ]
+    },
+    "tier_windows": {
+      "0": {
+        "K+": [
+          [
+            6.5,
+            9.0
+          ]
+        ],
+        "Na+": [
+          [
+            160.1,
+            175.0
+          ],
+          [
+            105.0,
+            119.9
+          ]
+        ],
+        "pH": [
+          [
+            6.8,
+            7.19
+          ],
+          [
+            7.61,
+            7.9
+          ]
+        ],
+        "GLU": [
+          [
+            16.7,
+            30.0
+          ],
+          [
+            1.5,
+            2.79
+          ]
+        ],
+        "cTn": [
+          [
+            0.04,
+            0.4
+          ]
+        ],
+        "Hb": [
+          [
+            30.0,
+            49.9
+          ]
+        ]
+      },
+      "1": {
+        "K+": [
+          [
+            6.21,
+            6.5
+          ]
+        ],
+        "Cr": [
+          [
+            442.1,
+            900.0
+          ]
+        ],
+        "PLT": [
+          [
+            5.0,
+            29.9
+          ],
+          [
+            1000.1,
+            1500.0
+          ]
+        ],
+        "Hb": [
+          [
+            200.1,
+            260.0
+          ]
+        ]
+      },
+      "2": {
+        "WBC": [
+          [
+            30.1,
+            60.0
+          ],
+          [
+            0.3,
+            1.4
+          ]
+        ],
+        "D-Dimer": [
+          [
+            5.1,
+            20.0
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "胸闷 3 天，血压 168/95 mmHg，既往 2 型糖尿病",
+      "体检发现血钾升高，无明显不适",
+      "慢性肾病随访，本次复查",
+      "上腹绞痛伴恶心 6 小时",
+      "术前常规筛查",
+      "发热 3 天，抗感染治疗中",
+      "胸骨后压榨样疼痛 2 小时，含服硝酸酯后缓解",
+      "心悸、乏力 1 周",
+      "妊娠 34 周产检",
+      "移植术后第 3 天"
+    ],
+    "patients": [
+      "male 67",
+      "female 58",
+      "male 45",
+      "female 72",
+      "female 29",
+      "male 8",
+      "female 66",
+      "male 3"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "is_critical",
+            "value": false
+          },
+          {
+            "label": "notify_within",
+            "value": 3
+          },
+          {
+            "label": "critical_item",
+            "value": "none"
+          },
+          {
+            "label": "evidence_sufficient",
+            "value": true
+          }
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "is_critical",
+            "value": true
+          },
+          {
+            "label": "notify_within",
+            "value": "min_tier(state, fields, tier_windows)"
+          },
+          {
+            "label": "critical_item",
+            "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"
+          },
+          {
+            "label": "evidence_sufficient",
+            "value": true
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": [
+          "unit",
+          "reference_range"
+        ],
+        "question": "is_critical",
+        "soft_target": {
+          "true": 0.5,
+          "false": 0.5
+        },
+        "force_label": {
+          "evidence_sufficient": "false"
+        }
+      },
+      "minimal_pair": {
+        "rate": 0.0,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "renal": {
+          "share": 0.35,
+          "quota": 55,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "glucose_gas": {
+          "share": 0.35,
+          "quota": 55,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "electrolyte": {
+          "share": 0.35,
+          "quota": 55,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 0.5
+            },
+            {
+              "tier": 1,
+              "weight": 0.5
+            }
+          ]
+        },
+        "cardiac_coag": {
+          "share": 0.35,
+          "quota": 55,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 0.5
+            },
+            {
+              "tier": 2,
+              "weight": 0.5
+            }
+          ]
+        },
+        "cbc": {
+          "share": 0.35,
+          "quota": 55,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 0.34
+            },
+            {
+              "tier": 1,
+              "weight": 0.33
+            },
+            {
+              "tier": 2,
+              "weight": 0.33
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "K+": "electrolyte",
+      "Na+": "electrolyte",
+      "Cr": "renal",
+      "GLU": "glucose_gas",
+      "pH": "glucose_gas",
+      "Hb": "cbc",
+      "PLT": "cbc",
+      "WBC": "cbc",
+      "cTn": "cardiac_coag",
+      "D-Dimer": "cardiac_coag"
+    }
+  }
+}

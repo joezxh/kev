@@ -1,0 +1,215 @@
+{
+  "name": "triage",
+  "domain": "医院门诊与互联网医院的导诊分诊。输入为患者自述或接线员记录的中文主诉，涵盖发热、咳嗽、腹痛、胸闷胸痛、头晕头痛、关节痛、皮疹、创伤、孕产、下泌尿道症状、儿童发热等。场景含线下门诊挂号导诊与线上问诊分诊两类。",
+  "state": "一位患者就诊意图的结构化摘要：年龄性别、就诊方式、主诉（患者原话或接线员记录，1-3 句，混合口语化表达与医学术语）、症状持续时间、伴随症状列表、基础疾病与用药、生命体征数值（若已知）、有无急症红旗征象描述。字段值为中文叙述。",
+  "state_example": {
+    "patient": "male 58",
+    "channel": "线下门诊导诊台",
+    "chief_complaint": "胸口压着难受，走了两条路就喘不上气，晚上睡不平",
+    "duration": "3 天",
+    "accompanying": ["活动后气促", "夜间不能平卧", "出汗"],
+    "history": ["高血压 10 年", "长期吸烟"],
+    "vitals": "BP 165/98 mmHg, HR 96 bpm, SpO2 94%",
+    "red_flags": "无晕厥、无剧烈持续胸痛"
+  },
+  "questions": {
+    "department": {
+      "type": "choice",
+      "instructions": "这位患者应该首先挂哪个科室？",
+      "criteria": {
+        "general_medicine": "内科（普通内科）",
+        "cardiology": "心血管内科",
+        "respiratory": "呼吸内科",
+        "gastroenterology": "消化内科",
+        "neurology": "神经内科",
+        "orthopedics": "骨科",
+        "dermatology": "皮肤科",
+        "urology": "泌尿外科",
+        "obstetrics_gynecology": "妇产科",
+        "pediatrics": "儿科",
+        "emergency": "急诊科",
+        "ophthalmology": "眼科",
+        "ent": "耳鼻咽喉科",
+        "endocrinology": "内分泌科"
+      }
+    },
+    "immediate_human": {
+      "type": "noul",
+      "instructions": "这位患者是否应当立即由人工分诊员介入（而不是直接指引其自行挂号）？",
+      "criteria": {
+        "true": "存在急症或高危信号，需人工立即介入",
+        "false": "可按指引自行挂号"
+      }
+    },
+    "acuity": {
+      "type": "score",
+      "instructions": "该患者情况的紧急程度如何？",
+      "criteria": [
+        "0 = 非紧急（可择期就诊）",
+        "1 = 亚急性（数日内就诊）",
+        "2 = 急性（当日就诊）"
+      ]
+    },
+    "red_flag": {
+      "type": "noul",
+      "instructions": "是否存在需要立即急诊处理的红旗征象（胸痛、意识改变、大出血、呼吸困难、剧烈头痛伴呕吐、持续高热惊厥、孕产出血等）？"
+    }
+  },
+  "guidance": "department 是患者应当首先挂的科室，不是所有相关科室。多症状共存时按以下优先级归属：任何红旗征象一律先判 emergency（覆盖其他一切科室规则），其次看主诉对应的系统；主诉同时涉及两个系统时，取更紧急或更专科化的那个——胸闷/心悸/活动后气促/水肿/血压极高判 cardiology 而非 general_medicine；咳嗽咳痰/气喘/发热伴呼吸道症状判 respiratory；腹痛按部位（上腹、右上腹、脐周、下腹）分别对应 gastroenterology、hepatology 类或 general_medicine、妇科；眩晕/肢体麻木无力/言语不清判 neurology；外伤/骨折/关节肿痛判 orthopedics；皮疹/瘙痒/皮损判 dermatology；尿频尿急尿痛、血尿、肾绞痛判 urology；孕产相关（停经、阴道流血、孕期不适、产检）判 obstetrics_gynecology；14 岁以下且以发热、咳嗽、腹泻、呕吐为主诉判 pediatrics（除非有明确红旗征象，则 emergency 优先）。immediate_human 为 true 当且仅当 red_flag 为 true，或存在以下高危信号：胸痛/胸闷伴出汗与气促、意识改变或晕厥、咯血或呕血、黑便、剧烈头痛伴喷射性呕吐、持续高热 >3 天伴精神萎靡、呼吸困难（SpO2<94% 或说话不能成句）、婴幼儿高热惊厥、孕期阴道流血或腹痛。acuity 与 red_flag 联动：red_flag 为 true 时 acuity 必须为 2；immediate_human 为 true 但无红旗时 acuity 为 2；可择期就诊（如复诊、慢病随访、常规体检咨询）为 0；数日内需就诊为 1。acuity=0 的样本必须 immediate_human=false。红旗征象必须由主诉或生命体征明确支持，模型不得凭科室归属反推红旗。",
+  "variety": [
+    "14 个科室的典型主诉（department 每一选项都须覆盖）：general_medicine（乏力、发热待查、慢病开药）、cardiology（胸闷胸痛、心悸、活动后气促、下肢水肿、血压极高）、respiratory（咳嗽咳痰、气喘、咯血、呼吸困难）、gastroenterology（上腹痛、烧心反酸、呕吐腹泻）、neurology（眩晕、头痛、肢体麻木无力、言语不清、意识改变）、orthopedics（外伤、骨折、关节肿痛、腰腿痛、行走困难）、dermatology（皮疹、瘙痒、皮损、脱发）、urology（尿频尿急尿痛、血尿、肾绞痛、排尿困难）、obstetrics_gynecology（停经、阴道流血、孕期不适、产检、妇科下腹痛）、pediatrics（14 岁以下以发热/咳嗽/腹泻/呕吐为主诉）、emergency（任何红旗征象、严重外伤、中毒、溺水、窒息）、ophthalmology（视物模糊、眼痛、飞蚊、视野缺损）、ent（鼻塞流涕、咽痛、耳鸣、鼻出血、吞咽困难）、endocrinology（多饮多尿、体重改变、怕冷乏力、血糖异常、甲状腺肿）",
+    "红旗征象（red_flag 与 immediate_human 的触发源，须逐项覆盖）：胸痛、意识改变或晕厥、大出血（呕血/黑便/阴道流血）、呼吸困难（SpO2<94% 或说话不能成句）、剧烈头痛伴喷射性呕吐、持续高热 >3 天伴精神萎靡、婴幼儿高热惊厥、孕产出血或腹痛、咯血",
+    "紧急度档（acuity 三档全覆盖）：0 非紧急可择期（复诊、慢病随访、常规体检咨询，且 immediate_human=false）、1 亚急性需数日内就诊、2 急性需当日就诊（red_flag=true 时必须为 2）",
+    "特殊人群：婴幼儿、儿童、青少年、成人、老年、孕产妇、哺乳期女性",
+    "就诊渠道：线下门诊导诊台、互联网医院图文问诊、电话分诊、自助机、基层转诊",
+    "主诉风格与长度：一句话、三句话、大量口语与方言、完全口语化、夹医学术语、患者自述与护士记录混合",
+    "一主诉跨多科室（须按优先级仲裁而非罗列全部）：胸闷伴气促与出汗（cardiology 优先于 general_medicine）、腹痛按部位区分（上腹/右上腹/脐周/下腹）、眩晕伴恶心（neurology）、发热伴咳嗽（14 岁以下判 pediatrics）",
+    "生命体征：已测且正常、已测且异常、未知（多数线上场景缺失）、SpO2 下降、血压极高、心率过速",
+    "既往史：无特殊病史、慢病多病共存、术后、肿瘤治疗中、长期服药、孕产史",
+    "边界情形：罕见科室主诉、单症状可挂多科而无明确指向（判 general_medicine）、症状已缓解但要求复查、明确要求指定某科室"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "胸痛", "category": "cardiology", "department": "cardiology", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "胸闷", "category": "cardiology", "department": "cardiology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "心悸", "category": "cardiology", "department": "cardiology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "活动后气促", "category": "cardiology", "department": "cardiology", "red_flag": false, "human_review": true, "acuity_base": 2},
+      {"name": "下肢水肿", "category": "cardiology", "department": "cardiology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "血压很高", "category": "cardiology", "department": "cardiology", "red_flag": false, "human_review": true, "acuity_base": 2},
+      {"name": "咳嗽", "category": "respiratory", "department": "respiratory", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "咳痰", "category": "respiratory", "department": "respiratory", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "气喘", "category": "respiratory", "department": "respiratory", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "呼吸困难", "category": "respiratory", "department": "respiratory", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "喘不过气", "category": "respiratory", "department": "respiratory", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "发热", "category": "respiratory", "department": "respiratory", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "腹痛", "category": "gastroenterology", "department": "gastroenterology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "上腹隐痛", "category": "gastroenterology", "department": "gastroenterology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "反酸烧心", "category": "gastroenterology", "department": "gastroenterology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "腹泻", "category": "gastroenterology", "department": "gastroenterology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "便秘", "category": "gastroenterology", "department": "gastroenterology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "呕血黑便", "category": "gastroenterology", "department": "gastroenterology", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "头晕", "category": "neurology", "department": "neurology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "头痛", "category": "neurology", "department": "neurology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "肢体麻木", "category": "neurology", "department": "neurology", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "言语不清", "category": "neurology", "department": "neurology", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "意识不清", "category": "neurology", "department": "neurology", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "晕厥", "category": "neurology", "department": "neurology", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "喷射性呕吐", "category": "neurology", "department": "neurology", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "关节痛", "category": "orthopedics", "department": "orthopedics", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "外伤", "category": "orthopedics", "department": "orthopedics", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "腰痛", "category": "orthopedics", "department": "orthopedics", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "行走困难", "category": "orthopedics", "department": "orthopedics", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "皮疹", "category": "dermatology", "department": "dermatology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "瘙痒", "category": "dermatology", "department": "dermatology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "皮肤红肿", "category": "dermatology", "department": "dermatology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "尿频尿急", "category": "urology", "department": "urology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "尿痛", "category": "urology", "department": "urology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "血尿", "category": "urology", "department": "urology", "red_flag": false, "human_review": true, "acuity_base": 1},
+      {"name": "肾绞痛", "category": "urology", "department": "urology", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "停经", "category": "obstetrics_gynecology", "department": "obstetrics_gynecology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "阴道流血", "category": "obstetrics_gynecology", "department": "obstetrics_gynecology", "red_flag": false, "human_review": true, "acuity_base": 1},
+      {"name": "孕期不适", "category": "obstetrics_gynecology", "department": "obstetrics_gynecology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "产检", "category": "obstetrics_gynecology", "department": "obstetrics_gynecology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "视物模糊", "category": "ophthalmology", "department": "ophthalmology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "眼红眼痛", "category": "ophthalmology", "department": "ophthalmology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "鼻塞流涕", "category": "ent", "department": "ent", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "咽痛", "category": "ent", "department": "ent", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "耳鸣", "category": "ent", "department": "ent", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "多饮多尿", "category": "endocrinology", "department": "endocrinology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "体重明显下降", "category": "endocrinology", "department": "endocrinology", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "怕冷乏力", "category": "endocrinology", "department": "endocrinology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "发热咳嗽", "category": "respiratory", "department": "respiratory", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "腹痛腹泻", "category": "gastroenterology", "department": "gastroenterology", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "乏力纳差", "category": "general_medicine", "department": "general_medicine", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "反复低热待查", "category": "general_medicine", "department": "general_medicine", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "常规复诊", "category": "general_medicine", "department": "general_medicine", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "头晕乏力", "category": "general_medicine", "department": "general_medicine", "red_flag": false, "human_review": false, "acuity_base": 0},
+      {"name": "儿童发热", "category": "pediatrics", "department": "pediatrics", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "小儿呕吐", "category": "pediatrics", "department": "pediatrics", "red_flag": false, "human_review": false, "acuity_base": 1},
+      {"name": "高热惊厥", "category": "pediatrics", "department": "pediatrics", "red_flag": true, "human_review": true, "acuity_base": 2},
+      {"name": "儿童咳嗽", "category": "pediatrics", "department": "pediatrics", "red_flag": false, "human_review": false, "acuity_base": 0}
+    ],
+    "selectors": [
+      {"min": 1, "max": 1, "weight_normal": 1.0, "weight_trigger_extra": 0.0, "max_trigger_extra": 0, "max_trigger_tier_drift": 0}
+    ],
+    "categories": {
+      "cardiology": ["胸痛", "胸闷", "心悸", "活动后气促", "下肢水肿", "血压很高"],
+      "respiratory": ["咳嗽", "咳痰", "气喘", "呼吸困难", "喘不过气", "发热", "发热咳嗽"],
+      "gastroenterology": ["腹痛", "上腹隐痛", "反酸烧心", "腹泻", "便秘", "呕血黑便", "腹痛腹泻"],
+      "neurology": ["头晕", "头痛", "肢体麻木", "言语不清", "意识不清", "晕厥", "喷射性呕吐"],
+      "orthopedics": ["关节痛", "外伤", "腰痛", "行走困难"],
+      "dermatology": ["皮疹", "瘙痒", "皮肤红肿"],
+      "urology": ["尿频尿急", "尿痛", "血尿", "肾绞痛"],
+      "obstetrics_gynecology": ["停经", "阴道流血", "孕期不适", "产检"],
+      "ophthalmology": ["视物模糊", "眼红眼痛"],
+      "ent": ["鼻塞流涕", "咽痛", "耳鸣"],
+      "endocrinology": ["多饮多尿", "体重明显下降", "怕冷乏力"],
+      "general_medicine": ["乏力纳差", "反复低热待查", "常规复诊", "头晕乏力"],
+      "pediatrics": ["儿童发热", "小儿呕吐", "高热惊厥", "儿童咳嗽"],
+      "emergency": ["胸痛", "气喘", "呼吸困难", "喘不过气", "呕血黑便", "肢体麻木", "言语不清", "意识不清", "晕厥", "喷射性呕吐", "肾绞痛", "高热惊厥"]
+    },
+    "pediatric_keywords": ["发热", "咳嗽", "腹泻", "呕吐", "儿童发热", "小儿呕吐", "儿童咳嗽"],
+    "tier_windows": {},
+    "contexts": [],
+    "patients": [
+      "male 67", "female 58", "male 45", "female 72", "female 29", "male 8", "female 66", "male 3"
+    ],
+    "rules": [
+      {
+        "when": "red_flag_wins(state['symptoms'])",
+        "then": [
+          {"label": "department", "value": "emergency"},
+          {"label": "immediate_human", "value": true},
+          {"label": "acuity", "value": 2},
+          {"label": "red_flag", "value": true}
+        ]
+      },
+      {
+        "when": "pediatric_short_circuit(state['symptoms'], state['age'])",
+        "then": [
+          {"label": "department", "value": "pediatrics"},
+          {"label": "immediate_human", "value": false},
+          {"label": "acuity", "value": "max([s['acuity_base'] for s in state['symptoms']])"},
+          {"label": "red_flag", "value": false}
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {"label": "department", "value": "department_lookup(state['symptoms'])"},
+          {"label": "immediate_human", "value": "human_review_lookup(state['symptoms']) or acuity_lookup(state['symptoms']) >= 2"},
+          {"label": "acuity", "value": "acuity_lookup(state['symptoms'])"},
+          {"label": "red_flag", "value": false}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.0,
+        "fields": ["vitals"],
+        "question": "immediate_human",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {}
+      },
+      "minimal_pair": {"rate": 0.35, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "custom": "round_robin",
+      "round_robin": {
+        "period": 20,
+        "slots": [
+          {"slot": [0, 1], "target": "emergency"},
+          {"slot": [2, 3], "target": "conflict"},
+          {"slot": [4, 19], "target": "department_index", "stride": 2}
+        ],
+        "department_index_order": [
+          "cardiology", "respiratory", "gastroenterology", "neurology",
+          "orthopedics", "dermatology", "urology", "obstetrics_gynecology",
+          "ophthalmology", "ent", "endocrinology", "general_medicine",
+          "pediatrics", "obstetrics_gynecology"
+        ]
+      }
+    },
+    "panel_category": {}
+  }
+}

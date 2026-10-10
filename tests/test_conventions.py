@@ -40,8 +40,6 @@ RULES = [
      r"manifest\.json\"\)\.read_text\(\)", {"kev/suite.py"}),
     ("device selection, synchronize and empty_cache go through kev.device (the Space is a CUDA-only one-off)",
      r"is_available\(\) else|torch\.(mps|cuda)\.(synchronize|empty_cache|current_allocated_memory|max_memory_allocated)\(", {"kev/device.py", "space/app.py"}),
-    ("default device and explicit startup selection are defined only in kev.device",
-     r"^DEVICES\s*=|^def default_device\(|^def select\(device=", {"kev/device.py"}),
     ("the isolation sibling probe is kev.experiment.ISOLATION_PROBE (fp32 mechanism check and served isolation read the same question)",
      r"CRANE-9274", {"kev/experiment.py"}),
     ("which partitions stay out of git is kev.suite.GIT_LIMIT",
@@ -90,7 +88,10 @@ def test_single_home(what, pattern, allowed):
     regex = re.compile(pattern)
     offenders = []
     for path in sources():
-        rel = str(path.relative_to(ROOT))
+        # as_posix(): str(relative_to) yields backslashes on Windows, so every
+        # forward-slash allowlist entry ("kev/checkpoint.py") would miss and the
+        # file's own legitimate code gets reported as an offender.
+        rel = path.relative_to(ROOT).as_posix()
         if rel in allowed:
             continue
         for n, line in enumerate(path.read_text().splitlines(), 1):

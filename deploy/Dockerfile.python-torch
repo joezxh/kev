@@ -1,0 +1,17 @@
+# Base image: python + torch preinstalled, for offline docker builds.
+# Uses the daocloud python mirror because docker.io is unreachable in this env.
+ARG BASE=docker.m.daocloud.io/library/python:3.13-slim-bookworm
+FROM ${BASE}
+
+# Domestic PyPI mirror (torch CUDA wheels live here too).
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+    PIP_EXTRA_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+    UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple \
+    UV_LINK_MODE=copy
+
+# Install uv (handy for later kev builds) and a torch build inside the
+# kev-pinned range (>=2.6,<2.9) so downstream Dockerfiles can skip re-downloading.
+RUN pip install --no-cache-dir uv \
+ && uv pip install --system --no-cache "torch>=2.6,<2.9"
+
+CMD ["python", "--version"]

@@ -56,18 +56,34 @@ def format_report(report):
     return "\n".join(lines)
 
 
-def main():
+def parse_args(argv: list | None = None) -> argparse.Namespace:
+    """CLI entry's argparse block, extracted so main() can pass a Namespace to run() directly."""
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--rows", required=True, help="rows.json written by kev.benchmark")
     ap.add_argument("--out", help="where to write the report (default: calibration.json next to the rows)")
     ap.add_argument("--folds", type=int, default=5); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--samples", type=int, default=1000)
-    a = ap.parse_args()
+    return ap.parse_args(argv)
+
+
+def main():
+    a = parse_args()
+    return run(a)
+
+
+def run(a: argparse.Namespace) -> int:
+    """Pure-function entry point: takes a parsed Namespace, returns a process exit code.
+
+    Splits workload_report + the rows-meta block + the format/write step from the CLI's
+    argparse plumbing. The CLI entry is unchanged: `python -m kev.calibrate` still calls
+    main() which now returns run()'s int.
+    """
     report = workload_report(read_json(a.rows), folds=a.folds, seed=a.seed, samples=a.samples)
     report["rows"] = a.rows
     out = Path(a.out) if a.out else Path(a.rows).with_name("calibration.json")
     write_json(out, report)
     print(format_report(report)); print(f"wrote {out}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

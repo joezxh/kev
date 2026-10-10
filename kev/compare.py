@@ -23,18 +23,32 @@ def none_diagnostics(rows):
     for variant in ("none_present", "none_absent"):
         subset = [r for r in rows if r["variant"] == variant]
         values = [r["p"][r["keys"].index("none_of_these")] for r in subset]
-        # No observations means an undefined diagnostic, not a measured zero.
-        out[variant] = {"n": len(values), "mean_p_none": float(np.mean(values)) if values else None,
-                        "p_none_above_half": float(np.mean(np.array(values) > .5)) if values else None}
+        out[variant] = {"n": len(values), "mean_p_none": float(np.mean(values)),
+                        "p_none_above_half": float(np.mean(np.array(values) > .5))}
     return out
 
 
-def main():
+def parse_args(argv: list | None = None) -> argparse.Namespace:
+    """CLI entry's argparse block, extracted so main() can pass a Namespace to run() directly."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--candidate", required=True)
     ap.add_argument("--reference", required=True)
     ap.add_argument("--out", required=True)
-    a = ap.parse_args()
+    return ap.parse_args(argv)
+
+
+def main():
+    a = parse_args()
+    return run(a)
+
+
+def run(a: argparse.Namespace) -> int:
+    """Pure-function entry point: takes a parsed Namespace, returns a process exit code.
+
+    Splits the suite_sha256 check, the bootstrap, the NLL-sensitivity grid, the none-of-the-above
+    diagnostics and the caveats block from the CLI's argparse plumbing. The CLI entry is unchanged:
+    `python -m kev.compare` still calls main() which now returns run()'s int.
+    """
     candidate, reference = Path(a.candidate), Path(a.reference)
     left, right = [read_json(p / "report.json") for p in (candidate, reference)]
     if not left.get("suite_sha256") or left["suite_sha256"] != right.get("suite_sha256"):
@@ -57,7 +71,8 @@ def main():
         l, r = left["tasks"][task], right["tasks"][task]
         print(f"{task:20} {l['acc']:8.3f} {r['acc']:10.3f} {l['nll']:10.3f} {r['nll']:10.3f}")
     print(json.dumps({"paired": result["paired"], "none_of_the_above": result["none_of_the_above"]}, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

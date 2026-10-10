@@ -33,6 +33,12 @@ model-index:
           - { type: expected_calibration_error, value: 0.031, name: "ECE after temperature scaling (T=1.47)" }
 ---
 
+<p align="center">
+  <a href="./kev-0.5b.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+  <a href="./kev-0.5b_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+</p>
+
+
 # Kev-0.5B — prototype (superseded)
 
 Kev-0.5B is a **decision model**. It takes one document (the *state*) and a set of typed questions, and returns a probability distribution for each question in one forward pass. It does not generate text.

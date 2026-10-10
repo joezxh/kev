@@ -45,6 +45,12 @@ model-index:
           - { type: brier_score, value: 0.337 }
 ---
 
+<p align="center">
+  <a href="./kev-8b-qwen3.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+  <a href="./kev-8b-qwen3_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+</p>
+
+
 # Kev-8B (Qwen3)
 
 > **Previous generation (Qwen3).** This checkpoint is kept as the fast option on Apple Silicon (its attention-only backbone runs the packed forward at full speed on MPS). For accuracy and calibration use [Kev-9B](kev-9b.md): on the locked test it scores 0.837 vs 0.780 out of domain against this model on the same items. Weights: `jaredpalmer/kev-8b`.

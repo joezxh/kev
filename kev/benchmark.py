@@ -11,6 +11,7 @@ import functools
 import json
 import math
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from kev.api import question_keys, with_date_facts
 from kev.checkpoint import LoadOptions
 from kev.contrastive import paired_flip
 from kev.data import api_request, load_records
-from kev.device import DEVICE_HELP, DEVICES, select
+from kev.device import default_device
 from kev.metrics import EPSILON, grouped_metrics, metrics, unknowable_report
 from kev.model import ROW_PASS_TOKENS, ContextOverflow
 from kev.predictors import LocalPredictor, RemotePredictor, RotationAveraged
@@ -132,7 +133,14 @@ def evaluate_records(records, predictor, directory, temperature=1.0, heldout_sou
     rows, latencies, rejected = [], [], []
     with (directory / "predictions.jsonl").open("w", encoding=ENCODING) as output:
         preds = predictions(records, predictor)
+        record_index = 0
         for record in records:
+            # Service-layer cancellation (kev.console.services.eval): a long benchmark is interruptible
+            # without a SIGKILL. CANCEL_CHECK_EVERY (=16) keeps the is_set() probe off the hot path.
+            # We refuse to start a new prediction but do not interrupt one already running.
+            if record_index % CANCEL_CHECK_EVERY == 0 and cancel.is_set():
+                raise _BenchmarkCanceled(record_index)
+            record_index += 1
             try:
                 pred = next(preds)()
                 new_rows = prediction_rows(record, pred)
@@ -168,7 +176,26 @@ def evaluate_records(records, predictor, directory, temperature=1.0, heldout_sou
     return report, rows
 
 
-def main():
+# --- cancellation ---------------------------------------------------------------------------------------------------
+
+# Service layer sets this to interrupt a long benchmark without spawning a new process
+# (see docs/superpowers/plans/2026-10-09-studio-rollout-plan.md, Wave A / Task A2).
+# The step loop in evaluate_records checks it every CANCEL_CHECK_EVERY questions; setting it returns 130 from run().
+cancel: threading.Event = threading.Event()
+
+CANCEL_CHECK_EVERY = 16
+
+
+class _BenchmarkCanceled(Exception):
+    """Raised inside evaluate_records' record loop when `cancel` is set.
+
+    Caught at run()'s boundary; translated into return code 130 (POSIX 128+SIGINT)
+    so the executor can distinguish service-cancel from a clean benchmark completion.
+    """
+
+
+def parse_args(argv: list | None = None) -> argparse.Namespace:
+    """CLI entry's argparse block, extracted so main() can pass a Namespace to run() directly."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", help="checkpoint dir or Hub id (local scoring)")
     ap.add_argument("--remote", help="base URL of a System One-compatible endpoint to score instead of a local checkpoint")
@@ -177,22 +204,30 @@ def main():
     ap.add_argument("--suite", help="frozen suite directory (scores its development partition)")
     ap.add_argument("--data", help="your own labelled requests, one JSON object per line (kev.data.load_records); an alternative to --suite")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--device", choices=("auto", *DEVICES), default="auto",
-                    help="device for a local checkpoint; " + DEVICE_HELP + " (ignored with --remote)")
+    ap.add_argument("--device", choices=["cpu", "mps", "cuda"], default=default_device())
     ap.add_argument("--allow-test", action="store_true")
     ap.add_argument("--split", choices=["development", "calibration", "train"], default="development",
                     help="suite partition to score (train: teacher predictions for distillation; --allow-test reads the locked test instead)")
     ap.add_argument("--date_facts", action="store_true", help="apply kev.api.with_date_facts to every state before scoring (the opt-in serving preprocessor); reported in report.json")
     ap.add_argument("--rotations", type=int, default=1, help="average every Choice question over this many cyclic option rotations (kev.predictors.RotationAveraged); 1 = one order")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     if bool(a.run) == bool(a.remote): ap.error("give exactly one of --run or --remote")
     if a.rotations < 1: ap.error("--rotations must be >= 1")
     if a.remote_concurrency < 1: ap.error("--remote-concurrency must be >= 1")
     if bool(a.suite) == bool(a.data): ap.error("give exactly one of --suite or --data")
-    if not a.remote:
-        opts = LoadOptions.from_env()
-        # None is the fp32 scoring path (LoadOptions.dtype). Probe the precision the checkpoint will actually run in.
-        a.device = select(a.device) if opts.dtype is None else select(a.device, dtype=opts.dtype)
+    return a
+
+
+def main():
+    a = parse_args()
+    return run(a)
+
+
+def run(a: argparse.Namespace) -> int:
+    """Pure-function entry point: takes a parsed Namespace, returns a process exit code.
+
+    The CLI entry is unchanged: `python -m kev.benchmark` still calls main() which calls run() with the parsed args.
+    """
     if a.data:
         records, heldout, split, source_hash = load_records(a.data), [], "custom", digest(Path(a.data))
         context, skip_overlong = CONTEXT, True
@@ -204,16 +239,23 @@ def main():
         context, skip_overlong = manifest.get("context", CONTEXT), bool(manifest.get("eval_only"))
     if a.date_facts:
         records = [{**r, "state": with_date_facts(r["state"])} for r in records]
-    predictor = RemotePredictor(a.remote, a.remote_model, os.environ.get("KEV_REMOTE_API_KEY", "local"), concurrency=a.remote_concurrency) if a.remote else LocalPredictor(a.run, a.device, opts, context=context)
+    predictor = RemotePredictor(a.remote, a.remote_model, os.environ.get("KEV_REMOTE_API_KEY", "local"), concurrency=a.remote_concurrency) if a.remote else LocalPredictor(a.run, a.device, LoadOptions.from_env(), context=context)
     scorer = RotationAveraged(predictor, a.rotations) if a.rotations > 1 else predictor
-    report, _ = evaluate_records(records, scorer, a.out, heldout_sources=tuple(heldout), skip_overlong=skip_overlong)
+    try:
+        report, _ = evaluate_records(records, scorer, a.out, heldout_sources=tuple(heldout), skip_overlong=skip_overlong)
+    except _BenchmarkCanceled as error:
+        # POSIX 128+SIGINT convention: the executor sees a clean exit code that distinguishes
+        # service-cancel from a failed benchmark (which raises a different code path).
+        print(f"canceled at record {error.args[0] if error.args else '?'}", flush=True)
+        return 130
     report.update(suite_sha256=source_hash, data=a.data, date_facts=a.date_facts, rotations=a.rotations, run=a.run or a.remote, split=split,
                   calibration_applied=predictor.temperature != 1.0 if not a.remote else None,
                   environment=predictor.environment if not a.remote else None,   # the kernel set (kev.predictors.kernel_environment)
                   remote={"base_url": a.remote, "requested_model": a.remote_model, "served_model": predictor.served_model, "concurrency": a.remote_concurrency} if a.remote else None)
     write_json(Path(a.out) / "report.json", report)
     print(json.dumps({"objective": report["objective"], "clean": report["clean"], "coverage": report["coverage"]}, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

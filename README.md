@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="./README.md"><img alt="English" src="https://img.shields.io/badge/English-blue?style=for-the-badge"></a>
+  <a href="./README_CN.md"><img alt="中文" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-orange?style=for-the-badge"></a>
+</p>
+
 # Kev
 
 Small Jev-like decision models you can train and run yourself.
@@ -72,9 +77,6 @@ The [Hugging Face Space](https://huggingface.co/spaces/jaredpalmer/kev) runs Kev
 
 ### Run It Locally
 
-> [!WARNING]
-> PyPI name collision: `pip install kev` installs a **different package** — [K.E.V. ORM](https://pypi.org/project/kev/) (Brian Jinwright, 2016-2021). This project is **not** published to PyPI. Install from source as below.
-
 You'll need Python 3.12 or 3.13 and [uv](https://docs.astral.sh/uv/). The repo's `.python-version` makes `uv sync` use 3.13; torch has no wheels for 3.14 yet.
 
 ```bash
@@ -84,19 +86,6 @@ uv run --extra serve python -m kev.serve --run jaredpalmer/kev-4b --port 8009
 ```
 
 This starts Kev-4B on your machine: CUDA or ROCm if you have a GPU, MLX on Apple Silicon. The first run downloads the adapter and the base model. `--run` also accepts a local checkpoint directory or a Hub revision like `jaredpalmer/kev-4b@qwen3`.
-
-Use `--device cpu` to skip accelerator discovery, or `--device cuda` / `--device mps` to require that accelerator.
-The default, `--device auto`, tests an allocation and matrix multiplication in a separate process before loading weights.
-It tries CUDA (including ROCm) first; if that probe fails, crashes, or times out, it tries MPS, and only then warns and uses CPU.
-An explicitly requested accelerator fails instead of falling back. `kev.train` and `kev.evaluate` take the same `--device` flag
-(`--device cuda` there is probed the same way, and the run stops if the probe fails). `KEV_DEVICE_PROBE_TIMEOUT` is the limit
-for each probe, in seconds (default 30), so a dead CUDA init followed by an MPS attempt can take twice that.
-This checks basic runtime support, not every model kernel.
-
-On Apple Silicon, serving a hybrid checkpoint with the default backend uses MLX and does not run the torch MPS probe.
-`KEV_BACKEND=torch` or `KEV_DTYPE=fp32` still probes torch.
-CPU serving keeps the fp32 default; `KEV_DTYPE=bf16` reduces weight memory if needed. ROCm uses the eager serving path by default;
-the fused-kernel and graph defaults are enabled only on NVIDIA builds.
 
 In another terminal, send it a ticket:
 
@@ -134,6 +123,8 @@ Example response from Kev-4B, running in bf16 on an Apple M5:
 ```
 
 The ticket mentions a return, a late delivery and a billing problem, and the department probabilities say so. That's why Kev returns probabilities instead of a single label: your code can route the confident cases and send the rest to a person.
+
+> 想看**中文**请求/响应范例（含 422 超长 state、不同等级数的 `score` 等边界情况），见 [docs/examples.md](docs/examples.md)。
 
 ### Use It From Python
 
@@ -205,8 +196,6 @@ uv run python -m kev.benchmark --run runs/mine --data heldout.jsonl --out runs/m
 uv run --extra serve python -m kev.serve --run runs/mine --port 8009
 ```
 
-`--device cuda` is checked with the same child-process probe before any weights load, and training stops if that check fails. `--device cpu` skips it. `--device auto` tries CUDA, then MPS, then CPU.
-
 `--init_from` loads the adapter and pointer head from the released model before training, so you keep what Kev already knows and add your domain on top. Starting from the base model instead throws that away: in one user's test on 836 support-tool decisions, a fine-tune from the base scored 0.33 on Kev's own evaluation set, against 0.84 for the released model; the same data with `--init_from` kept 0.83 there and reached 0.88 on the new domain. Use a smaller learning rate than the from-scratch recipe (`2e-5` is a good start), and pick `--base` to match the checkpoint you start from; the trainer checks that the base, revision, LoRA rank and head size agree before it loads anything.
 
 `--batch 1 --accum 8` in bf16 fits the 0.8B model on a 4 GB GPU. The benchmark reports accuracy, Brier score and calibration per question type, so you can see which of your questions the fine-tune helped. The checkpoint you started from is recorded in `runs/mine/training_config.json`. On a Mac, run one training job at a time; two jobs on the same Apple GPU are much slower.
@@ -224,6 +213,20 @@ KEV_API_KEY=$(openssl rand -hex 24) modal deploy kev_serve.py
 That serves Kev-4B on an L40S at `https://<your-workspace>--kev-api.modal.run`, with the same API as above behind `Authorization: Bearer <key>`. It scales to zero when idle, so an unused endpoint costs nothing. The first request after idle waits about 35 seconds for a container to start. `KEV_MODEL=jaredpalmer/kev-9b` serves another model on the GPU that suits it; Kev-27B goes to a B200, falling back to an H200 or H100. If you use a coding agent, `npx skills add jaredpalmer/kev@kev-deploy` does the same and wires the URL into your code. [skills/kev-deploy](skills/kev-deploy/) has the GPU and cost table.
 
 A model you fine-tuned with the `kev-finetune` skill deploys the same way from its own Modal app (`KEV_SERVE_SECRET=kev-serve-key KEV_SERVE_RUN=<run> modal deploy scripts/kev_modal.py`; see [its deploy guide](skills/kev-finetune/references/deploy.md)). To host Kev on your own machines instead, run `kev.serve` from [Run It Locally](#run-it-locally) on a GPU box with `--host 0.0.0.0` and put it behind your own proxy; [Serving Performance](#serving-performance) says which GPU to pick.
+
+### With Docker
+
+To run both the `kev.serve` API and the Playground UI (the kev and chess tabs) as containers, use the `deploy/` setup. One script picks the model (4B or 0.8B) and brings up the server (port 8008) and the Next.js playground (port 3000) on a shared Docker network:
+
+```bash
+# Windows (Docker Desktop, WSL2)
+.\deploy\deploy-windows.ps1 -Model 0.8B
+
+# Linux
+./deploy/deploy-linux.sh --model 0.8B
+```
+
+The Playground talks to the server only through an in-network proxy (`/kev/*` → `http://kev-server:8008`), so there are no ports or CORS to manage. Weights are not baked into the image: the server loads a local run directory, or pulls a Hub id (e.g. `jaredpalmer/kev-0.8b`) into a persistent HF cache volume. Full options — manual `docker compose`, config variables, the local checkpoint layout, and troubleshooting — are in [deploy/README.md](deploy/README.md).
 
 ## What to Expect
 
@@ -281,7 +284,7 @@ There's a [chess demo](http://localhost:3001/chess), too. The board is the input
 
 For Choice with `K > 1` options, confidence is `(p_max − 1/K) / (1 − 1/K)`. A single option has confidence 1. Score confidence is `max(0, 1 − E|level − mode| / D)`: `mode` is the most likely level and `D` is the mean distance of a uniform distribution over the levels from its middle (2/3 for three levels), so all probability on one level gives 1 and a uniform or wider spread gives 0. Both formulas are the ones in TypeSafe's reference adapter ([`system-one-adapter`](https://github.com/typesafe-ai/system-one-adapter-python) 0.2.1). Neither field is a measured accuracy rate.
 
-Objects and arrays are converted to labeled text. Delimiter-like strings in user input are escaped before tokenization. Invalid requests return `422`, and so does a state longer than 65,536 tokens: the server never drops part of a document silently, and the error gives the state's token count and the limit. `usage.output_tokens` counts tokens in the serialized answers, not generated tokens.
+Objects and arrays are converted to labeled text. Delimiter-like strings in user input are escaped before tokenization. Invalid requests return `422`, and so does a state longer than 65,536 tokens: the server never drops part of a document silently, and the error gives the state's token count and the limit. `usage.output_tokens` counts tokens in the serialized answers, not generated tokens. Worked Chinese examples and boundary cases (oversized-state 422, `score` with 2 or 5 levels) are in [docs/examples.md](docs/examples.md).
 
 | Method | Path | Purpose |
 |---|---|---|

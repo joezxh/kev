@@ -1,0 +1,231 @@
+{
+  "name": "medication-review",
+  "domain": "门诊与住院处方审核。药品覆盖抗感染药、降压药、降糖药、抗凝药、NSAIDs、质子泵抑制剂、镇痛药等常见类别；患者为成人、孕产妇、哺乳期妇女、儿童、老年、肝肾功能不全者。审核依据为药品说明书禁忌与剂量上限、重复用药、特殊人群禁忌、给药途径与适应症。",
+  "state": "一份待审核处方的结构化摘要：患者年龄性别与生理状态（妊娠周数、哺乳、肾功能 eGFR 数值、肝功能）、过敏史、既往用药、当前处方药品与剂量频次、疗程天数（已由生成器算好，不要求模型做日期运算）、适应症诊断。字段值为中文叙述夹英文药名缩写。",
+  "state_example": {
+    "patient": "female 34, gestation 28 weeks",
+    "state_flags": "pregnant, eGFR 88 mL/min/1.73m2",
+    "allergies": "青霉素（皮疹）",
+    "current_meds": ["头孢曲松 1g qd"],
+    "current_rx": "甲硝唑 0.4g tid x 7天",
+    "days_on_drug": 3,
+    "indication": "细菌性阴道炎"
+  },
+  "questions": {
+    "verdict": {
+      "type": "choice",
+      "instructions": "该处方的审核结论是什么？",
+      "criteria": {
+        "pass": "无问题，可直接执行",
+        "conditional": "有可纠正的偏差（如剂量偏小、疗程偏短、缺少辅助用药），放行但需提示",
+        "reject": "存在必须拦截的严重问题（禁忌、重复用药、超剂量、明确适应症不符）"
+      }
+    },
+    "needs_pharmacist": {
+      "type": "noul",
+      "instructions": "该处方是否必须由药师复核后才能执行？",
+      "criteria": {
+        "true": "含高风险信号（妊娠/哺乳/儿童/老年、肝肾功能异常、多药联用、注射剂、管制类）",
+        "false": "低风险，可按常规执行"
+      }
+    },
+    "issue_type": {
+      "type": "choice",
+      "instructions": "该处方最突出的问题是哪一类？",
+      "criteria": {
+        "none": "未发现问题",
+        "contraindication": "禁忌：患者对该药存在绝对禁忌（如孕妇用四环素、青霉素过敏用头孢）",
+        "dose_over": "剂量超限：单次或日剂量超过说明书上限",
+        "duplicate": "重复用药：与既往用药或同处方内其他药物成分重复或同类叠加",
+        "special_population": "特殊人群：妊娠、哺乳、儿童、老年、肝肾功能不全中的人群限制被忽略",
+        "indication_mismatch": "适应症不符：药品与所列诊断不匹配"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "该处方问题的严重程度如何？",
+      "criteria": [
+        "0 = 无需处理",
+        "1 = 提示即可（轻微偏差，不影响疗效与安全）",
+        "2 = 需干预（影响疗效或有潜在风险，须修改后执行）",
+        "3 = 必须拦截（禁忌或超剂量，存在严重不良事件风险）"
+      ]
+    }
+  },
+  "guidance": "verdict 由最严重的问题决定：出现 contraindication 或 dose_over 或 duplicate 判 reject；仅 special_population 或 indication_mismatch 且可纠正判 conditional；无问题判 pass。issue_type 取命中的最突出的一类，多类同时命中时按 contraindication > dose_over > duplicate > special_population > indication_mismatch 的优先级取。severity 与 verdict 严格对应：pass=0、conditional=2、reject=3，issue_type=none 时 severity 必须为 0。severity 1 仅用于「无规则命中但剂量偏离常规」的情形，此时 verdict 为 pass、issue_type 为 none。needs_pharmacist 为独立风险信号，与 verdict 无关：只要涉及妊娠、哺乳、儿童、老年、肝肾功能异常（eGFR<30 或转氨酶升高）、注射剂、管制类、或同时使用 3 种以上药物，即使 verdict 为 pass 也须 true。妊娠期禁忌示例：四环素类、喹诺酮类（权衡后）、华法林、ACEI/ARB（妊娠中晚期）、异维A酸；哺乳期：大剂量化疗、四环素；儿童：四环素（<8 岁）、喹诺酮（<18 岁）、阿司匹林（水痘/病毒感染期）；肝肾功能不全需减量或禁用头孢曲松、氨基糖苷类、万古霉素。dose_over 示例：甲硝唑单次 >0.6g、对乙酰氨基酚单次 >1g 或日剂量 >4g、头孢曲松单次 >2g（普通感染）。days_on_drug 与疗程天数字段已由生成器算好，模型只判断「疗程是否明显不合理」，绝不做日期加减运算。过敏史为「青霉素（皮疹）」时，任何青霉素类或头孢类均为 contraindication。",
+  "variety": [
+    "药品类别（务必覆盖）：抗感染药（头孢曲松、阿莫西林、甲硝唑、左氧氟沙星、喹诺酮类）、降压药（ACEI/ARB、钙通道阻滞剂、利尿剂、β受体阻滞剂）、降糖药（二甲双胍、磺脲类、胰岛素）、抗凝与抗血小板（华法林、低分子肝素、阿司匹林、氯吡格雷）、NSAIDs（布洛芬、双氯芬酸）、镇痛药（对乙酰氨基酚、曲马多、吗啡）、质子泵抑制剂（奥美拉唑、雷贝拉唑）、抗真菌与抗病毒药",
+    "问题类型（对应 issue_type 六选项全覆盖）：none 无问题、contraindication 绝对禁忌、dose_over 剂量超限、duplicate 重复用药、special_population 特殊人群禁忌、indication_mismatch 适应症不符",
+    "审核结论档（对应 verdict）：pass 无问题可执行、conditional 可纠正偏差（剂量偏小、疗程偏短、缺辅助用药、缺监测、给药频次不当）、reject 必须拦截（禁忌、重复用药、超剂量、明确适应症不符）",
+    "严重度档（与 verdict 严格对应）：pass=0、conditional=2、reject=3；severity=1 仅用于「无规则命中但剂量偏离常规」，此时 verdict=pass 且 issue_type=none",
+    "剂量超限的具体对照（写进 state 的实测值）：甲硝唑单次 >0.6g、对乙酰氨基酚单次 >1g 或日剂量 >4g、头孢曲松单次 >2g（普通感染）、华法林超出抗凝范围、胰岛素剂量未按体重折算",
+    "禁忌的具体对照：孕妇用四环素类、青霉素过敏（皮疹）用头孢类、肝功能不全用头孢曲松、eGFR<30 用氨基糖苷类或万古霉素、哺乳期大剂量化疗",
+    "重复用药的具体形态：同处方内两种成分相同的药、头孢与喹诺酮抗菌谱重叠、同机制叠加（双联 PPI、两种促泌剂）、抗凝药与 NSAIDs 并用增加出血风险",
+    "特殊人群（needs_pharmacist=true 的主要触发）：孕早/中/晚期、哺乳期、新生儿与儿童（<8 岁四环素、<18 岁喹诺酮）、老年 ≥65 岁且多病共存、肝肾功能不全（eGFR<30 或转氨酶升高）、透析、注射剂、管制类、同时使用 3 种以上药物",
+    "过敏史形态：有明确药物过敏（青霉素皮疹）、多种药物过敏、过敏史为空、曾有皮疹但非速发过敏（此时不得判 contraindication）",
+    "用药数量：单一用药、2-3 种联用、4-5 种、5 种以上多药联用",
+    "疗程与已用天数：疗程合理、偏短需延长、明显不合理（过长或过短）；days_on_drug 与疗程天数须由生成器算好，模型只判断是否明显不合理、不做日期运算",
+    "给药途径与药名表述：口服片、静脉滴注、静脉推注、肌肉注射、外用、吸入；中文商品名、通用名、英文缩写（ceftriaxone / metronidazole）、中英混排；剂量写法 mg/g/ml/片/支 混用",
+    "适应症不符的具体对照：抗生素用于无细菌指征的功能性消化不良、镇痛药用于与诊断无关的疼痛、降压药用于非高血压适应症",
+    "边界陷阱（务必按 guidance 处理）：eGFR<30 或转氨酶升高时即使 verdict=pass 也须 needs_pharmacist=true；过敏史为「青霉素（皮疹）」时任何青霉素类或头孢类均为 contraindication；禁忌与重复用药的优先级高于剂量偏差"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "甲硝唑", "unit": "mg", "decimals": 0, "category": "抗菌药", "single_max_mg": 600, "daily_max_mg": 1200, "daily_min_mg": 400},
+      {"name": "头孢曲松", "unit": "mg", "decimals": 0, "category": "抗菌药", "single_max_mg": 2000, "daily_max_mg": 4000, "daily_min_mg": 500},
+      {"name": "阿莫西林", "unit": "mg", "decimals": 0, "category": "抗菌药", "single_max_mg": 1000, "daily_max_mg": 3000, "daily_min_mg": 750},
+      {"name": "对乙酰氨基酚", "unit": "mg", "decimals": 0, "category": "解热镇痛", "single_max_mg": 1000, "daily_max_mg": 4000, "daily_min_mg": 500},
+      {"name": "布洛芬", "unit": "mg", "decimals": 0, "category": "解热镇痛", "single_max_mg": 400, "daily_max_mg": 1200, "daily_min_mg": 600},
+      {"name": "阿司匹林", "unit": "mg", "decimals": 0, "category": "解热镇痛", "single_max_mg": 1000, "daily_max_mg": 3000, "daily_min_mg": 500},
+      {"name": "华法林", "unit": "mg", "decimals": 1, "category": "抗凝药", "single_max_mg": 10, "daily_max_mg": 10, "daily_min_mg": 2.5},
+      {"name": "氯吡格雷", "unit": "mg", "decimals": 0, "category": "抗栓药", "single_max_mg": 300, "daily_max_mg": 300, "daily_min_mg": 75},
+      {"name": "二甲双胍", "unit": "mg", "decimals": 0, "category": "降糖药", "single_max_mg": 1000, "daily_max_mg": 2000, "daily_min_mg": 1000},
+      {"name": "格列美脲", "unit": "mg", "decimals": 1, "category": "降糖药", "single_max_mg": 4, "daily_max_mg": 6, "daily_min_mg": 2},
+      {"name": "氨氯地平", "unit": "mg", "decimals": 1, "category": "降压药", "single_max_mg": 10, "daily_max_mg": 10, "daily_min_mg": 5},
+      {"name": "缬沙坦", "unit": "mg", "decimals": 0, "category": "降压药", "single_max_mg": 320, "daily_max_mg": 320, "daily_min_mg": 160},
+      {"name": "奥美拉唑", "unit": "mg", "decimals": 0, "category": "PPI", "single_max_mg": 40, "daily_max_mg": 40, "daily_min_mg": 20},
+      {"name": "四环素", "unit": "mg", "decimals": 0, "category": "抗菌药", "single_max_mg": 500, "daily_max_mg": 1000, "daily_min_mg": 500},
+      {"name": "左氧氟沙星", "unit": "mg", "decimals": 0, "category": "抗菌药", "single_max_mg": 500, "daily_max_mg": 500, "daily_min_mg": 500}
+    ],
+    "selectors": [
+      {"min": 1, "max": 1, "weight_normal": 1.0, "weight_trigger_extra": 0.0, "max_trigger_extra": 0, "max_trigger_tier_drift": 0}
+    ],
+    "categories": {
+      "抗菌药": ["甲硝唑", "头孢曲松", "阿莫西林", "四环素", "左氧氟沙星"],
+      "解热镇痛": ["对乙酰氨基酚", "布洛芬", "阿司匹林"],
+      "抗凝药": ["华法林"],
+      "抗栓药": ["氯吡格雷"],
+      "降糖药": ["二甲双胍", "格列美脲"],
+      "降压药": ["氨氯地平", "缬沙坦"],
+      "PPI": ["奥美拉唑"]
+    },
+    "special_population_contraindications": [
+      {"drug": "四环素", "flag": "child", "reason": "8 岁以下禁用，可致牙齿永久着色"},
+      {"drug": "四环素", "flag": "pregnant", "reason": "妊娠期禁用"},
+      {"drug": "左氧氟沙星", "flag": "child", "reason": "18 岁以下禁用，影响软骨发育"},
+      {"drug": "左氧氟沙星", "flag": "pregnant", "reason": "妊娠期一般禁用，权衡后慎用"},
+      {"drug": "华法林", "flag": "pregnant", "reason": "妊娠 6 周后禁用，可致胎儿出血"},
+      {"drug": "华法林", "flag": "breastfeeding", "reason": "哺乳期禁用"},
+      {"drug": "阿司匹林", "flag": "child_viral", "reason": "儿童病毒感染期禁用，Reye 综合征风险"},
+      {"drug": "布洛芬", "flag": "pregnant", "reason": "妊娠晚期禁用，可致动脉导管提前关闭"},
+      {"drug": "格列美脲", "flag": "elderly", "reason": "老年患者低血糖风险高，需减量并加强监测"},
+      {"drug": "二甲双胍", "flag": "renal", "reason": "eGFR 低于 30 禁用，乳酸酸中毒风险"},
+      {"drug": "阿莫西林", "flag": "penicillin_allergy", "reason": "青霉素过敏者禁用"},
+      {"drug": "头孢曲松", "flag": "penicillin_allergy", "reason": "青霉素过敏者慎用，存在交叉过敏风险"},
+      {"drug": "缬沙坦", "flag": "pregnant", "reason": "妊娠中晚期禁用，胎儿肾毒性"},
+      {"drug": "阿司匹林", "flag": "renal", "reason": "肾功能不全者大剂量使用需谨慎"}
+    ],
+    "indications": {
+      "细菌性阴道炎": "抗菌药",
+      "社区获得性肺炎": "抗菌药",
+      "尿路感染": "抗菌药",
+      "高血压": "降压药",
+      "2 型糖尿病": "降糖药",
+      "心房颤动": "抗凝药",
+      "冠心病": "抗栓药",
+      "胃溃疡": "PPI",
+      "发热": "解热镇痛",
+      "术后镇痛": "解热镇痛"
+    },
+    "tier_windows": {},
+    "contexts": [],
+    "patients": [],
+    "rules": [
+      {
+        "when": "any_special_population(state_drug, state['state_flags']) and (state_drug['name'], split_any(state['state_flags'])) in SPECIAL_POPULATION_PAIRS",
+        "then": [
+          {"label": "verdict", "value": "conditional"},
+          {"label": "issue_type", "value": "special_population"},
+          {"label": "severity", "value": 2},
+          {"label": "needs_pharmacist", "value": "true"}
+        ]
+      },
+      {
+        "when": "state_allergy and state_drug['name'] in ('阿莫西林', '头孢曲松')",
+        "then": [
+          {"label": "verdict", "value": "reject"},
+          {"label": "issue_type", "value": "contraindication"},
+          {"label": "severity", "value": 3},
+          {"label": "needs_pharmacist", "value": "true"}
+        ]
+      },
+      {
+        "when": "state_twin and category_lookup(state_twin) == state_drug['category']",
+        "then": [
+          {"label": "verdict", "value": "reject"},
+          {"label": "issue_type", "value": "duplicate"},
+          {"label": "severity", "value": 3},
+          {"label": "needs_pharmacist", "value": "true"}
+        ]
+      },
+      {
+        "when": "state_dose_per > state_drug['single_max_mg']",
+        "then": [
+          {"label": "verdict", "value": "reject"},
+          {"label": "issue_type", "value": "dose_over"},
+          {"label": "severity", "value": 3},
+          {"label": "needs_pharmacist", "value": "true"}
+        ]
+      },
+      {
+        "when": "state_dose_per * state_times_per_day > state_drug['daily_max_mg']",
+        "then": [
+          {"label": "verdict", "value": "reject"},
+          {"label": "issue_type", "value": "dose_over"},
+          {"label": "severity", "value": 3},
+          {"label": "needs_pharmacist", "value": "true"}
+        ]
+      },
+      {
+        "when": "indication_matches(state_indication, state_drug['category']) == False",
+        "then": [
+          {"label": "verdict", "value": "conditional"},
+          {"label": "issue_type", "value": "indication_mismatch"},
+          {"label": "severity", "value": 2},
+          {"label": "needs_pharmacist", "value": "true"}
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {"label": "verdict", "value": "pass"},
+          {"label": "issue_type", "value": "none"},
+          {"label": "severity", "value": 0},
+          {"label": "needs_pharmacist", "value": "pharmacist_signal(state['state_flags'], state.get('current_meds', []))"}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {"rate": 0.0, "fields": [], "question": "verdict", "soft_target": {"pass": 0.5, "conditional": 0.5, "reject": 0.5}, "force_label": {}},
+      "minimal_pair": {"rate": 0.35, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "by_issue_type": {
+        "contraindication": {"share": 0.10, "quota": 60},
+        "dose_over": {"share": 0.10, "quota": 60},
+        "duplicate": {"share": 0.10, "quota": 60},
+        "special_population": {"share": 0.10, "quota": 60},
+        "indication_mismatch": {"share": 0.10, "quota": 60},
+        "mild": {"share": 0.10, "quota": 60},
+        "none": {"share": 0.40, "quota": 315}
+      }
+    },
+    "panel_category": {
+      "甲硝唑": "抗菌药",
+      "头孢曲松": "抗菌药",
+      "阿莫西林": "抗菌药",
+      "对乙酰氨基酚": "解热镇痛",
+      "布洛芬": "解热镇痛",
+      "阿司匹林": "解热镇痛",
+      "华法林": "抗凝药",
+      "氯吡格雷": "抗栓药",
+      "二甲双胍": "降糖药",
+      "格列美脲": "降糖药",
+      "氨氯地平": "降压药",
+      "缬沙坦": "降压药",
+      "奥美拉唑": "PPI",
+      "四环素": "抗菌药",
+      "左氧氟沙星": "抗菌药"
+    }
+  }
+}

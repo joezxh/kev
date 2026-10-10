@@ -21,10 +21,12 @@ classifiers = [
 dependencies = [
     "accelerate>=1.15.0",
     "datasets>=3.0",
+    "jinja2>=3.1",            # distill system_prompt + yaml template (§3.5, §3.8)
     "numpy>=2.5.3",
     "peft>=0.21",
     "pydantic>=2.9",
     "scikit-learn>=1.9.1",
+    "simpleeval>=1.0",        # restricted expression evaluation for rules.when (§3.2)
     "torch>=2.6,<2.9",
     "transformers>=5.17,<6",
 ]
@@ -39,6 +41,9 @@ serve = [
     "fastapi>=0.115",
     "typesafe-sdk>=0.6.0",
     "uvicorn>=0.30",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "requests>=2.31",   # kev.console's kev.serve proxy (app.py _do_proxy) imports it
     "mlx-lm>=0.31.3,<0.32; sys_platform == 'darwin' and platform_machine == 'arm64'",   # the Apple Silicon backend (kev.mlx_model); a no-op elsewhere
 ]
 mlx = [
@@ -58,4 +63,4 @@ testpaths = ["tests"]
 markers = ["server: needs a running kev.serve instance (KEV_BASE_URL)"]
 
 [tool.setuptools]
-packages = ["kev"]
+packages = ["kev", "kev.console", "kev.console.stages"]

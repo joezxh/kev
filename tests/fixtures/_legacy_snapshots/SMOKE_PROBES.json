@@ -1,0 +1,164 @@
+{
+  "critical-value": {
+    "state": {
+      "patient": "male 67",
+      "context": "routine chemistry panel, no symptoms reported",
+      "labs": "K+ 6.2 mmol/L, Cr 98 umol/L",
+      "ref_ranges_included": "yes",
+      "missing_context": "no symptoms reported"
+    },
+    "questions": [
+      {
+        "qid": "is_critical",
+        "type": "noul",
+        "instructions": "该报告中的任一检验项目是否触及危急值（需要立即临床干预）？"
+      }
+    ],
+    "expected_label": {
+      "is_critical": "true"
+    }
+  },
+  "triage": {
+    "state": {
+      "patient": "female 34, gestation 28 weeks",
+      "channel": "outpatient",
+      "chief_complaint": "规律腹痛 3 小时",
+      "duration": "3 hours",
+      "accompanying": "no fever, no vaginal bleeding",
+      "history": "G2P1",
+      "vitals": "BP 118/74, HR 88",
+      "red_flags": "none"
+    },
+    "questions": [
+      {
+        "qid": "immediate_human",
+        "type": "noul",
+        "instructions": "该患者是否需要立即人工分诊（而非继续等待）？"
+      }
+    ],
+    "expected_label": {
+      "immediate_human": "true"
+    }
+  },
+  "medication-review": {
+    "state": {
+      "patient": "female 62, eGFR 24",
+      "state_flags": "renal impairment",
+      "allergies": "penicillin (rash)",
+      "current_meds": "amoxicillin 500mg tid",
+      "current_rx": "amoxicillin 500mg tid",
+      "days_on_drug": 6,
+      "indication": "sinusitis"
+    },
+    "questions": [
+      {
+        "qid": "needs_pharmacist",
+        "type": "noul",
+        "instructions": "该用药是否需要药师介入复核？"
+      }
+    ],
+    "expected_label": {
+      "needs_pharmacist": "true"
+    }
+  },
+  "nursing-quality": {
+    "state": {
+      "patient": "male 71, bed 12",
+      "ward": "cardiology",
+      "nursing_level": "level 2",
+      "check_point": "pressure ulcer prevention, repositioning",
+      "observed": "no repositioning documented for 6 hours",
+      "dependencies": "none",
+      "risk_scores": "Braden 12"
+    },
+    "questions": [
+      {
+        "qid": "reportable",
+        "type": "noul",
+        "instructions": "该护理缺陷是否应上报？（质量问题而非个人疏忽）"
+      }
+    ],
+    "expected_label": {
+      "reportable": "true"
+    }
+  },
+  "icd-coding": {
+    "state": {
+      "patient": "female 58",
+      "length_of_stay_days": 9,
+      "primary_dx": "J18.9",
+      "secondary_dx": "E11.9, I10",
+      "procedure": "none",
+      "key_findings": "community-acquired pneumonia",
+      "past_history": "type 2 diabetes, hypertension",
+      "clinical_course": "improved on antibiotics"
+    },
+    "questions": [
+      {
+        "qid": "needs_coder",
+        "type": "noul",
+        "instructions": "该编码是否需要编码员人工复核？"
+      }
+    ],
+    "expected_label": {
+      "needs_coder": "true"
+    }
+  },
+  "inquiry": {
+    "state": {
+      "patient": "female 32",
+      "chief_complaint": "突发右下腹疼痛 6 小时",
+      "associated": "低热、恶心",
+      "history": "无",
+      "red_flag": false
+    },
+    "questions": [
+      {
+        "qid": "needs_more_info",
+        "type": "noul",
+        "instructions": "是否需要补充信息后才能给出可靠建议？"
+      }
+    ],
+    "expected_label": {
+      "needs_more_info": "true"
+    }
+  },
+  "medication": {
+    "state": {
+      "patient": "female 34, gestation 28 weeks",
+      "state_flags": "pregnant, eGFR 88 mL/min/1.73m2",
+      "allergies": "青霉素（皮疹）",
+      "current_meds": "阿莫西林 500mg tid",
+      "question_drug": "甲硝唑 0.4g tid",
+      "question_type": "妊娠期是否可用"
+    },
+    "questions": [
+      {
+        "qid": "needs_pharmacist",
+        "type": "noul",
+        "instructions": "该问题是否需要药师复核？"
+      }
+    ],
+    "expected_label": {
+      "needs_pharmacist": "true"
+    }
+  },
+  "knowledge-qa": {
+    "state": {
+      "topic": "高血压",
+      "question": "原发性高血压的一线用药选择与各自适用人群？",
+      "context": "成人，无合并症",
+      "aspects": ["一线药物", "适用人群", "常见不良反应"]
+    },
+    "questions": [
+      {
+        "qid": "covers_aspects",
+        "type": "noul",
+        "instructions": "回答是否覆盖了 question 要求的子项？"
+      }
+    ],
+    "expected_label": {
+      "covers_aspects": "true"
+    }
+  }
+}
