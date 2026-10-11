@@ -143,6 +143,17 @@ def test_over_length_state_is_refused_not_truncated():
     assert code == 422 and f"over the {limit:,}-token limit" in body["detail"] and "KEV_TRUNCATE_STATES=1" in body["detail"]
 
 
+def test_refusals_name_the_limit_they_hit():
+    """The 422's detail stays prose (the SDK shows it as the error message, and the text clients already read does not
+    change); the response headers carry the code a client branches on, and /v1/models reports the same three limits the
+    server admits against, so a client can check a document before it posts."""
+    from kev.model import ROW_PASS_TOKENS, SERVE_MAX_BRANCH, SERVE_MAX_STATE
+    if card()["truncate_states"]: pytest.skip("server started with KEV_TRUNCATE_STATES=1")
+    assert (card()["max_state_tokens"], card()["max_branch_tokens"], card()["row_pass_tokens"]) == (SERVE_MAX_STATE, SERVE_MAX_BRANCH, ROW_PASS_TOKENS)
+    r = httpx.post(f"{BASE}/v1/systemone", json=over_length(), timeout=120)
+    assert r.status_code == 422 and r.headers["x-kev-reject"] == "state_over_max" and int(r.headers["x-kev-limit-tokens"]) == SERVE_MAX_STATE
+
+
 def test_sdk_surfaces_the_over_length_refusal():
     """The TypeSafe SDK raises the 422 as TypeSafeUnprocessableEntityError (no retry: 422 is not a retried status) whose
     message is the server's detail, request id included."""

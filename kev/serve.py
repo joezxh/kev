@@ -7,12 +7,14 @@ when KEV_API_KEY is set (unset = open server, the local default). Demo extras: P
 under several option orders) and POST /v1/systemone/separate (each question in its own pass, for the packed-vs-separate
 comparison). KEV_PREFIX_CACHE / KEV_PREFIX_MIN_TOKENS / KEV_PREFIX_MAX_TOKENS size the state-prefix cache; KEV_DATE_FACTS=1 opts into the
 date preprocessing (api.with_date_facts). A state over kev.model.SERVE_MAX_STATE tokens is refused with a 422 (kev.model.admit);
-KEV_TRUNCATE_STATES=1 reads its first SERVE_MAX_STATE tokens instead, and then every response says whether it did. Backend
-and precision follow LoadOptions (KEV_BACKEND, KEV_DTYPE, ...): on Apple Silicon a hybrid checkpoint runs on MLX
-by default, without a torch MPS probe, elsewhere on torch in bf16.
-and precision follow LoadOptions (KEV_BACKEND, KEV_DTYPE, ...): on Apple Silicon the hybrid Qwen3.5 checkpoints run on MLX
-by default, elsewhere on torch in bf16. --temperature serves at a temperature other than the checkpoint's own (the
-console's deploy job passes the one it fitted; KEV_TEMPERATURE is the library channel, LoadOptions.from_env).
+KEV_TRUNCATE_STATES=1 reads its first SERVE_MAX_STATE tokens instead, and then every response says whether it did. Every
+refusal names the limit it hit in `x-kev-reject` (state_over_max / branch_over_max / not_encodable) and, where there is one,
+`x-kev-limit-tokens`, so a client branches on the code instead of matching the prose; /v1/models carries the same limits.
+Backend and precision follow LoadOptions (KEV_BACKEND, KEV_DTYPE, ...): on Apple Silicon a hybrid checkpoint runs on MLX
+by default, without a torch MPS probe, elsewhere on torch in bf16. --temperature serves at a temperature other than the
+checkpoint's own (the console's deploy job passes the one it fitted; KEV_TEMPERATURE is the library channel,
+LoadOptions.from_env). LoadOptions.from_env runs once, in main, before the checkpoint opens: no request thread reads the
+environment, and it takes an env mapping, so a test injects one instead of setting the process's.
 
 The port belongs to this server: /v1/* is the inference surface, and the console is mounted into this same app at
 /console/api. A process that answers on the port before us is not us, so startup refuses rather than losing every /v1
@@ -29,7 +31,7 @@ from pydantic import BaseModel, Field
 from .api import SystemOneRequest, to_record, to_answers, output_tokens, with_date_facts
 from .checkpoint import Checkpoint, LoadOptions, fused_available, is_hub_id, mlx_available
 from .device import DEVICE_HELP, DEVICES, empty_cache, out_of_memory, select, sync
-from .model import SERVE_MAX_STATE, ContextOverflow, admit
+from .model import ROW_PASS_TOKENS, SERVE_MAX_BRANCH, SERVE_MAX_STATE, ContextOverflow, admit
 
 PREFIX_CACHE_SIZE = int(os.environ.get("KEV_PREFIX_CACHE", "4"))          # states kept (KV + DeltaNet states; attention-only backbones also the state's hidden states); 0 disables
 PREFIX_MIN_TOKENS = os.environ.get("KEV_PREFIX_MIN_TOKENS")               # states shorter than this are not cached; default = the model's prefix_min_tokens (0 for hybrid backbones and MLX, 384 for attention-only torch models)
@@ -146,7 +148,12 @@ class Server:
         try: enc = admit(self.model, self.tok, rec, truncate=self.truncate_states)
         except ValueError as e:   # ContextOverflow, or a record the encoder cannot take
             state = isinstance(e, ContextOverflow) and e.max_state is not None
-            raise HTTPException(422, str(e) + (f"; or start the server with KEV_TRUNCATE_STATES=1 to read only its first {e.max_state:,} tokens (responses then say truncated: true)" if state else ""))
+            # which limit was hit, as a code: the detail is prose a client should not have to parse
+            code, limit = (("state_over_max", SERVE_MAX_STATE) if state else
+                           ("branch_over_max", SERVE_MAX_BRANCH) if isinstance(e, ContextOverflow) else
+                           ("not_encodable", None))
+            raise HTTPException(422, str(e) + (f"; or start the server with KEV_TRUNCATE_STATES=1 to read only its first {e.max_state:,} tokens (responses then say truncated: true)" if state else ""),
+                                headers={"x-kev-reject": code, **({"x-kev-limit-tokens": str(limit)} if limit else {})})
         done = Future()
         self.queue.put((enc, done))
         return done
@@ -331,6 +338,9 @@ def models():
             "release_date": s.release_date,
             "run": ck.requested, "base": meta.base, "lora": meta.lora, "device": s.device, "backend": s.model.backend, "dtype": s.model.dtype,
             "temperature": s.model.head.temperature, "max_state_tokens": SERVE_MAX_STATE, "truncate_states": s.truncate_states,
+            # the limits a client can check before it posts: the question row, and the packed length past which a record
+            # runs as rows instead of one block-causal pass (kev.model.rows_form — never a refusal, only more passes)
+            "max_branch_tokens": SERVE_MAX_BRANCH, "row_pass_tokens": ROW_PASS_TOKENS,
             "cuda_graphs": graphs.stats() if (graphs := getattr(s.model, "graphs", None)) else None,
             "prefix_cache": {"size": s.prefix_cache.size, "min_state_tokens": s.prefix_cache.min_tokens, "max_tokens": s.prefix_cache.max_tokens, "hits": s.prefix_cache.hits,
                              "misses": s.prefix_cache.misses, "cached_states": len(s.prefix_cache.entries), "oom_retries": s.prefix_cache.oom_retries},
@@ -379,15 +389,13 @@ def main():
                          f"holds the port is not it — most often `python -m kev.console` with KEV_CONSOLE_PORT={a.port}, "
                          f"which serves /console/api/* only and never /v1/systemone. Put that KEV_CONSOLE_PORT back on 8790 "
                          f"(or stop it outright: this process already mounts the console at /console/api), then start kev.serve.")
-    if a.temperature is not None: opts = replace(opts, temperature=a.temperature)   # the fitted workload temperature, overriding the checkpoint's own
     run = a.run if is_hub_id(a.run) or os.path.exists(f"{a.run}/head.pt") else a.fallback
     if run != a.run: print(f"{a.run} not found, falling back to {run}")
     opts = LoadOptions.from_env()
+    if a.temperature is not None: opts = replace(opts, temperature=a.temperature)   # the fitted workload temperature, overriding the checkpoint's own
     if opts.backend is None: opts = replace(opts, backend="auto")   # serving default: MLX for the hybrid Qwen3.5 checkpoints on Apple Silicon (LoadOptions.backend); KEV_BACKEND=torch to decline
     dev, ck = _serving_device(a.device, opts, run)
     if dev == "mps" and opts.attn is None: opts = replace(opts, attn="sdpa")   # serving default on Apple GPUs (parity measured)
-    if opts.backend is None: opts = replace(opts, backend="auto")   # serving default: MLX for the hybrid Qwen3.5 checkpoints on Apple Silicon (LoadOptions.backend); KEV_BACKEND=torch to decline
-    dev, ck = _serving_device(a.device, opts, run)
     if dev != "cpu" and opts.dtype is None: opts = replace(opts, dtype=torch.bfloat16)   # serving default: 2-4.5x faster than fp32 on an L4, same answers (LoadOptions.dtype); KEV_DTYPE=fp32 for the exact path
     cuda_optimizations = dev == "cuda" and torch.version.hip is None   # these serving paths are measured on NVIDIA
     if cuda_optimizations and opts.cuda_graphs is None: opts = replace(opts, cuda_graphs=True)   # serving default: a pass is ~2,000 kernel launches, so replaying graphs cuts warm latency several-fold (kev.cuda_graphs); KEV_CUDA_GRAPHS=0 to decline
