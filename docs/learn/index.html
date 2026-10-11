@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kev 基础知识 · 目录与架构流程图</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #131a2e; --panel2: #1b2340; --ink: #e6ecff; --muted: #96a3c4;
+    --line: #2a3552; --accent: #4fd1c5; --accent2: #f6ad55; --accent3: #b794f4;
+    --state: #2b6cb0; --q1: #2f855a; --q2: #b83280; --danger: #e53e3e; --ok: #38a169;
+  }
+  html[data-theme="light"] {
+    --bg: #f6f8fc; --panel: #ffffff; --panel2: #eef2fa; --ink: #16203a; --muted: #5b6785;
+    --line: #cfd8ea; --state: #3182ce; --q1: #38a169; --q2: #d53f8c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); line-height: 1.75;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    transition: background .3s, color .3s;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  header.top {
+    position: sticky; top: 0; z-index: 30; backdrop-filter: blur(8px);
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    border-bottom: 1px solid var(--line); padding: 12px 22px;
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  }
+  header.top h1 { font-size: 17px; margin: 0; letter-spacing: .4px; }
+  header.top .sub { color: var(--muted); font-size: 12px; }
+  .spacer { flex: 1; }
+  button, input[type=search] {
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 12px; font-size: 13px; font-family: inherit;
+  }
+  button { cursor: pointer; transition: transform .1s, border-color .2s; }
+  button:hover { border-color: var(--accent); }
+  button:active { transform: scale(.96); }
+  input[type=search] { min-width: 190px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 20px 22px 80px; }
+  section.card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 20px; margin: 18px 0;
+  }
+  h2.sec { font-size: 16px; margin: 0 0 4px; letter-spacing: .3px; }
+  p.hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+  .banner {
+    display: none; border: 1px solid var(--accent2); background: color-mix(in srgb, var(--accent2) 14%, var(--panel));
+    border-radius: 10px; padding: 10px 14px; font-size: 13px; margin: 14px 0;
+  }
+  .banner code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; }
+
+  /* ------------------------------------------------------------ flow diagram */
+  .flow-scroll { overflow-x: auto; padding-bottom: 6px; }
+  svg.flow { display: block; min-width: 1080px; width: 100%; height: auto; }
+  svg.flow .box { fill: var(--panel2); stroke: var(--line); stroke-width: 1.4; rx: 10; }
+  svg.flow .box.hot { stroke: var(--accent); }
+  svg.flow .lbl { fill: var(--ink); font-size: 13px; font-weight: 600; }
+  svg.flow .sub2 { fill: var(--muted); font-size: 10.5px; }
+  svg.flow .pipe { stroke: var(--line); stroke-width: 2.5; fill: none; }
+  svg.flow .pipeb { stroke: var(--accent3); stroke-width: 1.6; fill: none; stroke-dasharray: 5 6; opacity: .75; }
+  svg.flow .cap { fill: var(--muted); font-size: 10.5px; }
+  .dot-state, .dot-q1, .dot-q2 { r: 5; }
+  .dot-state { fill: var(--state); }
+  .dot-q1 { fill: var(--q1); }
+  .dot-q2 { fill: var(--q2); }
+  .pulse { animation: breathe 3.2s ease-in-out infinite; transform-origin: center; }
+  @keyframes breathe { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+
+  /* ------------------------------------------------------------------- TOC */
+  .part { margin: 22px 0 10px; }
+  .part > .ptitle {
+    font-size: 14px; font-weight: 700; letter-spacing: .6px; color: var(--accent);
+    border-left: 3px solid var(--accent); padding-left: 10px; margin-bottom: 4px;
+  }
+  .part > .pgoal { color: var(--muted); font-size: 12.5px; margin: 0 0 10px 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 12px; }
+  .chap {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 11px;
+    padding: 12px 14px; cursor: pointer; transition: border-color .2s, transform .12s;
+  }
+  .chap:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .chap.active { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+  .chap .num { font-size: 11px; color: var(--accent); font-weight: 700; letter-spacing: 1px; }
+  .chap .ttl { font-size: 13.5px; font-weight: 700; margin: 2px 0 5px; line-height: 1.45; }
+  .chap .gist { font-size: 12px; color: var(--muted); min-height: 34px; }
+  .chap .meta { display: flex; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+  .hidden { display: none !important; }
+
+  /* ---------------------------------------------------------------- reader */
+  #reader { font-size: 15px; }
+  #reader h1 { font-size: 23px; margin: 6px 0 14px; letter-spacing: .2px; }
+  #reader h2 { font-size: 19px; margin: 30px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  #reader h3 { font-size: 16px; margin: 24px 0 8px; color: var(--accent); }
+  #reader h4 { font-size: 14.5px; margin: 18px 0 6px; }
+  #reader p { margin: 9px 0; }
+  #reader blockquote {
+    margin: 12px 0; padding: 8px 14px; border-left: 3px solid var(--accent3);
+    background: color-mix(in srgb, var(--accent3) 9%, var(--panel)); border-radius: 0 8px 8px 0;
+    color: var(--ink); font-size: 13.5px;
+  }
+  #reader ul, #reader ol { margin: 8px 0 8px 4px; padding-left: 22px; }
+  #reader li { margin: 3px 0; }
+  #reader li > ul, #reader li > ol { margin: 3px 0; }
+  #reader code {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 5px;
+    padding: 1px 5px; font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace; font-size: 13px;
+  }
+  #reader pre {
+    background: #0a0f1f; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; overflow-x: auto; position: relative; margin: 12px 0;
+  }
+  html[data-theme="light"] #reader pre { background: #0f172a; }
+  #reader pre code { background: none; border: 0; padding: 0; color: #dbe6ff; font-size: 12.6px; line-height: 1.6; display: block; }
+  #reader pre .lang {
+    position: absolute; top: 6px; right: 10px; font-size: 10.5px; color: var(--muted);
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+  #reader table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 13px; display: block; overflow-x: auto; }
+  #reader th, #reader td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+  #reader th { background: var(--panel2); font-weight: 700; }
+  #reader tr:nth-child(even) td { background: color-mix(in srgb, var(--panel2) 45%, transparent); }
+  #reader hr { border: 0; border-top: 1px solid var(--line); margin: 26px 0; }
+  #reader .math { font-family: "Cambria Math", "STIX Two Math", Georgia, serif; color: var(--accent2); white-space: nowrap; }
+  #reader .anchorlink { font-size: 12.5px; color: var(--muted); }
+  #reader details.toc { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; margin: 10px 0 16px; font-size: 13px; }
+  #reader details.toc a { display: inline-block; margin: 2px 10px 2px 0; }
+  .pager { display: flex; gap: 10px; justify-content: space-between; margin-top: 26px; }
+  .mmd { margin: 14px 0; overflow-x: auto; }
+  .mmd svg { display: block; height: auto; width: 100%; max-width: var(--w); min-width: calc(var(--w) * .62); }
+  .mmd .nd { fill: var(--panel2); stroke: var(--line); stroke-width: 1.4; }
+  .mmd .nd.dec { fill: color-mix(in srgb, var(--accent2) 16%, var(--panel2)); stroke: var(--accent2); }
+  .mmd .nd.term { fill: color-mix(in srgb, var(--accent) 16%, var(--panel2)); stroke: var(--accent); }
+  .mmd text { fill: var(--ink); font-size: 11.5px; }
+  .mmd .elabel { fill: var(--muted); font-size: 10.5px; }
+  .mmd .edge { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  .mmd .fallback { font-size: 12px; color: var(--muted); }
+  .status { font-size: 11.5px; color: var(--muted); }
+  .status b { color: var(--ok); }
+  @media print { header.top, #hero, #toc, .pager { display: none; } body { background: #fff; color: #000; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>Kev 基础知识系统学习指南</h1>
+    <div class="sub">18 章 + 附录 · 入门 → 进阶 → 应用 · 章节独立成文件，本页负责目录、流程动画与渲染</div>
+  </div>
+  <div class="spacer"></div>
+    <input type="search" id="q" placeholder="搜章名 / 正文关键词…" aria-label="搜索章节" />
+  <button id="btn-all">通读模式</button>
+  <button id="btn-theme">☀ 浅色</button>
+  <span class="status" id="mode"></span>
+</header>
+
+<div class="wrap">
+  <div class="banner" id="banner"></div>
+
+  <section class="card" id="hero">
+    <h2 class="sec">架构流程图：一条 record 如何变成一组校准概率</h2>
+    <p class="hint">上排是<strong>推理路径</strong>（<code>kev.serve</code> → <code>api.to_record</code> → <code>model.encode</code> → 骨干 → <code>PointerHead</code> → 温度 → 概率）；
+      下排虚线是<strong>训练与验证闭环</strong>（冻结套件 → <code>kev.train</code> → checkpoint → <code>kev.benchmark</code> → <code>report.json</code> → <code>kev.rounds</code>）。
+      粒子沿管道流动即数据流转方向；节点上的数字标注对应章节。</p>
+    <div class="flow-scroll">
+      <svg class="flow" id="flow" viewBox="0 0 1180 380" role="img" aria-label="Kev 推理与训练闭环数据流转动画">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+          </marker>
+        </defs>
+
+        <text class="cap" x="8" y="24">推理路径（一次 /v1/systemone 请求）</text>
+        <g id="row1"></g>
+
+        <text class="cap" x="8" y="238">训练与验证闭环（研究路径，训练进程一次只能跑一个）</text>
+        <g id="row2"></g>
+
+        <g id="maskdemo" transform="translate(868,34)">
+          <text class="cap" x="0" y="-6">block-causal mask：分支可读 state，读不到兄弟分支（第 6 章）</text>
+          <g id="maskcells"></g>
+        </g>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--state)"></i>state 粒子（所有问题共享，只算一次）</span>
+      <span><i style="background:var(--q1)"></i>question 分支 A</span>
+      <span><i style="background:var(--q2)"></i>question 分支 B（互不污染 → 批处理不影响答案）</span>
+      <span><i style="background:var(--accent3)"></i>训练 / 验证闭环</span>
+    </div>
+  </section>
+
+  <section class="card" id="toc">
+    <h2 class="sec">章节目录</h2>
+    <p class="hint">点卡片即在下方阅读该章（渲染 <code>chapters/*.md</code>，文件仍是唯一真相源）。
+      🟢 = 不下载模型、不要 GPU、不要网络；🟡 = 需一次下载或更长时间。徽章“前置”来自第 17 章路径表。</p>
+    <div id="tocbody"></div>
+  </section>
+
+  <section class="card" id="readcard">
+    <h2 class="sec" id="readtitle">阅读区</h2>
+    <p class="hint" id="readsub">从上面目录点一章，或按 <code>[</code> / <code>]</code> 键翻页。</p>
+    <div id="reader"></div>
+    <div class="pager" id="pager"></div>
+  </section>
+</div>
+
+<script>
+/* ============================== 章节元数据（手工整理，与 17.2 / B.2 对齐） ============================== */
+const CHAPTERS = [
+  { n: "1",  file: "01-positioning.md",       part: 1, title: "Kev 是什么：一句话模型与学习地图",
+    gist: "决策模型而非聊天模型：给定 state 与 questions，不生成文字，直接吐校准概率。含端到端最小实例。",
+    prereq: "无", deps: "🟡", must: "所有人" },
+  { n: "2",  file: "02-transformer.md",       part: 1, title: "Transformer 与因果语言模型最小集",
+    gist: "自回归、加性 mask、position_ids、√d 缩放。手写一次 4D 掩码，后面所有章都建立在它之上。",
+    prereq: "会写 PyTorch", deps: "🟢", must: "路径 A 可快扫" },
+  { n: "3",  file: "03-tokenizer.md",         part: 1, title: "Tokenizer 与特殊 token：选项边界为什么不可伪造",
+    gist: "边界 token 只能由 encode() 放置；用户文本里的 <|…|> 会被改写，因此指针读到的 </opt> 一定可信。",
+    prereq: "2", deps: "🟡 tokenizer", must: "所有人" },
+  { n: "4",  file: "04-probability.md",       part: 1, title: "概率与损失基础：softmax、交叉熵、KL",
+    gist: "从 logits 到损失到校准的最小数学；为什么温度改形状不改 argmax。",
+    prereq: "无", deps: "🟢", must: "路径 B" },
+  { n: "5",  file: "05-record.md",            part: 1, title: "Kev 的数据单元：record（state + questions）",
+    gist: "一条 record = 一段 state + 多个问题 + 每题选项；三种题型 noul / choice / score；unknowable 与 abstain。",
+    prereq: "3", deps: "🟡", must: "所有人" },
+  { n: "6",  file: "06-block-causal-mask.md", part: 2, title: "block-causal mask 与分支隔离",
+    gist: "打包成一条序列但分支互不可见；-inf 与填充的两个坑；隔离性实验：改题 1 的选项，题 2 的 logits 逐 bit 不变。",
+    prereq: "5", deps: "🟢", must: "训练 / 架构" },
+  { n: "7",  file: "07-pointer-head.md",      part: 2, title: "PointerHead：prefill-only 的指针读出",
+    gist: "用 decide 的隐向量对每个选项边界隐向量打分；三种题型共享一个头，只是映射不同。",
+    prereq: "4, 6", deps: "🟢", must: "训练 / 架构" },
+  { n: "8",  file: "08-row-form.md",          part: 2, title: "行形式与混合骨干：整个仓库复杂度的根源",
+    gist: "DeltaNet 线性注意力无法用块掩码 → 每问一行；行形式与 packed 数学等价，因而批处理不影响答案。",
+    prereq: "6", deps: "🟢 / 🟡", must: "训练 / 服务" },
+  { n: "9",  file: "09-temperature.md",       part: 2, title: "温度校准（temperature scaling）",
+    gist: "一个标量把分布掰准；四臂对照与 in-sample 乐观偏差；温度只能在留出数据上拟合。",
+    prereq: "4", deps: "🟢", must: "评估 / 服务" },
+  { n: "10", file: "10-metrics.md",           part: 2, title: "指标族：accuracy / ECE / Brier / NLL / coverage / AURC",
+    gist: "16 个字段各自回答什么问题：加性均值 vs 非线性分桶，AURC 的整组阶梯，哪些口径不可混用。",
+    prereq: "9", deps: "🟢", must: "评估" },
+  { n: "11", file: "11-bootstrap.md",         part: 2, title: "统计比较：record-clustered paired bootstrap",
+    gist: "同一 record 的多题必须整体重采样；不聚簇会把区间做窄；四道拒绝条件与 suite_sha256。",
+    prereq: "10", deps: "🟢", must: "评估 / 科研" },
+  { n: "12", file: "12-frozen-suites.md",     part: 2, title: "冻结评测套件与数据纪律",
+    gist: "五道门 + 三条纪律：eval-only 永不进训练、套件哈希必须相等、移除套件带理由拒绝。",
+    prereq: "5", deps: "🟢", must: "所有人" },
+  { n: "13", file: "13-training.md",          part: 3, title: "训练框架实操",
+    gist: "开关 → 损失项 → 预算的对应关系；LoRA 与全量、长度排序与显存天花板、resume 与 snapshot。",
+    prereq: "7, 8, 12", deps: "🟢 / 🟡 需网络", must: "训练" },
+  { n: "14", file: "14-serving.md",           part: 3, title: "推理服务实操",
+    gist: "请求的一生（八步生命周期）、prefix cache 三条边界、选项序平均、服务路径 vs 精确路径、错误面。",
+    prereq: "5, 8", deps: "🟢 ×3 / 🟡 ×2", must: "服务" },
+  { n: "15", file: "15-evaluation.md",        part: 3, title: "评估系统实操",
+    gist: "benchmark 的 22 个顶层块逐位验证；objective 定义、温度四臂、隔离门控、无模型也能懂汇总。",
+    prereq: "10, 11, 12", deps: "🟡 / 🟢", must: "评估" },
+  { n: "16", file: "16-rounds.md",            part: 3, title: "科研流水线（rounds）概览",
+    gist: "一个 spec 定义一轮：面板 / 判据 / 排序 / 确认阶段，温度池规则与配对区间怎么读。",
+    prereq: "11, 12, 15", deps: "🟢 ×5", must: "科研" },
+  { n: "17", file: "17-paths.md",             part: 4, title: "分阶段学习路径（必补 / 可跳）",
+    gist: "按角色给三条可执行路线，每条写清哪些命令离线可跑、哪些需要网络，以及自检清单。",
+    prereq: "无", deps: "🟡", must: "刚开始的人" },
+  { n: "18", file: "18-cheatsheet.md",        part: 4, title: "关键结论总结：公式速查与红线",
+    gist: "21 条公式 + 22 个常量 + 十二条红线，一屏对照；每条都对过源码，数字来自本机实测。",
+    prereq: "全部", deps: "—", must: "所有人" },
+  { n: "A",  file: "appendix-a-glossary.md",  part: 4, title: "附录 A · 术语表",
+    gist: "约 48 条术语，按数据与编码 / 架构与计算形式 / 概率与校准 / 统计与评估 / 数据纪律五组，每条给定义与所在章。",
+    prereq: "—", deps: "—", must: "查阅" },
+  { n: "B",  file: "appendix-b-examples.md",  part: 4, title: "附录 B · 示例索引、产物与健康检查",
+    gist: "全部示例的依赖标记与定位、本文产物清单、一分钟离线体检（含失败原因如实记录）。",
+    prereq: "—", deps: "—", must: "复现时" },
+];
+const PARTS = {
+  1: { name: "第一部分 入门篇（Foundations）", goal: "不依赖任何 Kev 特有知识，仅用 Transformer 基础，就能完整复述“一条 record 如何变成一组校准概率”。" },
+  2: { name: "第二部分 进阶篇（Kev 特有概念）", goal: "拆开 Kev 特有的六个不变量：分支隔离、指针读出、形式等价、温度、指标口径、数据纪律。" },
+  3: { name: "第三部分 应用篇（动手用模块）", goal: "四个入口各跑通一遍：训练、服务、评估、科研流水线，并把产物读成结论。" },
+  4: { name: "第四部分 路径与总结", goal: "回答“先看哪里”和“记错什么会坏”，并留下可查阅的术语与示例索引。" },
+};
+
+/* ============================== 流程动画 ============================== */
+const FLOW_NODES = {
+  row1: [
+    { x: 12,  y: 38, w: 132, h: 62, t: "HTTP 请求", s: "SystemOneRequest", c: "14" },
+    { x: 168, y: 38, w: 128, h: 62, t: "to_record()", s: "外部契约 → record", c: "5" },
+    { x: 320, y: 38, w: 138, h: 62, t: "encode()", s: "state + 每问 branch", c: "3" },
+    { x: 482, y: 30, w: 150, h: 78, t: "骨干 forward", s: "packed mask / row form", c: "6 · 8" },
+    { x: 656, y: 38, w: 138, h: 62, t: "PointerHead", s: "边界位置 logits", c: "7" },
+    { x: 818, y: 38, w: 112, h: 62, t: "softmax ÷ T", s: "校准概率", c: "9" },
+    { x: 954, y: 38, w: 118, h: 62, t: "Response", s: "+ usage / tokens", c: "14" },
+    { x: 1086, y: 38, w: 82, h: 62, t: "指标", s: "ECE · AURC", c: "10" },
+  ],
+  row2: [
+    { x: 12,  y: 252, w: 132, h: 58, t: "冻结套件", s: "evals/… manifest", c: "12" },
+    { x: 168, y: 252, w: 128, h: 58, t: "kev.train", s: "LoRA / 全量", c: "13" },
+    { x: 320, y: 252, w: 138, h: 58, t: "checkpoint", s: "head.pt + 权重", c: "13" },
+    { x: 482, y: 252, w: 150, h: 58, t: "kev.benchmark", s: "rows.json", c: "15" },
+    { x: 656, y: 252, w: 138, h: 58, t: "report.json", s: "objective 等", c: "15" },
+    { x: 818, y: 252, w: 112, h: 58, t: "calibrate", s: "温度四臂", c: "9" },
+    { x: 954, y: 252, w: 118, h: 58, t: "kev.rounds", s: "面板 / 判据", c: "16" },
+    { x: 1086, y: 252, w: 82, h: 58, t: "verdict", s: "是否晋级", c: "16" },
+  ],
+};
+const SVGNS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, text) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function drawFlow() {
+  const paths = [];
+  for (const key of ["row1", "row2"]) {
+    const g = document.getElementById(key);
+    const list = FLOW_NODES[key];
+    list.forEach((nd, i) => {
+      g.appendChild(el("rect", { class: "box" + (i === 3 ? " hot pulse" : ""), x: nd.x, y: nd.y, width: nd.w, height: nd.h, rx: 10 }));
+      g.appendChild(el("text", { class: "lbl", x: nd.x + 10, y: nd.y + 24 }, nd.t));
+      g.appendChild(el("text", { class: "sub2", x: nd.x + 10, y: nd.y + 40 }, nd.s));
+      g.appendChild(el("text", { class: "cap", x: nd.x + nd.w - 10, y: nd.y + nd.h - 8, "text-anchor": "end" }, "第 " + nd.c + " 章"));
+      if (i + 1 < list.length) {
+        const nx = list[i + 1];
+        const d = `M${nd.x + nd.w},${nd.y + nd.h / 2} L${nx.x - 6},${nx.y + nx.h / 2}`;
+        g.appendChild(el("path", { class: key === "row1" ? "pipe" : "pipeb", d, "marker-end": "url(#arr)" }));
+        paths.push(d);
+      }
+    });
+  }
+  // 闭环：verdict → train（反馈），推理路径的结果喂给指标
+  const back = "M1127,310 C1127,348 60,348 78,312";
+  document.getElementById("row2").appendChild(el("path", { class: "pipeb", d: back, "marker-end": "url(#arr)" }));
+  paths.push(back);
+  animateParticles(paths);
+  drawMaskDemo();
+}
+function animateParticles(paths) {
+  const svg = document.getElementById("flow");
+  const lanes = [["dot-state", 0], ["dot-q1", 6], ["dot-q2", 12]];
+  for (const [cls, delay] of lanes) {
+    for (let p = 0; p < 3; p++) {
+      const mpath = el("path", {
+        d: paths[p % paths.length], fill: "none", stroke: "none",
+        id: `mp-${cls}-${p}`,
+      });
+      svg.appendChild(mpath);
+      const dot = el("circle", { class: cls, r: 5 });
+      const am = el("animateMotion", {
+        dur: "5.4s", begin: `${delay + p * 1.8}s`, repeatCount: "indefinite",
+        rotate: "0", keyPoints: "0;1", keyTimes: "0;1", calcMode: "linear",
+      });
+      am.appendChild(el("mpath", { href: `#mp-${cls}-${p}` }));
+      dot.appendChild(am);
+      svg.appendChild(dot);
+    }
+  }
+}
+function drawMaskDemo() {
+  const g = document.getElementById("maskcells");
+  const labels = ["st", "q1a", "q1b", "q2a", "q2b"];
+  const cell = 24, gap = 3;
+  labels.forEach((r, i) => g.appendChild(el("text", { class: "cap", x: -6, y: i * (cell + gap) + 16, "text-anchor": "end" }, r)));
+  labels.forEach((c, j) => g.appendChild(el("text", { class: "cap", x: j * (cell + gap) + cell / 2, y: -18, "text-anchor": "middle" }, c)));
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) {
+      const stateCol = j === 0, sameBranch = i === 0 ? j === 0 : (i >= 1 && i <= 2 ? j >= 1 && j <= 2 : j >= 3 && j <= 4) && j <= i;
+      const allow = stateCol || sameBranch;
+      g.appendChild(el("rect", {
+        x: j * (cell + gap), y: i * (cell + gap), width: cell, height: cell, rx: 4,
+        fill: allow ? (stateCol ? "var(--state)" : (i <= 2 ? "var(--q1)" : "var(--q2)")) : "var(--panel2)",
+        opacity: allow ? 0.75 : 1, stroke: "var(--line)",
+        class: allow && !stateCol ? "pulse" : "",
+      }));
+    }
+  }
+}
+
+/* ============================== 目录渲染 ============================== */
+let preloading = false;
+function preloadAll() {                     // 首次搜索就把 20 章拉进缓存，正文也能命中
+  if (preloading) return;
+  preloading = true;
+  Promise.all(CHAPTERS.map(c => loadText(c.file).catch(() => "")))
+    .then(() => buildTOC(document.getElementById("q").value));
+}
+function matches(c, q) {
+  if (!q) return true;
+  const meta = (c.title + " " + c.gist + " " + c.n + " " + c.deps + " " + c.prereq + " " +
+                c.file + " " + PARTS[c.part].name).toLowerCase();
+  if (meta.includes(q)) return true;
+  const text = CACHE.get(c.file);
+  return !!text && text.toLowerCase().includes(q);
+}
+function buildTOC(filter) {
+  const host = document.getElementById("tocbody");
+  host.innerHTML = "";
+  const q = (filter || "").trim().toLowerCase();
+  if (q) preloadAll();
+  for (const p of [1, 2, 3, 4]) {
+    const items = CHAPTERS.filter(c => c.part === p && matches(c, q));
+    if (!items.length) continue;
+    const box = document.createElement("div");
+    box.className = "part";
+    box.innerHTML = `<div class="ptitle">${PARTS[p].name}</div><div class="pgoal">${PARTS[p].goal}</div>`;
+    const grid = document.createElement("div");
+    grid.className = "grid";
+    for (const c of items) {
+      const d = document.createElement("div");
+      d.className = "chap";
+      d.dataset.file = c.file;
+      d.innerHTML = `<div class="num">第 ${c.n} 篇 · ${c.file}</div>
+        <div class="ttl">${esc(c.title)}</div>
+        <div class="gist">${esc(c.gist)}</div>
+        <div class="meta"><span class="chip">前置 ${esc(c.prereq)}</span>
+        <span class="chip">${esc(c.deps)}</span><span class="chip">${esc(c.must)}</span></div>`;
+      d.onclick = () => go(c.file);
+      grid.appendChild(d);
+    }
+    box.appendChild(grid);
+    host.appendChild(box);
+  }
+}
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+</script>
+<script>
+/* ============================== Markdown 渲染器（无依赖，支持行内 HTML 透传） ============================== */
+const BLOCK_TAGS = /^(<\/?)\s*(style|div|svg|section|figure|details|summary|table|thead|tbody|tr|th|td|h[1-6]|header|main|footer|blockquote|ul|ol|li|p|hr|canvas|pre)\b/i;
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function slug(s) {
+  return "s-" + String(s).replace(/[^\w\u4e00-\u9fff]+/g, "-").replace(/^-|-$/g, "").slice(0, 48);
+}
+
+/* --- 把 LaTeX 片段降级成可读 Unicode（离线无 KaTeX 时仍然清楚） --- */
+function mathify(src) {
+  let s = String(src);
+  const REP = [
+    [/\\operatorname\{([^}]*)\}/g, "$1"],
+    [/\\text\{([^}]*)\}/g, "$1"],
+    [/\\mathcal\{([^}]*)\}/g, "$1"],
+    [/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, "($1)/($2)"],
+    [/\\leq?/g, "≤"], [/\\geq?/g, "≥"], [/\\neq?/g, "≠"], [/\\approx/g, "≈"],
+    [/\\times/g, "×"], [/\\cdot/g, "·"], [/\\pm/g, "±"], [/\\sum/g, "Σ"],
+    [/\\lbrack|\\rbrack|\\lbrace|\\rbrace/g, ""],
+    [/\\lvert|\\rvert|\\vert|\\mid/g, "|"],
+    [/\\infty/g, "∞"], [/\\in\b/g, "∈"], [/\\to\b/g, "→"], [/\\Pr\b/g, "P"],
+    [/\\arg\?max|\\argmax/g, "argmax"], [/\\min\b/g, "min"],
+    [/\\,/g, " "], [/\\;/g, " "], [/\\:/g, " "], [/\\!/g, ""],
+    [/\\\$/g, "$"], [/\\\\/g, " "],
+    [/\^\{([^{}]*)\}/g, "^($1)"], [/\{([^{}]*)\}/g, "$1"],
+    [/\\\s?([a-zA-Z]+)/g, "$1"],
+  ];
+  for (const [re, to] of REP) s = s.replace(re, to);
+  return escapeHtml(s.replace(/_/g, "_")).replace(/_\(/g, "<sub>(").replace(/<sub>\(([^)]*)\)/g, "<sub>$1</sub>");
+}
+
+/* --- 行内解析 --- */
+function inline(raw) {
+  const codes = [], maths = [];
+  let s = String(raw);
+  s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
+  s = s.replace(/\\\((.+?)\\\)/g, (m, a) => { maths.push(mathify(a)); return "\u0001" + (maths.length - 1) + "\u0001"; });
+  s = s.replace(/\\\[(.+?)\\\]/g, (m, a) => { maths.push(mathify(a)); return "\u0001" + (maths.length - 1) + "\u0001"; });
+  s = escapeHtml(s);
+  s = s.replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, (m, txt, href) => linkify(txt, href));
+  s = s.replace(/\*\*([\s\S]+?)\*\*/g, "<b>$1</b>");
+  s = s.replace(/(^|[^*\w])\*([^*\n]+)\*/g, "$1<i>$2</i>");
+  s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => '<span class="math">' + maths[+i] + "</span>");
+  s = s.replace(/\u0000(\d+)\u0000/g, (m, i) => "<code>" + escapeHtml(codes[+i]) + "</code>");
+  return s;
+}
+function linkify(txt, href) {
+  const label = txt || href;
+  if (/\.md$/i.test(href) && CHAPTERS.some(c => c.file === href.replace(/^.*\//, ""))) {
+    const f = href.replace(/^.*\//, "");
+    return `<a href="chapters/${f}" data-chapter="${f}">${label}</a>`;
+  }
+  if (href.indexOf("index.html") >= 0) return `<a href="#toc">${label}</a>`;
+  if (/^(?:\.\.\/)+README\.md$/.test(href) || href === "README.md") return `<a href="README.md" data-readme="1">${label}</a>`;
+  const ext = /^(https?:|\.\.\/)/.test(href) ? ' target="_blank" rel="noreferrer"' : "";
+  const cls = /kev\//.test(href) ? ' class="anchorlink"' : "";
+  return `<a href="${href}"${cls}${ext}>${label}</a>`;
+}
+
+function renderMarkdown(src) {
+  const lines = String(src).replace(/\r\n/g, "\n").split("\n");
+  const heads = [];
+  const out = [];
+  let i = 0;
+  const isBlank = l => !l || !l.trim();
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (/^\s*```/.test(line)) {                                   /* fenced code */
+      const lang = (line.match(/^\s*```\s*([\w-]*)/) || [, ""])[1].toLowerCase();
+      const buf = [];
+      i++;
+      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) buf.push(lines[i++]);
+      i++;
+      out.push(lang === "mermaid" ? mermaidBlock(buf.join("\n"))
+        : `<pre><span class="lang">${lang || "text"}</span><code>${escapeHtml(buf.join("\n"))}</code></pre>`);
+      continue;
+    }
+
+    if (/^\s{0,3}</.test(line) && BLOCK_TAGS.test(line.trim())) { /* raw HTML block */
+      const buf = [];
+      while (i < lines.length && !isBlank(lines[i]) && !/^\s*```/.test(lines[i])) buf.push(lines[i++]);
+      out.push(buf.join("\n"));
+      continue;
+    }
+
+    const h = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (h) {
+      const lvl = h[1].length, text = h[2].replace(/^\d+\.\s*/, m => m);
+      const id = slug(text.replace(/[#&]/g, ""));
+      if (lvl <= 3) heads.push({ lvl: Math.max(2, lvl), id, text });
+      out.push(`<h${lvl} id="${id}">${inline(text)}</h${lvl}>`);
+      i++;
+      continue;
+    }
+
+    if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) { out.push("<hr>"); i++; continue; }
+
+    if (/^>/.test(line)) {                                        /* blockquote */
+      const buf = [];
+      while (i < lines.length && /^>/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ""));
+      const inner = inline(buf.filter(x => !isBlank(x)).join("\n")).replace(/\n/g, "<br>");
+      out.push(`<blockquote>${inner}</blockquote>`);
+      continue;
+    }
+
+    if (/^\s*\|/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      const cells = l => l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => inline(c.trim()));
+      const head = cells(lines[i]);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(cells(lines[i++]));
+      out.push(`<table><thead><tr>${head.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>${
+        rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+      continue;
+    }
+
+    if (/^\s*([-*]|\d+\.)\s+/.test(line)) {                       /* list */
+      const buf = [];
+      while (i < lines.length && !isBlank(lines[i]) && !/^\s*```/.test(lines[i])) {
+        if (/^\s*([-*]|\d+\.)\s+/.test(lines[i]) || /^\s{2,}\S/.test(lines[i])) buf.push(lines[i]);
+        else if (/^>/.test(lines[i])) break;
+        else if (buf.length) break;
+        i++;
+      }
+      out.push(buildList(buf));
+      continue;
+    }
+
+    if (isBlank(line)) { i++; continue; }
+
+    const para = [];                                              /* paragraph */
+    while (i < lines.length && !isBlank(lines[i]) && !/^\s*(```|#{1,6}\s|>|\s*\||\s*([-*]|\d+\.)\s|---)/.test(lines[i])
+           && !(/^\s{0,3}</.test(lines[i]) && BLOCK_TAGS.test(lines[i].trim()))) para.push(lines[i++]);
+    if (para.length) out.push(`<p>${inline(para.join(" "))}</p>`);
+    else i++;
+  }
+
+  const toc = heads.filter(h => h.lvl === 2 || h.lvl === 3)
+    .map(h => `<a href="#${h.id}">${h.lvl === 3 ? "· " : ""}${inline(h.text)}</a>`).join("");
+  return { html: `<details class="toc"><summary>本章小节（${heads.length}）</summary>${toc}</details>` + out.join("\n"), heads };
+}
+
+function buildList(buf) {
+  const items = [];
+  for (const l of buf) {
+    const m = l.match(/^(\s*)([-*]|\d+\.)\s+(.*)$/);
+    if (m) items.push({ ind: m[1].length, ordered: /^\d/.test(m[2]), text: m[3] });
+    else if (items.length) items[items.length - 1].text += " " + l.trim();   // 多行条目的后续行
+  }
+  if (!items.length) return "";
+  return listHtml(items, items[0].ind, items[0].ordered);
+}
+function listHtml(items, ind, ordered) {
+  let html = ordered ? "<ol>" : "<ul>";
+  for (let k = 0; k < items.length; k++) {
+    if (items[k].ind < ind) break;
+    if (items[k].ind > ind) {                       // 更深层 → 递归成子表
+      const run = [];
+      let j = k;
+      while (j < items.length && items[j].ind > ind) { run.push(items[j]); j++; }
+      html += "<li>" + listHtml(run, run[0].ind, run[0].ordered) + "</li>";
+      k = j - 1;
+      continue;
+    }
+    html += `<li>${inline(items[k].text)}</li>`;
+  }
+  return html + (ordered ? "</ol>" : "</ul>");
+}
+
+/* ============================== 迷你 Mermaid（flowchart + stateDiagram 自动分层布局） ============================== */
+function mermaidBlock(src) {
+  try { return mermaidSvg(src); } catch (e) {
+    return `<details class="mmd"><summary class="fallback">流程图（自动布局失败，点此看源码）</summary><pre><code>${escapeHtml(src)}</code></pre></details>`;
+  }
+}
+/* 标签只保留语义：去外层引号、还原实体、把 <br/> 归一成分行（形状语法由 nodeToken 负责） */
+function cleanLabel(t) {
+  return String(t).trim()
+    .replace(/^["']([\s\S]*?)["']$/, "$1")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+    .replace(/<br\s*\/?>/gi, "\n");
+}
+const splitRows = s => String(s).split(/\n|<br\s*\/?>/i);
+function parseMermaid(src) {
+  const lines = src.split("\n").map(l => l.trim()).filter(l => l && !/^%%/.test(l));
+  const isState = /^stateDiagram/.test(lines[0] || "");
+  const dir = isState ? "TD" : (/\bTD\b|\bTB\b/.test(lines[0] || "") ? "TD" : (/\bRL\b/.test(lines[0] || "") ? "RL" : "LR"));
+  const nodes = new Map(), edges = [];
+  const ensure = (id, label, kind) => {
+    const key = id.trim();
+    if (!nodes.has(key)) nodes.set(key, { id: key, label: label != null ? cleanLabel(label) : key, kind: kind || "rect" });
+    else if (label != null && !nodes.get(key).labelSet) { nodes.get(key).label = cleanLabel(label); nodes.get(key).kind = kind || nodes.get(key).kind; }
+    return key;
+  };
+  const nodeToken = s => {
+    s = s.trim();
+    if (/^\[\*\]$/.test(s)) return { id: "@START", label: "开始", kind: "term" };
+    let m = s.match(/^([^\[\]{}()\s]+)\s*\{\s*"?([\s\S]*?)"?\s*\}$/) ||
+            s.match(/^([^\[\]{}()\s]+)\s*\[\s*"?([\s\S]*?)"?\s*\]$/) ||
+            s.match(/^([^\[\]{}()\s]+)\s*\(\s*"?([\s\S]*?)"?\s*\)$/);
+    if (!m) { const p = s.match(/^([^\[\]{}()"]+)"?([\s\S]*?)"?$/); m = p ? [s, p[1].trim(), p[2].trim()] : null; }
+    if (!m) return { id: s, label: s, kind: "rect" };
+    const kind = /\{/.test(s) ? "dec" : (/^\([\s\S]*\)$/.test(s) ? "term" : "rect");
+    return { id: m[1], label: m[2] || m[1], kind };
+  };
+  const ARROW = /(?:-{2,3}|={2,3})>/;
+  /* 起于箭头的 [*] 与终于箭头的 [*] 是两个不同的端点，否则整张状态图会被自己的环抽成一层 */
+  const ensureToken = (tok, side) => {
+    const t = nodeToken(tok);
+    let id = t.id, label = t.label;
+    if (t.id === "@START" && side === "to") { id = "@END"; label = "结束"; }
+    ensure(id, label, t.kind);
+    return id;
+  };
+  for (const raw of lines.slice(1)) {
+    if (/^(?:subgraph|end)\b/.test(raw)) continue;
+    const segs = raw.split(ARROW);
+    if (segs.length < 2) continue;
+    let left = segs[0].trim(), pending = null;
+    const lm = left.match(/^(.*?)\s+--\s+(.*)$/);          // "B -- 无/错 " + arrow
+    if (lm) { left = lm[1].trim(); pending = lm[2].trim(); }
+    let prev = ensureToken(left, "from");
+    for (let k = 1; k < segs.length; k++) {
+      let seg = segs[k].trim(), lab = pending;
+      pending = null;
+      const bar = seg.match(/^\|([^|]*)\|([\s\S]*)$/);      // arrow + "|label| next"
+      if (bar) { lab = bar[1].trim(); seg = bar[2].trim(); }
+      if (isState) {
+        const cm = seg.match(/^(.*?)\s*:\s*(.*)$/);         // "next: event"
+        if (cm) { seg = cm[1].trim(); lab = cm[2].trim(); }
+      }
+      const tail = seg.match(/^(.*?)\s+--\s+(.*)$/);        // "next -- label" before next arrow
+      let tok = seg;
+      if (tail && !lab) { tok = tail[1].trim(); pending = tail[2].trim(); }
+      const cur = ensureToken(tok, "to");
+      edges.push({ from: prev, to: cur, label: lab ? cleanLabel(lab) : null });
+      prev = cur;
+      if (tail && lab) {                                    // "|label| next -- x" 再到下一个箭头
+        const nxt = ensureToken(tail[2], "to");
+        edges.push({ from: cur, to: nxt, label: null });
+        prev = nxt;
+      }
+    }
+  }
+  return { dir, nodes, edges };
+}
+function measure(label) {
+  const rows = splitRows(label);
+  let w = 0;
+  for (const r of rows) w = Math.max(w, [...r].reduce((a, ch) => a + (ch.charCodeAt(0) > 0x2fff ? 13 : 7.2), 0));
+  return { w: Math.max(74, w + 22), h: 26 + rows.length * 16 };
+}
+function mermaidSvg(src) {
+  const { dir, nodes, edges } = parseMermaid(src);
+  if (!nodes.size) throw new Error("empty");
+  const deg = new Map([...nodes.keys()].map(k => [k, 0]));
+  const outs = new Map([...nodes.keys()].map(k => [k, []]));
+  for (const e of edges) {
+    if (!nodes.has(e.from) || !nodes.has(e.to)) continue;
+    deg.set(e.to, (deg.get(e.to) || 0) + 1);
+    outs.get(e.from).push(e.to);
+  }
+  const layer = new Map();
+  const queue = [...nodes.keys()].filter(k => !deg.get(k));
+  if (!queue.length && nodes.size) queue.push(nodes.keys().next().value);   // 有环时从第一个声明的节点起排
+  for (const k of queue) layer.set(k, 0);
+  let guard = 0;
+  while (queue.length && guard++ < 4000) {
+    const cur = queue.shift();
+    for (const nx of outs.get(cur) || []) {
+      const want = (layer.get(cur) || 0) + 1;
+      if (!layer.has(nx) || layer.get(nx) < want) { layer.set(nx, want); queue.push(nx); }
+    }
+  }
+  for (const k of nodes.keys()) if (!layer.has(k)) layer.set(k, 0);
+  const byLayer = new Map();
+  for (const [id, lv] of layer) { if (!byLayer.has(lv)) byLayer.set(lv, []); byLayer.get(lv).push(id); }
+  const sizes = new Map([...nodes.keys()].map(k => [k, measure(nodes.get(k).label)]));
+  const GX = 46, GY = 22;
+  const pos = new Map();
+  let x = 14, totalW = 0, maxRowH = 0;
+  const layers = [...byLayer.keys()].sort((a, b) => a - b);
+  if (dir === "LR") {
+    for (const lv of layers) {
+      const ids = byLayer.get(lv);
+      const w = Math.max(...ids.map(i => sizes.get(i).w));
+      let y = 14;
+      for (const id of ids) {
+        const s = sizes.get(id);
+        pos.set(id, { x: x + (w - s.w) / 2, y, w: s.w, h: s.h });
+        y += s.h + GY;
+      }
+      x += w + GX;
+      totalW = Math.max(totalW, x); maxRowH = Math.max(maxRowH, y);
+    }
+  } else {
+    let y = 14;
+    for (const lv of layers) {
+      const ids = byLayer.get(lv);
+      let xx = 14, rowH = 0;
+      for (const id of ids) {
+        const s = sizes.get(id);
+        pos.set(id, { x: xx, y, w: s.w, h: s.h });
+        xx += s.w + GX; rowH = Math.max(rowH, s.h);
+      }
+      y += rowH + GY + 14;
+      totalW = Math.max(totalW, xx);
+      maxRowH = y;
+    }
+  }
+  const parts = [`<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path></marker></defs>`];
+  for (const e of edges) {
+    const a = pos.get(e.from), b = pos.get(e.to);
+    if (!a || !b) continue;
+    let p1, p2;
+    if (dir === "LR") { p1 = [a.x + a.w, a.y + a.h / 2]; p2 = [b.x - 3, b.y + b.h / 2]; }
+    else { p1 = [a.x + a.w / 2, a.y + a.h]; p2 = [b.x + b.w / 2, b.y - 3]; }
+    const mid = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+    const c1 = dir === "LR" ? [p1[0] + (p2[0] - p1[0]) * 0.5, p1[1]] : [p1[0], p1[1] + (p2[1] - p1[1]) * 0.5];
+    const c2 = dir === "LR" ? [p1[0] + (p2[0] - p1[0]) * 0.5, p2[1]] : [p2[0], p1[1] + (p2[1] - p1[1]) * 0.5];
+    parts.push(`<path class="edge" d="M${p1[0]},${p1[1]} C${c1[0]},${c1[1]} ${c2[0]},${c2[1]} ${p2[0]},${p2[1]}" marker-end="url(#ma)"></path>`);
+    if (e.label) {
+      const ls = splitRows(e.label);
+      ls.forEach((r, k) => parts.push(
+        `<text class="elabel" x="${mid[0]}" y="${mid[1] - 4 + k * 12}" text-anchor="middle">${escapeHtml(r)}</text>`));
+    }
+  }
+  for (const [id, p] of pos) {
+    const nd = nodes.get(id);
+    const cls = "nd" + (nd.kind === "dec" ? " dec" : nd.kind === "term" ? " term" : "");
+    if (nd.kind === "dec") {
+      const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+      parts.push(`<polygon class="${cls}" points="${cx},${p.y - 4} ${p.x + p.w + 6},${cy} ${cx},${p.y + p.h + 4} ${p.x - 6},${cy}"></polygon>`);
+    } else {
+      parts.push(`<rect class="${cls}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="${nd.kind === "term" ? p.h / 2 : 8}"></rect>`);
+    }
+    const rows = splitRows(nd.label);
+    rows.forEach((r, k) => parts.push(`<text x="${p.x + p.w / 2}" y="${p.y + 18 + k * 16}" text-anchor="middle">${escapeHtml(r)}</text>`));
+  }
+  const hh = Math.ceil(maxRowH + 8);
+  const ww = Math.ceil(totalW + 20);
+  return `<div class="mmd" style="--w:${Math.ceil(totalW + 20)}px"><svg width="${ww}" height="${hh}" viewBox="0 0 ${ww} ${hh}" role="img" aria-label="流程图">${parts.join("")}</svg></div>`;
+}
+</script>
+<script>
+/* ============================== 应用逻辑：取 md / 路由 / 导航 / 离线兼容 ============================== */
+const CACHE = new Map();
+const state = { cur: -1, all: false };
+
+function chapterIndex(file) { return CHAPTERS.findIndex(c => c.file === file); }
+
+async function loadText(file, root) {
+  if (CACHE.has(file)) return CACHE.get(file);
+  const r = await fetch((root ? "" : "chapters/") + file, { cache: "no-store" });
+  if (!r.ok) throw new Error("HTTP " + r.status + " @ " + file);
+  const t = await r.text();
+  CACHE.set(file, t);
+  return t;
+}
+
+function setMode(html, color) {
+  const m = document.getElementById("mode");
+  m.innerHTML = html;
+  if (color) m.style.color = color;
+}
+
+function banner(msg) {
+  const b = document.getElementById("banner");
+  if (!msg) { b.style.display = "none"; return; }
+  b.innerHTML = msg;
+  b.style.display = "block";
+}
+
+function wireLinks(host) {
+  host.querySelectorAll("a[data-chapter]").forEach(a => {
+    a.onclick = e => { e.preventDefault(); go(a.dataset.chapter); };
+  });
+  host.querySelectorAll("a[data-readme]").forEach(a => {
+    a.onclick = e => { e.preventDefault(); showReadme(); };
+  });
+}
+
+/* 导读 README.md 也能在本页渲染（不跳出 SPA 去看纯文本） */
+async function showReadme() {
+  let text;
+  try { text = await loadText("README.md", true); banner(""); }
+  catch (e) {
+    setMode("README 读取失败", "var(--danger)");
+    banner("<b>无法直接读文件</b>（" + esc(e.message) + "）。请走 <code>http://127.0.0.1:8199/docs/learn/index.html</code>，或把 <code>README.md</code> 拖进本页。");
+    return;
+  }
+  state.cur = -1; state.all = false;
+  document.getElementById("btn-all").textContent = "通读模式";
+  document.getElementById("readtitle").textContent = "导读 · README";
+  document.getElementById("readsub").innerHTML =
+    "<code>docs/learn/README.md</code> · 学习路线图与目录约定 · " +
+    "<a href=\"README.md\" target=\"_blank\" rel=\"noreferrer\">看原始 md</a> · <a href=\"#toc\">回目录</a>";
+  const host = document.getElementById("reader");
+  host.innerHTML = renderMarkdown(text).html;
+  wireLinks(host);
+  document.getElementById("pager").innerHTML =
+    "<button onclick=\"go('" + CHAPTERS[0].file + "')\">开始第 1 篇 →</button>";
+  if (history.replaceState) history.replaceState(null, "", "#README.md");
+  document.querySelectorAll(".chap").forEach(d => d.classList.remove("active"));
+  setMode("已加载 README.md", "var(--muted)");
+  document.getElementById("readcard").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderInto(c, text) {
+  const html = renderMarkdown(text).html;
+  document.getElementById("readtitle").textContent = "第 " + c.n + " 篇 · " + c.title;
+  document.getElementById("readsub").innerHTML =
+    "<code>chapters/" + c.file + "</code> · " + PARTS[c.part].name + " · 前置 " + esc(c.prereq) +
+    " · " + esc(c.deps) + " · <a href=\"chapters/" + c.file + "\" target=\"_blank\" rel=\"noreferrer\">看原始 md</a>" +
+    " · <a href=\"#toc\">回目录</a>";
+  const host = document.getElementById("reader");
+  host.innerHTML = html;
+  wireLinks(host);
+  buildPager();
+}
+
+function buildPager() {
+  const p = document.getElementById("pager");
+  const prev = CHAPTERS[state.cur - 1], next = CHAPTERS[state.cur + 1];
+  p.innerHTML =
+    (prev ? "<button onclick=\"go('" + prev.file + "')\">← 第 " + prev.n + " 篇</button>" : "<span></span>") +
+    "<button onclick=\"scrollTo({top:0,behavior:'smooth'})\">↑ 顶部</button>" +
+    (next ? "<button onclick=\"go('" + next.file + "')\">第 " + next.n + " 篇 →</button>" : "<span></span>");
+}
+
+async function go(file, opts) {
+  opts = opts || {};
+  const idx = chapterIndex(file);
+  if (idx < 0) return;
+  state.cur = idx; state.all = false;
+  document.getElementById("btn-all").textContent = "通读模式";
+  let text;
+  try {
+    text = await loadText(file);
+    banner("");
+  } catch (e) {
+    setMode("读取失败", "var(--danger)");
+    document.getElementById("reader").innerHTML = "";
+    banner("<b>无法直接读文件</b>（" + esc(e.message) + "）。浏览器的 <code>file://</code> 安全规则会拦截同目录读取。两种解决办法："
+      + "<br>① 在仓库根目录起一个静态服务：<code>uv run python -m http.server 8199</code>，然后打开"
+      + " <code>http://127.0.0.1:8199/docs/learn/index.html</code>（这个地址下指向 <code>kev/*.py</code> 的代码锚点也能直接点开）。"
+      + "<br>② 不想起服务：直接把 <code>chapters/</code> 里的 <code>.md</code> 文件拖到本页面任意位置即可离线渲染。");
+    return;
+  }
+  renderInto(CHAPTERS[idx], text);
+  if (history.replaceState) history.replaceState(null, "", "#" + file);
+  document.querySelectorAll(".chap").forEach(d => d.classList.toggle("active", d.dataset.file === file));
+  setMode("已加载 " + file, "var(--muted)");
+  if (!opts.keepScroll) document.getElementById("readcard").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function renderAll() {
+  const host = document.getElementById("reader");
+  host.innerHTML = "<p class=\"hint\">正在拼接 20 个章节…</p>";
+  const chunks = [];
+  for (const c of CHAPTERS) {
+    try { chunks.push("<hr>" + renderMarkdown(await loadText(c.file)).html); }
+    catch (e) { chunks.push("<p style=\"color:var(--danger)\">" + c.file + " 读取失败</p>"); }
+  }
+  host.innerHTML = chunks.join("\n");
+  wireLinks(host);
+  document.getElementById("readtitle").textContent = "通读模式（18 章 + 附录 A/B）";
+  document.getElementById("readsub").textContent = "每章仍是独立文件；本页只是逐章拼接，便于 Ctrl-F 全文检索与打印。";
+  document.getElementById("pager").innerHTML =
+    "<button onclick=\"go('" + CHAPTERS[0].file + "')\">回到单章模式</button>"
+    + "<button onclick=\"window.print()\">打印 / 存 PDF</button>";
+}
+
+/* ---------------------------------------------- 主题 / 搜索 / 键盘 / 拖拽 */
+if (localStorage.getItem("kev-learn-theme")) document.documentElement.dataset.theme = localStorage.getItem("kev-learn-theme");
+function syncThemeBtn() {
+  document.getElementById("btn-theme").textContent =
+    document.documentElement.dataset.theme === "light" ? "☾ 深色" : "☀ 浅色";
+}
+document.getElementById("btn-theme").onclick = () => {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("kev-learn-theme", next);
+  syncThemeBtn();
+};
+document.getElementById("btn-all").onclick = async () => {
+  if (state.all) {
+    state.all = false;
+    document.getElementById("btn-all").textContent = "通读模式";
+    return go(CHAPTERS[Math.max(0, state.cur)].file, { keepScroll: true });
+  }
+  state.all = true;
+  document.getElementById("btn-all").textContent = "退出通读";
+  await renderAll();
+  document.getElementById("readcard").scrollIntoView({ behavior: "smooth", block: "start" });
+};
+document.getElementById("q").addEventListener("input", e => buildTOC(e.target.value));
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "]" && state.cur < CHAPTERS.length - 1) go(CHAPTERS[state.cur + 1].file);
+  if (e.key === "[" && state.cur > 0) go(CHAPTERS[state.cur - 1].file);
+});
+["dragover", "drop"].forEach(t => document.addEventListener(t, e => e.preventDefault()));
+document.addEventListener("drop", async e => {
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!f || !/\.md$/i.test(f.name)) return;
+  const text = await f.text();
+  let guess = CHAPTERS.find(c => c.file === f.name);
+  if (!guess) {
+    const m = text.match(/^#\s*(\d+|[AB])\./m);
+    if (m) guess = CHAPTERS.find(c => c.n === m[1]);
+  }
+  if (!guess) guess = { n: "?", file: f.name, part: 1, title: f.name.replace(/\.md$/i, ""), deps: "拖入", prereq: "—" };
+  const found = chapterIndex(guess.file);
+  if (found >= 0) state.cur = found;
+  renderInto(guess, text);
+  setMode(`拖入 ${f.name}`, "var(--accent2)");
+  document.getElementById("readcard").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+/* ------------------------------------------------------------------ 启动 */
+function boot() {
+  syncThemeBtn();
+  drawFlow();
+  buildTOC("");
+  const fromHash = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+  if (fromHash === "README.md") return showReadme();
+  go(CHAPTERS.some(c => c.file === fromHash) ? fromHash : CHAPTERS[0].file, { keepScroll: true });
+  setMode(location.protocol === "file:" ? "file:// 模式（拖文件或起服务）" : "已连接 chapters/",
+          location.protocol === "file:" ? "var(--accent2)" : "var(--ok)");
+}
+window.addEventListener("hashchange", () => {
+  const h = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+  if (h === "README.md") return showReadme();
+  if (CHAPTERS.some(c => c.file === h) && h !== (CHAPTERS[state.cur] || {}).file) go(h, { keepScroll: true });
+});
+boot();
+</script>
+</body>
+</html>

@@ -657,6 +657,10 @@ runs/r18-9b/*-trial-*/transfer/*
 !runs/r11-docs/*-trial-*/provenance.json
 !runs/r16-9b/*-trial-*/provenance.json
 !runs/r18-9b/*-trial-*/provenance.json
+# docs/learn serving smoke (runs/learn-smoke-bench): a checkpoint loaded only to check the learning pages answer.
+# After the negations above so it wins them (runs/*/report.json and runs/*/calibration.json stay committed for real
+# reads; this run is a local render check, not a record)
+runs/learn-smoke-bench/
 
 # 本地部署权重（大文件，勿入库）：deploy/runs/ 由 docker-compose 挂载，权重仅留本地
 deploy/runs/
