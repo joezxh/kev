@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kev · 数据流转动画图解</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #131a2e; --ink: #e6ecff; --muted: #96a3c4;
+    --line: #2a3552; --accent: #4fd1c5; --accent2: #f6ad55; --accent3: #b794f4;
+    --state: #2b6cb0; --q1: #2f855a; --q2: #b83280; --danger: #e53e3e;
+    --glow: 0 0 12px;
+  }
+  html[data-theme="light"] {
+    --bg: #f5f7fb; --panel: #ffffff; --ink: #16203a; --muted: #5b6785;
+    --line: #cfd8ea; --state: #3182ce; --q1: #38a169; --q2: #d53f8c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.7; transition: background .3s, color .3s;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10; backdrop-filter: blur(8px);
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    border-bottom: 1px solid var(--line); padding: 14px 24px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .5px; }
+  header .spacer { flex: 1; }
+  button {
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 14px; cursor: pointer; font-size: 13px;
+    transition: transform .1s, border-color .2s;
+  }
+  button:hover { border-color: var(--accent); }
+  button:active { transform: scale(.96); }
+  main { max-width: 1120px; margin: 0 auto; padding: 24px; }
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 22px 24px; margin: 22px 0; box-shadow: 0 8px 30px rgba(0,0,0,.15);
+  }
+  section h2 { margin: 0 0 4px; font-size: 20px; }
+  section .lead { color: var(--muted); margin: 0 0 18px; font-size: 14px; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .dot { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+  svg { width: 100%; height: auto; display: block; }
+  .node-box { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+  .node-txt { fill: var(--ink); font-size: 15px; font-weight: 600; text-anchor: middle; dominant-baseline: middle; }
+  .node-sub { fill: var(--muted); font-size: 10.5px; text-anchor: middle; dominant-baseline: middle; }
+  .flow-line { stroke: var(--line); stroke-width: 2; fill: none; }
+  .particle { filter: drop-shadow(0 0 6px currentColor); }
+  .cap { fill: var(--muted); font-size: 12px; }
+  .code { color: var(--accent); font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: .9em; }
+  .note { border-left: 3px solid var(--accent); padding: 8px 14px; margin: 14px 0; background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 0 8px 8px 0; font-size: 14px; }
+  a { color: var(--accent); }
+  @media (max-width: 720px) { header h1 { font-size: 15px; } section { padding: 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧠 Kev · 数据流转动画图解</h1>
+  <span class="spacer"></span>
+  <button id="toggleTheme">🌓 主题</button>
+  <button id="togglePlay">⏸ 暂停动画</button>
+</header>
+<main>
+  <p style="color:var(--muted)">
+    这是 <a href="./README.md">学习文档</a> 的 00 号配套页：<b>纯离线、无外部依赖</b>，用粒子沿管道流动演示
+    Kev 的四条主线——<b>推理请求</b>、<b>block-causal 掩码</b>、<b>指针打分</b>、<b>训练/校准闭环</b>。
+    右上角可暂停动画或切换深浅主题。
+  </p>
+
+  <!-- ============ SCENE 1: 推理请求全链路 ============ -->
+  <section>
+    <h2>① 一次推理请求：state + questions → probabilities</h2>
+    <p class="lead">粒子从左侧进入，依次穿过契约层、编码、prefill、指针头、答案回写，最后从右侧返回。</p>
+    <svg viewBox="0 0 1160 240" role="img" aria-label="推理数据流转">
+      <defs>
+        <!-- 连接路径（粒子沿这些走） -->
+        <path id="c1" d="M180,120 H300" />
+        <path id="c2" d="M440,120 H560" />
+        <path id="c3" d="M700,120 H820" />
+        <path id="c4" d="M960,120 H1040 V170" />
+        <!-- 节点 -->
+        <g id="nodeShape">
+          <rect class="node-box" width="140" height="70" rx="12" />
+        </g>
+      </defs>
+
+      <!-- 节点 -->
+      <g>
+        <use href="#nodeShape" x="40" y="85" />
+        <text class="node-txt" x="110" y="112">Client</text>
+        <text class="node-sub" x="110" y="132">POST /v1/systemone</text>
+      </g>
+      <g>
+        <use href="#nodeShape" x="300" y="85" />
+        <text class="node-txt" x="370" y="112">to_record()</text>
+        <text class="node-sub" x="370" y="132">kev/api.py</text>
+      </g>
+      <g>
+        <use href="#nodeShape" x="560" y="85" />
+        <text class="node-txt" x="630" y="112">encode()</text>
+        <text class="node-sub" x="630" y="132">block-causal 打包</text>
+      </g>
+      <g>
+        <use href="#nodeShape" x="820" y="85" />
+        <text class="node-txt" x="890" y="112">prefill</text>
+        <text class="node-sub" x="890" y="132">backbone · 不生成</text>
+      </g>
+
+      <!-- 连线底 -->
+      <use href="#c1" class="flow-line" />
+      <use href="#c2" class="flow-line" />
+      <use href="#c3" class="flow-line" />
+      <use href="#c4" class="flow-line" />
+
+      <!-- PointerHead + to_answers 结果节点 -->
+      <rect class="node-box" x="1000" y="170" width="140" height="60" rx="12" />
+      <text class="node-txt" x="1070" y="192">PointerHead</text>
+      <text class="node-sub" x="1070" y="212">→ to_answers()</text>
+
+      <!-- 流动粒子 -->
+      <g>
+        <circle r="6" fill="var(--accent)" class="particle" style="color:var(--accent)">
+          <animateMotion dur="1.6s" repeatCount="indefinite"><mpath href="#c1"/></animateMotion>
+        </circle>
+        <circle r="6" fill="var(--accent)" class="particle" style="color:var(--accent)">
+          <animateMotion dur="1.6s" begin="0.8s" repeatCount="indefinite"><mpath href="#c1"/></animateMotion>
+        </circle>
+      </g>
+      <g>
+        <circle r="6" fill="var(--accent2)" class="particle" style="color:var(--accent2)">
+          <animateMotion dur="1.6s" begin="0.4s" repeatCount="indefinite"><mpath href="#c2"/></animateMotion>
+        </circle>
+      </g>
+      <g>
+        <circle r="6" fill="var(--accent3)" class="particle" style="color:var(--accent3)">
+          <animateMotion dur="1.6s" begin="0.8s" repeatCount="indefinite"><mpath href="#c3"/></animateMotion>
+        </circle>
+      </g>
+      <g>
+        <circle r="6" fill="var(--q1)" class="particle" style="color:var(--q1)">
+          <animateMotion dur="1.4s" begin="1.2s" repeatCount="indefinite"><mpath href="#c4"/></animateMotion>
+        </circle>
+      </g>
+
+      <!-- 顶部标注输入 -->
+      <text class="cap" x="40" y="40">输入: { state, questions{noul/choice/score} }</text>
+      <text class="cap" x="900" y="40" text-anchor="end" fill="var(--accent)">输出: 每题一组校准概率</text>
+    </svg>
+    <div class="note">
+      记住第一性改造：<b>只 prefill、不 decode</b>。粒子穿过 backbone 时不会变成文字，而是在
+      <code class="code">&lt;decide&gt;</code> 位置留下一个隐向量，供 PointerHead 给候选项打分。
+    </div>
+  </section>
+
+  <!-- ============ SCENE 2: block-causal 掩码 ============ -->
+  <section>
+    <h2>② block-causal 掩码：共享 state，隔离分支</h2>
+    <p class="lead">左侧是打包序列（state 段 + 两个问题分支）；右侧是注意力矩阵——亮格表示"可 attend"。
+      每个分支能读 state（第一行整条亮），但读不到兄弟分支。</p>
+    <svg viewBox="0 0 1160 360" role="img" aria-label="block-causal 掩码">
+      <!-- 打包序列 -->
+      <g font-size="13" text-anchor="middle">
+        <rect x="30" y="40" width="150" height="42" rx="8" fill="var(--state)"/>
+        <text x="105" y="66" fill="#fff">state（seg 0）</text>
+        <rect x="30" y="110" width="150" height="42" rx="8" fill="var(--q1)"/>
+        <text x="105" y="136" fill="#fff">问题1（seg 1）</text>
+        <rect x="30" y="180" width="150" height="42" rx="8" fill="var(--q2)"/>
+        <text x="105" y="206" fill="#fff">问题2（seg 2）</text>
+
+        <!-- 分支读 state -->
+        <path d="M180,131 C230,131 230,61 180,61" stroke="var(--q1)" fill="none" stroke-width="2.5" marker-end="url(#arr1)"/>
+        <path d="M180,201 C230,201 230,61 180,61" stroke="var(--q2)" fill="none" stroke-width="2.5" marker-end="url(#arr2)"/>
+        <!-- 兄弟隔离：红叉虚线 -->
+        <path d="M180,152 C215,165 215,175 180,188" stroke="var(--danger)" fill="none" stroke-width="2" stroke-dasharray="5 5" opacity="0.8"/>
+        <text x="235" y="172" fill="var(--danger)" text-anchor="start" font-size="12">✗ 读不到兄弟</text>
+      </g>
+      <defs>
+        <marker id="arr1" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--q1)"/></marker>
+        <marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--q2)"/></marker>
+      </defs>
+
+      <!-- 注意力矩阵 6x6: token = s1 s2 | q1a q1b | q2a q2b -->
+      <g transform="translate(520,50)">
+        <text class="cap" x="0" y="-18">attend(i,j) ⟺ j≤i 且 (seg[j]=0 或 seg[j]=seg[i])</text>
+        <!-- 列头 -->
+        <g font-size="11" text-anchor="middle" fill="var(--muted)">
+          <text x="40" y="-2">s1</text><text x="90" y="-2">s2</text>
+          <text x="150" y="-2">q1a</text><text x="200" y="-2">q1b</text>
+          <text x="260" y="-2">q2a</text><text x="310" y="-2">q2b</text>
+        </g>
+        <g font-size="11" text-anchor="end" fill="var(--muted)">
+          <text x="18" y="55">s1</text><text x="18" y="105">s2</text>
+          <text x="18" y="155">q1a</text><text x="18" y="205">q1b</text>
+          <text x="18" y="255">q2a</text><text x="18" y="305">q2b</text>
+        </g>
+        <!-- 行数据：1=可 attend，逐格生成。用 JS 填充以保证正确 & 动画 -->
+        <g id="matrix"></g>
+      </g>
+    </svg>
+    <div class="note">
+      <code class="code">branch_mask_batch()</code> 把这张矩阵变成 <code class="code">[B,1,L,L]</code> 的加性掩码（不可 attend 处填
+      <code class="code">-inf</code>）。hybrid 骨干（DeltaNet）实现不了这张任意掩码 → 改走 <b>row form</b>：
+      state+单分支拆成一行独立因果序列，数学上等价。
+    </div>
+  </section>
+
+  <!-- ============ SCENE 3: 指针读出的打分 ============ -->
+  <section>
+    <h2>③ PointerHead：不做词表 softmax，而是给候选项打分</h2>
+    <p class="lead">
+      <code class="code">&lt;decide&gt;</code> 隐向量当 query，每个 <code class="code">&lt;/opt&gt;</code> 边界隐向量当 key，点积 → 每个选项一个 logit。
+      粒子从两侧汇聚到点积节点，代表信息在此汇合。</p>
+    <svg viewBox="0 0 1160 300" role="img" aria-label="指针打分">
+      <defs>
+        <path id="p_decide" d="M180,70 C400,70 480,150 620,150" />
+        <path id="p_opt1" d="M180,230 C400,230 480,150 620,150" />
+        <path id="p_opt2" d="M180,150 H620" />
+        <path id="p_out" d="M760,150 H1000" />
+      </defs>
+      <!-- 输入 -->
+      <rect class="node-box" x="40" y="45" width="140" height="50" rx="10" fill="none"/>
+      <text class="node-txt" x="110" y="63">h_decide</text>
+      <text class="node-sub" x="110" y="82">q(h) query</text>
+
+      <rect class="node-box" x="40" y="205" width="140" height="50" rx="10" fill="none"/>
+      <text class="node-txt" x="110" y="223">h_opt[1..K]</text>
+      <text class="node-sub" x="110" y="242">k(h) key</text>
+
+      <rect class="node-box" x="40" y="125" width="140" height="50" rx="10" fill="none"/>
+      <text class="node-txt" x="110" y="150">scale 1/√dp</text>
+
+      <use href="#p_decide" class="flow-line"/><use href="#p_opt1" class="flow-line"/><use href="#p_opt2" class="flow-line"/>
+      <use href="#p_out" class="flow-line"/>
+
+      <!-- 点积节点 -->
+      <circle cx="690" cy="150" r="70" fill="none" stroke="var(--accent2)" stroke-width="2"/>
+      <text class="node-txt" x="690" y="145">·  点积</text>
+      <text class="node-sub" x="690" y="168">logits[K]</text>
+      <path d="M620,150 H620" stroke="var(--line)"/>
+
+      <!-- ÷ temperature -->
+      <rect class="node-box" x="770" y="120" width="180" height="60" rx="12"/>
+      <text class="node-txt" x="860" y="143">÷ temperature</text>
+      <text class="node-sub" x="860" y="163">校准 · argmax 不变</text>
+
+      <!-- 输出分布条 -->
+      <text class="cap" x="1000" y="60">softmax → probabilities</text>
+      <g id="bars"></g>
+
+      <!-- 粒子 -->
+      <circle r="6" fill="var(--accent)" class="particle" style="color:var(--accent)"><animateMotion dur="2s" repeatCount="indefinite"><mpath href="#p_decide"/></animateMotion></circle>
+      <circle r="6" fill="var(--q1)" class="particle" style="color:var(--q1)"><animateMotion dur="2s" begin="0.3s" repeatCount="indefinite"><mpath href="#p_opt1"/></animateMotion></circle>
+      <circle r="6" fill="var(--accent3)" class="particle" style="color:var(--accent3)"><animateMotion dur="2s" begin="0.6s" repeatCount="indefinite"><mpath href="#p_opt2"/></animateMotion></circle>
+      <circle r="6" fill="var(--accent2)" class="particle" style="color:var(--accent2)"><animateMotion dur="1.6s" begin="1s" repeatCount="indefinite"><mpath href="#p_out"/></animateMotion></circle>
+    </svg>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--state)"></span>noul → p(true)</span>
+      <span><span class="dot" style="background:var(--q1)"></span>choice → argmax + confidence</span>
+      <span><span class="dot" style="background:var(--q2)"></span>score → Σ i·p[i] 期望等级</span>
+    </div>
+  </section>
+
+  <!-- ============ SCENE 4: 训练 + 校准闭环 ============ -->
+  <section>
+    <h2>④ 训练闭环 与 评估校准回路</h2>
+    <p class="lead">
+      左：一条 record 绕圈被训练（encode → prefill → loss → backward → step）。
+      右：训好的 checkpoint 走"评分 → 指标 → 拟合温度 → 发布"的校准回路。</p>
+    <svg viewBox="0 0 1160 340" role="img" aria-label="训练与校准闭环">
+      <!-- 训练环 -->
+      <g>
+        <ellipse id="ring" cx="280" cy="170" rx="200" ry="120" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="4 6"/>
+        <g font-size="13" text-anchor="middle">
+          <g><circle cx="280" cy="50" r="30" fill="var(--state)"/><text x="280" y="54" fill="#fff">record</text></g>
+          <g><circle cx="480" cy="170" r="30" fill="var(--q1)"/><text x="480" y="174" fill="#fff" font-size="11">prefill</text></g>
+          <g><circle cx="280" cy="290" r="30" fill="var(--accent2)"/><text x="280" y="294" fill="#fff" font-size="12">loss</text></g>
+          <g><circle cx="80" cy="170" r="30" fill="var(--accent3)"/><text x="80" y="174" fill="#fff" font-size="11">step</text></g>
+          <text class="cap" x="280" y="320" >CE + permKL + anchorKL + Brier/focal/ord</text>
+        </g>
+        <!-- 绕环粒子 -->
+        <circle r="7" fill="var(--accent)" class="particle" style="color:var(--accent)">
+          <animateMotion dur="4s" repeatCount="indefinite"><mpath href="#ringPath"/></animateMotion>
+        </circle>
+      </g>
+      <path id="ringPath" d="M280,50 A200,120 0 0 1 480,170 A200,120 0 0 1 280,290 A200,120 0 0 1 80,170 A200,120 0 0 1 280,50" fill="none" stroke="none"/>
+
+      <!-- 中间箭头 -->
+      <path d="M520,170 H640" stroke="var(--line)" stroke-width="2" marker-end="url(#arrbig)"/>
+      <text class="cap" x="580" y="158" text-anchor="middle">checkpoint</text>
+      <defs><marker id="arrbig" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--line)"/></marker></defs>
+
+      <!-- 校准回路 -->
+      <g transform="translate(660,0)" font-size="12" text-anchor="middle">
+        <g><rect class="node-box" x="0" y="40" width="150" height="44" rx="9"/><text class="node-txt" x="75" y="62">benchmark</text><text class="node-sub" x="75" y="78">rows.json</text></g>
+        <g><rect class="node-box" x="0" y="130" width="150" height="44" rx="9"/><text class="node-txt" x="75" y="152">metrics</text><text class="node-sub" x="75" y="168">ECE·Brier·NLL·AURC</text></g>
+        <g><rect class="node-box" x="200" y="130" width="150" height="44" rx="9"/><text class="node-txt" x="275" y="152">fit_temperature</text><text class="node-sub" x="275" y="168">development 行</text></g>
+        <g><rect class="node-box" x="200" y="40" width="150" height="44" rx="9"/><text class="node-txt" x="275" y="62">release ✓</text><text class="node-sub" x="275" y="78">head.pt[T]</text></g>
+        <path d="M75,84 V130" class="flow-line" marker-end="url(#arrbig)"/>
+        <path d="M150,152 H200" class="flow-line" marker-end="url(#arrbig)"/>
+        <path d="M275,130 V84" class="flow-line" marker-end="url(#arrbig)"/>
+        <path d="M200,62 H120 V40" class="flow-line" marker-end="url(#arrbig)" opacity="0"/>
+        <!-- 反馈：verdict 驱动下一轮 -->
+        <path d="M200,174 C120,230 40,200 30,174" stroke="var(--danger)" stroke-width="2" fill="none" stroke-dasharray="5 5" marker-end="url(#arrbig)"/>
+        <text class="cap" x="115" y="228" fill="var(--danger)" font-size="11">读数驱动下一轮 (rounds)</text>
+      </g>
+
+      <circle r="6" fill="var(--accent)" class="particle" style="color:var(--accent)">
+        <animateMotion dur="2.4s" repeatCount="indefinite"><mpath href="#calibPath"/></animateMotion>
+      </circle>
+      <path id="calibPath" d="M735,84 V130 H860 V84" fill="none" stroke="none"/>
+    </svg>
+    <div class="note">
+      校准纪律（<a href="./04-evaluation-system.md">04 文档</a>）：温度只能拟合在<b>训练语料之外</b>的 development 行；
+      <code class="code">round 21</code> 起，受温度影响的判据没有注册 <code class="code">temperature</code> 池会被 <code class="code">kev.rounds validate</code> 直接拒绝。
+    </div>
+  </section>
+
+  <p style="color:var(--muted); text-align:center; font-size:13px; margin:30px 0">
+    下一步阅读 →
+    <a href="./01-model-architecture.md">01 架构</a> ·
+    <a href="./02-training-framework.md">02 训练</a> ·
+    <a href="./03-inference-serving.md">03 服务</a> ·
+    <a href="./04-evaluation-system.md">04 评估</a>
+  </p>
+</main>
+
+<script>
+  // ---- 主题切换 ----
+  const root = document.documentElement;
+  document.getElementById('toggleTheme').onclick = () =>
+    root.setAttribute('data-theme', root.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
+
+  // ---- 暂停/播放所有 SMIL 动画 ----
+  let playing = true;
+  const svgs = [...document.querySelectorAll('svg')];
+  document.getElementById('togglePlay').onclick = (e) => {
+    playing = !playing;
+    svgs.forEach(s => playing ? s.unpauseAnimations() : s.pauseAnimations());
+    e.target.textContent = playing ? '⏸ 暂停动画' : '▶ 播放动画';
+  };
+
+  // ---- 生成 block-causal 注意力矩阵 ----
+  // token 布局： 0,1=state(seg0)  2,3=q1(seg1)  4,5=q2(seg2)
+  const seg = [0,0,1,1,2,2];
+  const colors = ['#0000', 'var(--state)', 'var(--q1)', 'var(--q2)'];
+  const cell = 50, gap = 0, ox = 40, oy = 30;
+  const g = document.getElementById('matrix');
+  const NS = 'http://www.w3.org/2000/svg';
+  let t = 0;
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < 6; j++) {
+      const allowed = (j <= i) && (seg[j] === 0 || seg[j] === seg[i]);
+      const r = document.createElementNS(NS, 'rect');
+      r.setAttribute('x', ox + j*cell); r.setAttribute('y', oy + i*cell);
+      r.setAttribute('width', cell-4); r.setAttribute('height', cell-4);
+      r.setAttribute('rx', 6);
+      r.setAttribute('fill', allowed ? colors[seg[i]+1] : 'var(--line)');
+      r.setAttribute('opacity', allowed ? '0.9' : '0.25');
+      // 对角线脉冲动画：让"可 attend"的格轻微呼吸
+      if (allowed) {
+        const an = document.createElementNS(NS, 'animate');
+        an.setAttribute('attributeName', 'opacity');
+        an.setAttribute('values', '0.55;0.95;0.55');
+        an.setAttribute('dur', '2.6s');
+        an.setAttribute('begin', (t*0.12) + 's');
+        an.setAttribute('repeatCount', 'indefinite');
+        r.appendChild(an); t++;
+      }
+      g.appendChild(r);
+    }
+  }
+  // 行头/列头已用 SVG text；此处仅补充分段底色框线
+  for (let k = 0; k <= 6; k++) {
+    const vl = document.createElementNS(NS, 'line');
+    vl.setAttribute('x1', ox + k*cell); vl.setAttribute('y1', oy);
+    vl.setAttribute('x2', ox + k*cell); vl.setAttribute('y2', oy + 6*cell);
+    vl.setAttribute('stroke', 'var(--bg)'); vl.setAttribute('stroke-width', 1);
+    g.appendChild(vl);
+  }
+
+  // ---- 生成 softmax 概率条（演示 score 分布） ----
+  const probs = [0.05, 0.15, 0.5, 0.25, 0.05];
+  const barG = document.getElementById('bars');
+  const bx = 1000, bw = 24, base = 250;
+  probs.forEach((p, idx) => {
+    const h = p * 160;
+    const rect = document.createElementNS(NS, 'rect');
+    rect.setAttribute('x', bx + idx*(bw+8)); rect.setAttribute('y', base - h);
+    rect.setAttribute('width', bw); rect.setAttribute('height', h);
+    rect.setAttribute('rx', 4);
+    rect.setAttribute('fill', p === Math.max(...probs) ? 'var(--accent)' : 'var(--accent3)');
+    rect.setAttribute('opacity', 0.85);
+    // 从 0 长起来的循环动画
+    const an = document.createElementNS(NS, 'animate');
+    an.setAttribute('attributeName', 'height');
+    an.setAttribute('values', '0;'+h+';'+h+';0');
+    an.setAttribute('keyTimes', '0;0.3;0.8;1');
+    an.setAttribute('dur', '3s'); an.setAttribute('begin', (idx*0.15)+'s');
+    an.setAttribute('repeatCount', 'indefinite');
+    rect.appendChild(an);
+    const an2 = document.createElementNS(NS, 'animate');
+    an2.setAttribute('attributeName', 'y');
+    an2.setAttribute('values', base+';'+(base-h)+';'+(base-h)+';'+base);
+    an2.setAttribute('keyTimes', '0;0.3;0.8;1');
+    an2.setAttribute('dur', '3s'); an2.setAttribute('begin', (idx*0.15)+'s');
+    an2.setAttribute('repeatCount', 'indefinite');
+    rect.appendChild(an2);
+    barG.appendChild(rect);
+    const lab = document.createElementNS(NS, 'text');
+    lab.setAttribute('x', bx + idx*(bw+8) + bw/2); lab.setAttribute('y', base + 14);
+    lab.setAttribute('text-anchor', 'middle'); lab.setAttribute('fill', 'var(--muted)');
+    lab.setAttribute('font-size', '10'); lab.textContent = idx;
+    barG.appendChild(lab);
+  });
+
+  // 主题切换时，重绘依赖 CSS 变量的元素（matrix/bars 使用 var()，浏览器自动跟随，无需重绘）
+</script>
+</body>
+</html>

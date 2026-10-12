@@ -249,6 +249,66 @@ CREATE TABLE IF NOT EXISTS scenario_spec_history (
   created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS spec_history_scenario_idx ON scenario_spec_history(scenario_id, created_at DESC);
+
+-- ch6 管理面：projects / members / quota / webhooks / invoices
+CREATE TABLE IF NOT EXISTS projects (
+  id          TEXT PRIMARY KEY,
+  slug        TEXT NOT NULL UNIQUE,
+  name        TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS project_members (
+  id         TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  email      TEXT NOT NULL,
+  name       TEXT NOT NULL DEFAULT '',
+  role       TEXT NOT NULL DEFAULT 'member',
+  status     TEXT NOT NULL DEFAULT 'invited',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS project_members_project_idx ON project_members(project_id);
+CREATE UNIQUE INDEX IF NOT EXISTS project_members_email_idx ON project_members(project_id, email);
+
+CREATE TABLE IF NOT EXISTS project_quota (
+  project_id           TEXT PRIMARY KEY REFERENCES projects(id),
+  training_hours_limit {real} NOT NULL DEFAULT 0,
+  training_hours_used  {real} NOT NULL DEFAULT 0,
+  gpu_limit            INTEGER NOT NULL DEFAULT 0,
+  api_calls_limit      INTEGER NOT NULL DEFAULT 0,
+  api_calls_used       INTEGER NOT NULL DEFAULT 0,
+  storage_gb_limit     {real} NOT NULL DEFAULT 0,
+  storage_gb_used      {real} NOT NULL DEFAULT 0,
+  updated_at           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS webhooks (
+  id                TEXT PRIMARY KEY,
+  project_id        TEXT NOT NULL REFERENCES projects(id),
+  url               TEXT NOT NULL,
+  events            TEXT NOT NULL DEFAULT '[]',
+  secret            TEXT NOT NULL DEFAULT '',
+  active            INTEGER NOT NULL DEFAULT 1,
+  last_status       INTEGER,
+  last_delivered_at TEXT,
+  created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS webhooks_project_idx ON webhooks(project_id);
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id         TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  period     TEXT NOT NULL,
+  amount     {real} NOT NULL,
+  currency   TEXT NOT NULL DEFAULT 'USD',
+  status     TEXT NOT NULL DEFAULT 'open',
+  due_at     TEXT,
+  issued_at  TEXT NOT NULL,
+  line_items TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS invoices_project_idx ON invoices(project_id, period DESC);
 """
 
 
@@ -1264,3 +1324,277 @@ class Store:
         if r is None:
             raise FileNotFoundError(f"没有这个历史版本：{ts}")
         return r["spec_json"]
+
+    # ---- ch6 管理面：projects / members / quota / webhooks / invoices ------
+    #
+    # 这一组路由（app.py 的 "projects / members / quota / webhooks / billing" 段）和前端
+    # studio 的 projects/members/quota/webhooks/billing 页面都已落地，但数据层缺位：
+    # 之前 Store 上根本没有这些方法，也没有对应表，POST /console/api/projects 直接
+    # AttributeError → 500。这里补齐表（见 _ddl）与全部读写方法。
+
+    @staticmethod
+    def _quota_num(value):
+        """限额的部分更新语义：None / 空串表示「这一列不动」，非法值同样当不动。"""
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _quota_int(value):
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    # ---- projects ----
+
+    def list_projects(self) -> list[dict]:
+        rows = self._conn().execute(
+            text("SELECT * FROM projects ORDER BY created_at DESC")).mappings().fetchall()
+        return [dict(r) for r in rows]
+
+    def get_project(self, project_id: str):
+        row = self._conn().execute(
+            text("SELECT * FROM projects WHERE id=:id"),
+            {"id": project_id}).mappings().fetchone()
+        return dict(row) if row else None
+
+    def create_project(self, slug: str, name: str, description: str = "") -> str:
+        """slug 重复时抛出 sa.exc.IntegrityError，由路由转成 409。"""
+        project_id = uuid.uuid4().hex
+        now = _now()
+        self._conn().execute(
+            text("INSERT INTO projects (id, slug, name, description, created_at, updated_at)"
+                 " VALUES (:id,:slug,:name,:desc,:created,:updated)"),
+            dict(id=project_id, slug=slug, name=name, desc=description or "",
+                 created=now, updated=now))
+        return project_id
+
+    def update_project(self, project_id: str, name=None, slug=None, description=None):
+        if self.get_project(project_id) is None:
+            return None
+        sets, params = [], {"id": project_id}
+        if name is not None:
+            sets.append("name=:name")
+            params["name"] = name
+        if slug is not None:
+            sets.append("slug=:slug")
+            params["slug"] = slug
+        if description is not None:
+            sets.append("description=:desc")
+            params["desc"] = description
+        if not sets:
+            return self.get_project(project_id)
+        sets.append("updated_at=:ts")
+        params["ts"] = _now()
+        self._conn().execute(
+            text(f"UPDATE projects SET {', '.join(sets)} WHERE id=:id"), params)
+        return self.get_project(project_id)
+
+    def delete_project(self, project_id: str) -> bool:
+        # 手工级联：建表时没用 ON DELETE CASCADE，且 sqlite 的外键不一定启用，
+        # 依赖数据库级联会在部分环境留下孤儿行。
+        for table in ("project_members", "project_quota", "webhooks", "invoices"):
+            self._conn().execute(
+                text(f"DELETE FROM {table} WHERE project_id=:pid"), dict(pid=project_id))
+        result = self._conn().execute(
+            text("DELETE FROM projects WHERE id=:id"), {"id": project_id})
+        return bool(result.rowcount)
+
+    # ---- members ----
+
+    def list_members(self, project_id: str) -> list[dict]:
+        rows = self._conn().execute(
+            text("SELECT * FROM project_members WHERE project_id=:pid ORDER BY created_at"),
+            dict(pid=project_id)).mappings().fetchall()
+        return [dict(r) for r in rows]
+
+    def get_member(self, member_id: str):
+        row = self._conn().execute(
+            text("SELECT * FROM project_members WHERE id=:id"),
+            {"id": member_id}).mappings().fetchone()
+        return dict(row) if row else None
+
+    def create_member(self, project_id: str, email: str, name: str = "",
+                      role: str = "member", status: str = "invited") -> str:
+        member_id = uuid.uuid4().hex
+        self._conn().execute(
+            text("INSERT INTO project_members (id, project_id, email, name, role, status, created_at)"
+                 " VALUES (:id,:pid,:email,:name,:role,:status,:created)"),
+            dict(id=member_id, pid=project_id, email=email, name=name or "",
+                 role=role, status=status, created=_now()))
+        return member_id
+
+    def update_member(self, member_id: str, role=None, status=None, name=None):
+        if self.get_member(member_id) is None:
+            return None
+        sets, params = [], {"id": member_id}
+        if role is not None:
+            sets.append("role=:role")
+            params["role"] = role
+        if status is not None:
+            sets.append("status=:status")
+            params["status"] = status
+        if name is not None:
+            sets.append("name=:name")
+            params["name"] = name
+        if not sets:
+            return self.get_member(member_id)
+        self._conn().execute(
+            text(f"UPDATE project_members SET {', '.join(sets)} WHERE id=:id"), params)
+        return self.get_member(member_id)
+
+    def delete_member(self, member_id: str) -> bool:
+        result = self._conn().execute(
+            text("DELETE FROM project_members WHERE id=:id"), {"id": member_id})
+        return bool(result.rowcount)
+
+    # ---- quota ----
+
+    def _default_quota(self, project_id: str) -> dict:
+        now = _now()
+        self._conn().execute(
+            text("INSERT INTO project_quota (project_id, training_hours_limit, training_hours_used,"
+                 " gpu_limit, api_calls_limit, api_calls_used, storage_gb_limit, storage_gb_used,"
+                 " updated_at) VALUES (:pid,0,0,0,0,0,0,0,:ts)"),
+            dict(pid=project_id, ts=now))
+        return {"project_id": project_id, "training_hours_limit": 0.0, "training_hours_used": 0.0,
+                "gpu_limit": 0, "api_calls_limit": 0, "api_calls_used": 0,
+                "storage_gb_limit": 0.0, "storage_gb_used": 0.0, "updated_at": now}
+
+    def get_quota(self, project_id: str) -> dict:
+        """没有记录时补一条全 0 的：配额页不该因为还没设过限额就 404。"""
+        row = self._conn().execute(
+            text("SELECT * FROM project_quota WHERE project_id=:pid"),
+            dict(pid=project_id)).mappings().fetchone()
+        if row is None:
+            return self._default_quota(project_id)
+        return dict(row)
+
+    def set_quota_limits(self, project_id: str, training_hours_limit=None, gpu_limit=None,
+                         api_calls_limit=None, storage_gb_limit=None) -> dict:
+        if self._conn().execute(
+                text("SELECT project_id FROM project_quota WHERE project_id=:pid"),
+                dict(pid=project_id)).mappings().fetchone() is None:
+            self._default_quota(project_id)
+        sets, params = [], {"pid": project_id}
+        if training_hours_limit is not None:
+            sets.append("training_hours_limit=:thl")
+            params["thl"] = float(training_hours_limit)
+        if gpu_limit is not None:
+            sets.append("gpu_limit=:gl")
+            params["gl"] = int(gpu_limit)
+        if api_calls_limit is not None:
+            sets.append("api_calls_limit=:acl")
+            params["acl"] = int(api_calls_limit)
+        if storage_gb_limit is not None:
+            sets.append("storage_gb_limit=:sgl")
+            params["sgl"] = float(storage_gb_limit)
+        if sets:
+            sets.append("updated_at=:ts")
+            params["ts"] = _now()
+            self._conn().execute(
+                text(f"UPDATE project_quota SET {', '.join(sets)} WHERE project_id=:pid"), params)
+        return self.get_quota(project_id)
+
+    # ---- webhooks ----
+
+    def _webhook(self, row) -> dict:
+        out = dict(row)
+        out["events"] = _loads(out["events"]) if out["events"] else []
+        out["active"] = bool(out["active"])
+        return out
+
+    def list_webhooks(self, project_id: str) -> list[dict]:
+        rows = self._conn().execute(
+            text("SELECT * FROM webhooks WHERE project_id=:pid ORDER BY created_at DESC"),
+            dict(pid=project_id)).mappings().fetchall()
+        return [self._webhook(r) for r in rows]
+
+    def get_webhook(self, webhook_id: str):
+        row = self._conn().execute(
+            text("SELECT * FROM webhooks WHERE id=:id"),
+            {"id": webhook_id}).mappings().fetchone()
+        return self._webhook(row) if row else None
+
+    def create_webhook(self, project_id: str, url: str, events=None, secret: str = "") -> str:
+        webhook_id = uuid.uuid4().hex
+        self._conn().execute(
+            text("INSERT INTO webhooks (id, project_id, url, events, secret, active, created_at)"
+                 " VALUES (:id,:pid,:url,:events,:secret,1,:created)"),
+            dict(id=webhook_id, pid=project_id, url=url, events=_dumps(events or []),
+                 secret=secret or "", created=_now()))
+        return webhook_id
+
+    def update_webhook(self, webhook_id: str, url=None, events=None, secret=None, active=None):
+        if self.get_webhook(webhook_id) is None:
+            return None
+        sets, params = [], {"id": webhook_id}
+        if url is not None:
+            sets.append("url=:url")
+            params["url"] = url
+        if events is not None:
+            sets.append("events=:events")
+            params["events"] = _dumps(events)
+        if secret is not None:
+            sets.append("secret=:secret")
+            params["secret"] = secret
+        if active is not None:
+            sets.append("active=:active")
+            params["active"] = 1 if active else 0
+        if not sets:
+            return self.get_webhook(webhook_id)
+        self._conn().execute(
+            text(f"UPDATE webhooks SET {', '.join(sets)} WHERE id=:id"), params)
+        return self.get_webhook(webhook_id)
+
+    def delete_webhook(self, webhook_id: str) -> bool:
+        result = self._conn().execute(
+            text("DELETE FROM webhooks WHERE id=:id"), {"id": webhook_id})
+        return bool(result.rowcount)
+
+    def record_webhook_delivery(self, webhook_id: str, status: int) -> None:
+        """ping / 投递后记一次结果；连不上时 status 为 0。"""
+        self._conn().execute(
+            text("UPDATE webhooks SET last_status=:status, last_delivered_at=:ts WHERE id=:id"),
+            dict(id=webhook_id, status=int(status), ts=_now()))
+
+    # ---- invoices ----
+
+    def _invoice(self, row) -> dict:
+        out = dict(row)
+        out["line_items"] = _loads(out["line_items"]) if out["line_items"] else []
+        return out
+
+    def list_invoices(self, project_id: str, period: str | None = None) -> list[dict]:
+        sql = "SELECT * FROM invoices WHERE project_id=:pid"
+        params = {"pid": project_id}
+        if period:
+            sql += " AND period=:period"
+            params["period"] = period
+        sql += " ORDER BY period DESC, issued_at DESC"
+        rows = self._conn().execute(text(sql), params).mappings().fetchall()
+        return [self._invoice(r) for r in rows]
+
+    def get_invoice(self, invoice_id: str):
+        row = self._conn().execute(
+            text("SELECT * FROM invoices WHERE id=:id"),
+            {"id": invoice_id}).mappings().fetchone()
+        return self._invoice(row) if row else None
+
+    def create_invoice(self, project_id: str, period: str, amount: float, currency: str = "USD",
+                       status: str = "open", due_at=None, line_items=None) -> str:
+        invoice_id = uuid.uuid4().hex
+        self._conn().execute(
+            text("INSERT INTO invoices (id, project_id, period, amount, currency, status,"
+                 " due_at, issued_at, line_items) VALUES (:id,:pid,:period,:amount,:currency,"
+                 ":status,:due_at,:issued,:items)"),
+            dict(id=invoice_id, pid=project_id, period=period, amount=float(amount),
+                 currency=currency or "USD", status=status or "open", due_at=due_at,
+                 issued=_now(), items=_dumps(line_items or [])))
+        return invoice_id
