@@ -14,8 +14,9 @@ Per-label quotas are **not** here: each generator owns its own :func:`plan_targe
 per scenario (a scarce notification tier needs an explicit split table, whereas a choice question just needs a
 round-robin over its issue types).
 
-Standard library only, no network, deterministic under a seed -- same conventions as
-skills/kev-finetune/scripts. Run: uv run python -m pytest tests/test_medical_generators.py -q
+Standard library plus one deliberate borrow: :func:`label_keys` asks `kev.api.question_keys` what a question's option
+keys are, so the generator and the serving contract cannot drift apart. No network, deterministic under a seed -- same
+conventions as skills/kev-finetune/scripts. Run: uv run python -m pytest tests/test_medical_generators.py -q
 """
 import argparse
 import json
@@ -30,29 +31,56 @@ if str(SKILL / "scripts") not in sys.path:
     sys.path.insert(0, str(SKILL / "scripts"))
 import split_data  # noqa: E402
 
-SPECS = ROOT / "docs/medical/specs"
 
 # Share of values deliberately placed close to a threshold. Without this the model only ever sees values far from
 # the boundary and learns the shortcut "big number -> critical" instead of the rule.
 NEAR_BOUNDARY = 0.45
 
 
+def resolve_spec(name):
+    """One entry point for a scenario's spec (design doc D7), so what the console edits is what gets generated.
+
+    Order: `KEV_ENGINE_SPEC_DIR` (a test points it at a fixture directory) -> `paths.CONSOLE_SPECS`, the projection the
+    DB writes when a spec is saved in the UI -> `paths.SPECS`, the repository's read-only medical specs. Each directory
+    accepts both layouts, `<dir>/<name>/spec.json` and `<dir>/<name>.json`.
+
+    Before this there were three truth sources and the engine read the last one only, so a preview showed the committed
+    copy of a spec the user had just edited, and a new scenario raised FileNotFoundError (§6 defect 2).
+    """
+    import os
+    from kev.console import paths
+    directories = []
+    override = os.environ.get("KEV_ENGINE_SPEC_DIR")
+    if override:
+        directories.append(Path(override))
+    directories += [paths.CONSOLE_SPECS, paths.SPECS]
+    for directory in directories:
+        for candidate in (directory / name / "spec.json", directory / f"{name}.json"):
+            if candidate.exists():
+                try:
+                    return json.loads(candidate.read_text(encoding="utf-8"))
+                except json.JSONDecodeError as error:
+                    # a projection torn by a partial write must name its file, not fall through to the next source
+                    # and quietly generate from a spec the console no longer holds
+                    raise ValueError(f"spec {candidate} is not valid JSON: {error}") from error
+    raise FileNotFoundError(f"no spec for {name!r}; searched " + ", ".join(str(d) for d in directories))
+
+
 def load_spec(name):
     """The scenario's own spec, so the generator can never invent a question id or type the spec does not declare."""
-    path = SPECS / f"{name}.json"
-    if not path.exists():
-        raise SystemExit(f"no spec at {path}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    return resolve_spec(name)
 
 
 def label_keys(spec, qid):
-    """The keys a question's labels must come from (option names / "true"|"false" / level indices as strings)."""
+    """The keys a question's labels must come from, read from the serving contract itself (kev.api.question_keys).
+
+    The helper used to re-derive them, and the copy had already drifted: it listed a noul question's two keys in the
+    opposite order to `kev.api.question_keys`. Callers only take the set today, so nothing broke -- which is exactly
+    the kind of quiet second home `tests/test_conventions.py` guards against.
+    """
+    from kev.api import question_keys  # the option-key contract lives in kev.api, not here
     q = spec["questions"][qid]
-    if q["type"] == "noul":
-        return ["true", "false"]
-    if q["type"] == "choice":
-        return list(q["criteria"])
-    return [str(i) for i in range(len(q["criteria"]))]
+    return question_keys(q["type"], q.get("criteria"))
 
 
 def labelled(spec, state, labels, soft=None):

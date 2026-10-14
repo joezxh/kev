@@ -6,7 +6,7 @@ Spec §3.4. The engine consumes `state_target` per record; the form depends on t
    `(tier, category)` tuple the BoundarySampler resolves through `tier_windows`. Normal records are `None`.
 2. Custom round-robin (`plan_targets.custom == "round_robin"`, spec §3.4 last paragraph). Each
    `state_target` is a string (department name, `"emergency"`, `"undirected"`, etc.) — the round-robin
-   schedule built from `period` and `slots`. The BoundarySampler/RuleEvaluator chain that follows needs
+   schedule built from `period` and `slots`. The BoundarySampler/`rules.evaluate` chain that follows needs
    the sampler to handle category strings; round-robin parity is gated on Phase B Task 4 (sampler
    upgrade) + Task 8 (rule operators) — this module just produces the schedule.
 

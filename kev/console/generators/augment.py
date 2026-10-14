@@ -1,6 +1,6 @@
 """Augmentor — post-sampling modifications: evidence_drop + soft target injection + force_label.
 
-Spec §3.3. Called after BoundarySampler + RuleEvaluator; reads `spec_json.generator.augmentation` and mutates a copy
+Spec §3.3. Called after BoundarySampler + rules.evaluate; reads `spec_json.generator.augmentation` and mutates a copy
 of (state, labels) according to the rate fields. Returns (state, labels, soft, dropped).
 """
 from __future__ import annotations

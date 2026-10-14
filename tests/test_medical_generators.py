@@ -67,7 +67,11 @@ def test_every_spec_exists_and_matches_the_skill_schema():
         for field in ("name", "domain", "state", "questions", "guidance", "variety"):
             assert spec.get(field), f"{path.name}: missing {field}"
         assert spec["name"] == path.stem, f"{path.name}: name {spec['name']!r} does not match the filename"
-        assert len(spec["questions"]) >= 3, f"{path.name}: fewer than 3 questions wastes the multi-question economy"
+        # The multi-question economy binds the Kev track only: a spec that declares `distill.kev_track: false` is
+        # distilled as text and has no rule generator feeding several heads, so its two questions are the design and
+        # not a waste (medication asks coverage + review, which is exactly what its system prompt promises).
+        if (spec.get("distill") or {}).get("kev_track", True):
+            assert len(spec["questions"]) >= 3, f"{path.name}: fewer than 3 questions wastes the multi-question economy"
         for qid, q in spec["questions"].items():
             probe = {**q, "label": {"noul": True, "choice": next(iter(q.get("criteria") or {}), None),
                                     "score": 0}[q["type"]]}
