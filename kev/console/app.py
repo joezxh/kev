@@ -530,21 +530,44 @@ def generator_dry_run(slug: str, body: dict, store: Store = Depends(get_store)) 
 
 @console_router.post("/console/api/scenarios/{slug}/generator/validate")
 def generator_validate(slug: str, body: dict, store: Store = Depends(get_store)) -> dict:
+    """Can this spec generate trainable data? Answers before sampling, and never says "no errors" about a run that
+    produced no records — the empty file used to look like a pass, and a rule that could not read its own field was the
+    engine's quietest failure (design doc F3, gate G3).
+
+    `errors` entries are `{rule_id, message}`: the rule id is what a person editing the JSON has to find, so a
+    generation error carries its own and only a failure with no rule to blame says `<run>`.
+    """
+    from kev.console.generators import rules
+    from kev.console.generators.common import resolve_spec
+    from kev.console.generators.engine import run as engine_run
+    import tempfile
     try:
-        from kev.console.generators.engine import run as engine_run
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
-            tmp_path = Path(tmp.name)
+        spec = resolve_spec(slug)
+    except (FileNotFoundError, ValueError) as error:
+        return {"errors": [{"rule_id": "<spec>", "message": str(error)}]}
+    problems = rules.static_problems(spec)
+    if problems:
+        return {"errors": [{"rule_id": where, "message": message} for where, message in problems]}
+    with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
         try:
-            engine_run(["--scenario", slug, "--n", "1", "--out", str(tmp_path), "--seed", "0", "--pairs", "0"])
-            return {"errors": []}
-        finally:
-            try:
-                tmp_path.unlink()
-            except OSError:
-                pass
-    except Exception as e:
-        return {"errors": [{"rule_id": "<unknown>", "message": str(e)}]}
+            engine_run(["--scenario", slug, "--n", "8", "--out", str(tmp_path), "--seed", "0", "--pairs", "0"])
+        except rules.RuleError as error:
+            return {"errors": [{"rule_id": error.rule_id or "<run>", "message": str(error)}]}
+        except Exception as error:  # a spec the engine refuses for another reason is still an error, not a pass
+            return {"errors": [{"rule_id": "<run>", "message": f"{type(error).__name__}: {error}"}]}
+        rows = tmp_path.read_text(encoding="utf-8").splitlines() if tmp_path.exists() else []
+        if not rows:
+            return {"errors": [{"rule_id": "<run>",
+                                "message": "the spec produced no records: no rule gave any record a complete set of "
+                                           "labels"}]}
+        return {"errors": [], "records": len(rows)}
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
 
 
 @console_router.delete("/console/api/scenarios/{scenario_id}")

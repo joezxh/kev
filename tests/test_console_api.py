@@ -7,6 +7,7 @@ Run: uv run python -m pytest tests/test_console_api.py -q
 """
 import pytest
 from fastapi.testclient import TestClient
+from pathlib import Path
 
 from kev.console.app import create_app
 from kev.console.db import Store
@@ -274,3 +275,35 @@ def test_dataset_detail_carries_lineage_and_404s_when_unknown(client):
     detail = body(client.get("/console/api/datasets/dataset:cv"))
     assert detail["lineage"][0]["child"] == "dataset:cv/train"
     assert client.get("/console/api/datasets/dataset:没有").status_code == 404
+
+
+# ---- generator/validate：坏 spec 必须在第一条记录之前被拒 ------------------------------
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def validate(client, slug):
+    return body(client.post(f"/console/api/scenarios/{slug}/generator/validate", json={}))
+
+
+def test_generator_validate_names_the_rule_it_cannot_evaluate(client, monkeypatch):
+    """旧版把任何异常压成一条 `rule_id: "<unknown>"`，而规则 id 正是改 JSON 的人需要的那一个。
+    现在静态检查在任何采样之前，错误带着自己的规则（gate G3）。"""
+    monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(FIXTURES / "engine-broken"))
+    errors = validate(client, "unknown-state-key")["errors"]
+    assert [e["rule_id"] for e in errors] == ["late-check"], errors
+    assert "逾期天数" in errors[0]["message"]
+
+
+def test_generator_validate_refuses_an_empty_run_as_an_error(client, monkeypatch):
+    """“一条记录也没产出”曾是 `errors: []` —— F3 静默塌缩在 API 上的样子就是「通过」。"""
+    monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(FIXTURES / "engine-empty"))
+    errors = validate(client, "no-rule-matches")["errors"]
+    assert errors and errors[0]["rule_id"] == "<run>", errors
+    assert "no records" in errors[0]["message"]
+
+
+def test_generator_validate_passes_a_shipped_spec(client, monkeypatch):
+    monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(FIXTURES / "engine-matrix"))
+    report = validate(client, "fin-default-score")
+    assert report["errors"] == [] and report["records"] > 0, report
