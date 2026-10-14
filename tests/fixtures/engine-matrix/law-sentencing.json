@@ -1,0 +1,366 @@
+{
+  "name": "量刑区间预判",
+  "domain": "Spike：bands 形状",
+  "state": "（spike）",
+  "state_example": {
+    "涉案金额": "45.0 万元",
+    "作案次数": "4.0 次",
+    "退赔比例": "90.0 %",
+    "被害人人数": "5.0 人",
+    "前科数量": "2.0 项",
+    "自首认罪情节": "9.0 分"
+  },
+  "questions": {
+    "custody": {
+      "type": "noul",
+      "instructions": "是否可能实刑？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "band": {
+      "type": "score",
+      "instructions": "量刑档位？",
+      "criteria": [
+        "三年以下",
+        "三到七",
+        "七到十五",
+        "十五年以上"
+      ]
+    },
+    "driver": {
+      "type": "choice",
+      "instructions": "决定性因素？",
+      "criteria": {
+        "none": "无",
+        "amount": "金额",
+        "frequency": "次数",
+        "harm": "后果",
+        "history": "前科",
+        "restitution": "退赔",
+        "mitigation": "情节"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "涉案金额",
+        "unit": "万元",
+        "decimals": 1,
+        "normal": [
+          1,
+          50
+        ],
+        "critical": {
+          "high": [
+            [
+              80,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "amount",
+        "path": [
+          "案情",
+          "涉案金额"
+        ]
+      },
+      {
+        "name": "作案次数",
+        "unit": "次",
+        "decimals": 0,
+        "normal": [
+          1,
+          5
+        ],
+        "critical": {
+          "high": [
+            [
+              8,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "frequency",
+        "path": [
+          "案情",
+          "作案次数"
+        ]
+      },
+      {
+        "name": "退赔比例",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          0,
+          100
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              30
+            ]
+          ]
+        },
+        "category": "restitution",
+        "path": [
+          "量刑情节",
+          "退赔比例"
+        ]
+      },
+      {
+        "name": "被害人人数",
+        "unit": "人",
+        "decimals": 0,
+        "normal": [
+          1,
+          6
+        ],
+        "critical": {
+          "high": [
+            [
+              10,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "harm",
+        "path": [
+          "损害后果",
+          "被害人人数"
+        ]
+      },
+      {
+        "name": "前科数量",
+        "unit": "项",
+        "decimals": 0,
+        "normal": [
+          0,
+          2
+        ],
+        "critical": {
+          "high": [
+            [
+              3,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "history",
+        "path": [
+          "损害后果",
+          "前科数量"
+        ]
+      },
+      {
+        "name": "自首认罪情节",
+        "unit": "分",
+        "decimals": 1,
+        "normal": [
+          0,
+          10
+        ],
+        "critical": {
+          "high": [
+            [
+              6,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "mitigation",
+        "path": [
+          "量刑情节",
+          "自首认罪情节"
+        ]
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "涉案金额": [
+          [
+            120.0,
+            1000000000.0
+          ]
+        ],
+        "作案次数": [
+          [
+            12.0,
+            1000000000.0
+          ]
+        ],
+        "退赔比例": [
+          [
+            -1000000000.0,
+            15.0
+          ]
+        ],
+        "被害人人数": [
+          [
+            15.0,
+            1000000000.0
+          ]
+        ],
+        "前科数量": [
+          [
+            4.0,
+            1000000000.0
+          ]
+        ],
+        "自首认罪情节": [
+          [
+            9.0,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "涉案金额": [
+          [
+            80,
+            119.2
+          ]
+        ],
+        "作案次数": [
+          [
+            8,
+            12.0
+          ]
+        ],
+        "退赔比例": [
+          [
+            15.3,
+            30
+          ]
+        ],
+        "被害人人数": [
+          [
+            10,
+            15.0
+          ]
+        ],
+        "前科数量": [
+          [
+            3,
+            4.0
+          ]
+        ],
+        "自首认罪情节": [
+          [
+            6,
+            8.9
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "custody",
+            "value": false
+          },
+          {
+            "label": "band",
+            "value": 3
+          },
+          {
+            "label": "driver",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "custody",
+            "value": true
+          },
+          {
+            "label": "band",
+            "value": "min_tier(state, fields, tier_windows)"
+          },
+          {
+            "label": "driver",
+            "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "amount": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "frequency": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "restitution": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "涉案金额": "amount",
+      "作案次数": "frequency",
+      "退赔比例": "restitution",
+      "被害人人数": "harm",
+      "前科数量": "history",
+      "自首认罪情节": "mitigation"
+    },
+    "aux": {
+      "missing_context": "dropped"
+    }
+  }
+}

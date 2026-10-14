@@ -1,0 +1,338 @@
+{
+  "name": "引力波候选事件判定",
+  "domain": "Spike：bands 形状",
+  "state": "（spike）",
+  "state_example": {
+    "信噪比": "27.0",
+    "拟合质量": "0.9",
+    "伪信号重合度": "18.0 %",
+    "网络符合率": "90.0 %",
+    "远端宇宙学红移": "1.35",
+    "总质量": "72.0 倍太阳质量"
+  },
+  "questions": {
+    "is_candidate": {
+      "type": "noul",
+      "instructions": "是否列为候选事件？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "confidence": {
+      "type": "score",
+      "instructions": "置信档位？",
+      "criteria": [
+        "否决",
+        "低置信",
+        "中置信",
+        "高置信"
+      ]
+    },
+    "driver": {
+      "type": "choice",
+      "instructions": "判定主因？",
+      "criteria": {
+        "none": "无",
+        "detection": "探测强度",
+        "fit": "拟合",
+        "artifact": "伪信号",
+        "network": "网络",
+        "astro": "天体物理"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "信噪比",
+        "unit": "",
+        "decimals": 1,
+        "normal": [
+          6,
+          30
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              8.0
+            ]
+          ]
+        },
+        "category": "detection"
+      },
+      {
+        "name": "拟合质量",
+        "unit": "",
+        "decimals": 2,
+        "normal": [
+          0.5,
+          1.0
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              0.85
+            ]
+          ]
+        },
+        "category": "fit"
+      },
+      {
+        "name": "伪信号重合度",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          0,
+          20
+        ],
+        "critical": {
+          "high": [
+            [
+              40,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "artifact"
+      },
+      {
+        "name": "网络符合率",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          40,
+          100
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              60
+            ]
+          ]
+        },
+        "category": "network"
+      },
+      {
+        "name": "远端宇宙学红移",
+        "unit": "",
+        "decimals": 2,
+        "normal": [
+          0.01,
+          1.5
+        ],
+        "critical": {
+          "high": [
+            [
+              2.0,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "astro"
+      },
+      {
+        "name": "总质量",
+        "unit": "倍太阳质量",
+        "decimals": 1,
+        "normal": [
+          3,
+          80
+        ],
+        "critical": {
+          "high": [
+            [
+              120,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "astro"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "信噪比": [
+          [
+            -1000000000.0,
+            4.0
+          ]
+        ],
+        "拟合质量": [
+          [
+            -1000000000.0,
+            0.42
+          ]
+        ],
+        "伪信号重合度": [
+          [
+            60.0,
+            1000000000.0
+          ]
+        ],
+        "网络符合率": [
+          [
+            -1000000000.0,
+            30.0
+          ]
+        ],
+        "远端宇宙学红移": [
+          [
+            3.0,
+            1000000000.0
+          ]
+        ],
+        "总质量": [
+          [
+            180.0,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "信噪比": [
+          [
+            4.1,
+            8.0
+          ]
+        ],
+        "拟合质量": [
+          [
+            0.43,
+            0.85
+          ]
+        ],
+        "伪信号重合度": [
+          [
+            40,
+            59.6
+          ]
+        ],
+        "网络符合率": [
+          [
+            30.6,
+            60
+          ]
+        ],
+        "远端宇宙学红移": [
+          [
+            2.0,
+            2.98
+          ]
+        ],
+        "总质量": [
+          [
+            120,
+            178.8
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "is_candidate",
+            "value": false
+          },
+          {
+            "label": "confidence",
+            "value": 3
+          },
+          {
+            "label": "driver",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "is_candidate",
+            "value": true
+          },
+          {
+            "label": "confidence",
+            "value": "min_tier(state, fields, tier_windows)"
+          },
+          {
+            "label": "driver",
+            "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "detection": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "fit": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "artifact": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "信噪比": "detection",
+      "拟合质量": "fit",
+      "伪信号重合度": "artifact",
+      "网络符合率": "network",
+      "远端宇宙学红移": "astro",
+      "总质量": "astro"
+    }
+  }
+}

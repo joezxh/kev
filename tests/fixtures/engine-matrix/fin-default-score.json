@@ -1,0 +1,318 @@
+{
+  "name": "违约预警分级",
+  "domain": "Spike：arith 形状",
+  "state": "（spike）",
+  "state_example": {
+    "债务收入比": "54.0 %",
+    "账龄": "54.0 月",
+    "授信使用率": "63.0 %",
+    "近半年逾期": "2.0 次",
+    "收入波动": "22.5 %",
+    "抵押覆盖": "2.7 倍"
+  },
+  "questions": {
+    "warn": {
+      "type": "noul",
+      "instructions": "是否进入违约预警？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "grade": {
+      "type": "score",
+      "instructions": "综合风险档位？",
+      "criteria": [
+        "高危",
+        "中危",
+        "低危",
+        "正常"
+      ]
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "债务收入比",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          10,
+          60
+        ],
+        "critical": {
+          "high": [
+            [
+              75,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "leverage"
+      },
+      {
+        "name": "账龄",
+        "unit": "月",
+        "decimals": 0,
+        "normal": [
+          1,
+          60
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              6
+            ]
+          ]
+        },
+        "category": "duration"
+      },
+      {
+        "name": "授信使用率",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          5,
+          70
+        ],
+        "critical": {
+          "high": [
+            [
+              85,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "utilization"
+      },
+      {
+        "name": "近半年逾期",
+        "unit": "次",
+        "decimals": 0,
+        "normal": [
+          0,
+          2
+        ],
+        "critical": {
+          "high": [
+            [
+              3,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "delinquency"
+      },
+      {
+        "name": "收入波动",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          0,
+          25
+        ],
+        "critical": {
+          "high": [
+            [
+              40,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "income"
+      },
+      {
+        "name": "抵押覆盖",
+        "unit": "倍",
+        "decimals": 2,
+        "normal": [
+          0.5,
+          3.0
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              0.8
+            ]
+          ]
+        },
+        "category": "collateral"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "债务收入比": [
+          [
+            112.5,
+            1000000000.0
+          ]
+        ],
+        "账龄": [
+          [
+            -1000000000.0,
+            3.0
+          ]
+        ],
+        "授信使用率": [
+          [
+            127.5,
+            1000000000.0
+          ]
+        ],
+        "近半年逾期": [
+          [
+            4.0,
+            1000000000.0
+          ]
+        ],
+        "收入波动": [
+          [
+            60.0,
+            1000000000.0
+          ]
+        ],
+        "抵押覆盖": [
+          [
+            -1000000000.0,
+            0.4
+          ]
+        ]
+      },
+      "1": {
+        "债务收入比": [
+          [
+            75,
+            111.8
+          ]
+        ],
+        "账龄": [
+          [
+            3.0,
+            6
+          ]
+        ],
+        "授信使用率": [
+          [
+            85,
+            126.7
+          ]
+        ],
+        "近半年逾期": [
+          [
+            3,
+            4.0
+          ]
+        ],
+        "收入波动": [
+          [
+            40,
+            59.6
+          ]
+        ],
+        "抵押覆盖": [
+          [
+            0.41,
+            0.8
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "state['债务收入比'] * 0.4 + state['授信使用率'] * 0.3 + state['近半年逾期'] * 10 > 70",
+        "then": [
+          {
+            "label": "warn",
+            "value": true
+          },
+          {
+            "label": "grade",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "warn",
+            "value": false
+          },
+          {
+            "label": "grade",
+            "value": 3
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "leverage": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "duration": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "utilization": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "债务收入比": "leverage",
+      "账龄": "duration",
+      "授信使用率": "utilization",
+      "近半年逾期": "delinquency",
+      "收入波动": "income",
+      "抵押覆盖": "collateral"
+    }
+  }
+}

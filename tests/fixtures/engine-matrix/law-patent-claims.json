@@ -1,0 +1,336 @@
+{
+  "name": "专利新颖性初筛",
+  "domain": "Spike：list 形状",
+  "state": "（spike）",
+  "state_example": {
+    "权利要求": [
+      {
+        "id": 1,
+        "scope": 1,
+        "supported": 1
+      }
+    ],
+    "对比文件": [
+      {
+        "doc": 1,
+        "overlap": 1
+      }
+    ],
+    "技术领域": "机械",
+    "独立权利要求数": "14.0 项",
+    "说明书支持度": "90.0 %",
+    "保护范围重叠度": "54.0 %"
+  },
+  "questions": {
+    "novel": {
+      "type": "noul",
+      "instructions": "是否具备新颖性？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "action": {
+      "type": "choice",
+      "instructions": "申请策略？",
+      "criteria": {
+        "file": "直接申请",
+        "amend": "修改后申请",
+        "abandon": "放弃"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "权利要求",
+        "type": "list",
+        "category": "claims",
+        "min": 2,
+        "max": 4,
+        "items": {
+          "element": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "id",
+                "type": "text",
+                "values": [
+                  "权1",
+                  "权2",
+                  "权3",
+                  "权4"
+                ]
+              },
+              {
+                "name": "scope",
+                "type": "text",
+                "values": [
+                  "装置",
+                  "方法",
+                  "用途"
+                ]
+              },
+              {
+                "name": "supported",
+                "unit": "",
+                "decimals": 0,
+                "normal": [
+                  0,
+                  1
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "对比文件",
+        "type": "list",
+        "category": "prior_art",
+        "min": 2,
+        "max": 3,
+        "items": {
+          "element": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "doc",
+                "type": "text",
+                "values": [
+                  "D1 同族专利",
+                  "D2 会议论文",
+                  "D3 产品手册"
+                ]
+              },
+              {
+                "name": "overlap",
+                "unit": "",
+                "decimals": 2,
+                "normal": [
+                  0,
+                  1
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "技术领域",
+        "type": "enum",
+        "values": [
+          "机械",
+          "电子",
+          "化学",
+          "软件"
+        ],
+        "category": "field"
+      },
+      {
+        "name": "独立权利要求数",
+        "unit": "项",
+        "decimals": 0,
+        "normal": [
+          1,
+          15
+        ],
+        "critical": {
+          "high": [
+            [
+              20,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "structure"
+      },
+      {
+        "name": "说明书支持度",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          40,
+          100
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              60
+            ]
+          ]
+        },
+        "category": "support"
+      },
+      {
+        "name": "保护范围重叠度",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          0,
+          60
+        ],
+        "critical": {
+          "high": [
+            [
+              80,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "overlap"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "独立权利要求数": [
+          [
+            30.0,
+            1000000000.0
+          ]
+        ],
+        "说明书支持度": [
+          [
+            -1000000000.0,
+            30.0
+          ]
+        ],
+        "保护范围重叠度": [
+          [
+            120.0,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "独立权利要求数": [
+          [
+            20,
+            30.0
+          ]
+        ],
+        "说明书支持度": [
+          [
+            30.6,
+            60
+          ]
+        ],
+        "保护范围重叠度": [
+          [
+            80,
+            119.2
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "any(o['overlap'] > 0.8 for o in state['对比文件'])",
+        "then": [
+          {
+            "label": "novel",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "abandon"
+          }
+        ]
+      },
+      {
+        "when": "any(c['supported'] == 0 for c in state['权利要求'])",
+        "then": [
+          {
+            "label": "novel",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "amend"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "novel",
+            "value": true
+          },
+          {
+            "label": "action",
+            "value": "file"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "structure": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "support": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "overlap": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "权利要求": "claims",
+      "对比文件": "prior_art",
+      "技术领域": "field",
+      "独立权利要求数": "structure",
+      "说明书支持度": "support",
+      "保护范围重叠度": "overlap"
+    }
+  }
+}

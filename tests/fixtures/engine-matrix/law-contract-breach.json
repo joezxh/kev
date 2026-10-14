@@ -1,0 +1,241 @@
+{
+  "name": "合同违约认定",
+  "domain": "Spike：text 形状",
+  "state": "（spike）",
+  "state_example": {
+    "争议条款": "（示例文本）",
+    "履行记录": "（示例文本）",
+    "往来函件": "（示例文本）",
+    "合同类型": "买卖",
+    "逾期天数": "27.0 天",
+    "已履行比例": "90.0 %"
+  },
+  "questions": {
+    "breach": {
+      "type": "noul",
+      "instructions": "是否构成违约？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "remedy": {
+      "type": "choice",
+      "instructions": "救济方式？",
+      "criteria": {
+        "none": "无",
+        "cure": "继续履行",
+        "damages": "损害赔偿",
+        "terminate": "解除",
+        "penalty": "违约金"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "争议条款",
+        "type": "text",
+        "category": "clause",
+        "values": [
+          "第 3 条 交付期限与逾期违约金。",
+          "第 7 条 不可抗力情形下的通知义务。"
+        ]
+      },
+      {
+        "name": "履行记录",
+        "type": "text",
+        "category": "performance",
+        "values": [
+          "已交付合同约定数量的 60%，其余因产能推迟。",
+          "已交付 20% 后停止供货，未说明理由。"
+        ]
+      },
+      {
+        "name": "往来函件",
+        "type": "text",
+        "category": "correspondence",
+        "values": [
+          "函件催告于十五日内继续履行，否则解除合同。",
+          "函件援引不可抗力，并附主管部门出具的证明。",
+          "函件仅就发票金额提出核对请求。"
+        ]
+      },
+      {
+        "name": "合同类型",
+        "type": "enum",
+        "values": [
+          "买卖",
+          "承揽",
+          "服务",
+          "租赁"
+        ],
+        "category": "type"
+      },
+      {
+        "name": "逾期天数",
+        "unit": "天",
+        "decimals": 0,
+        "normal": [
+          0,
+          30
+        ],
+        "critical": {
+          "high": [
+            [
+              45,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "delay"
+      },
+      {
+        "name": "已履行比例",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          0,
+          100
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              50
+            ]
+          ]
+        },
+        "category": "performance"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "逾期天数": [
+          [
+            68.0,
+            1000000000.0
+          ]
+        ],
+        "已履行比例": [
+          [
+            -1000000000.0,
+            25.0
+          ]
+        ]
+      },
+      "1": {
+        "逾期天数": [
+          [
+            45,
+            67.0
+          ]
+        ],
+        "已履行比例": [
+          [
+            25.5,
+            50
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "'不可抗力' in state['往来函件'] and '证明' in state['往来函件']",
+        "then": [
+          {
+            "label": "breach",
+            "value": false
+          },
+          {
+            "label": "remedy",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "when": "'催告' in state['往来函件'] and state['已履行比例'] < 50",
+        "then": [
+          {
+            "label": "breach",
+            "value": true
+          },
+          {
+            "label": "remedy",
+            "value": "terminate"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "breach",
+            "value": true
+          },
+          {
+            "label": "remedy",
+            "value": "damages"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "delay": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "performance": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "争议条款": "clause",
+      "履行记录": "performance",
+      "往来函件": "correspondence",
+      "合同类型": "type",
+      "逾期天数": "delay",
+      "已履行比例": "performance"
+    }
+  }
+}

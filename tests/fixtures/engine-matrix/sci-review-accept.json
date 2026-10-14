@@ -1,0 +1,228 @@
+{
+  "name": "审稿建议判定",
+  "domain": "Spike：text 形状",
+  "state": "（spike）",
+  "state_example": {
+    "审稿意见正文": "（示例文本）",
+    "作者回复": "（示例文本）",
+    "编辑批注": "（示例文本）",
+    "投稿类型": "长文",
+    "新颖性评分": "8.1 分",
+    "实验充分性评分": "8.1 分"
+  },
+  "questions": {
+    "recommendation": {
+      "type": "choice",
+      "instructions": "推荐结论？",
+      "criteria": {
+        "accept": "接收",
+        "minor": "小修",
+        "major": "大修",
+        "reject": "拒稿"
+      }
+    },
+    "needs_new_experiment": {
+      "type": "noul",
+      "instructions": "是否要求补实验？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "审稿意见正文",
+        "type": "text",
+        "category": "review",
+        "values": [
+          "缺乏关键对照实验，主结论不成立。",
+          "方法描述清楚，实验设计基本合理。",
+          "新颖性有限，建议大幅压缩篇幅。"
+        ]
+      },
+      {
+        "name": "作者回复",
+        "type": "text",
+        "category": "response",
+        "values": [
+          "我们已补做该对照实验并更新表 3。",
+          "感谢意见，我们澄清了基线选择的理由。"
+        ]
+      },
+      {
+        "name": "编辑批注",
+        "type": "text",
+        "category": "editorial",
+        "values": [
+          "最终稿需附数据与代码可得性声明。"
+        ]
+      },
+      {
+        "name": "投稿类型",
+        "type": "enum",
+        "values": [
+          "长文",
+          "短文",
+          "综述"
+        ],
+        "category": "type"
+      },
+      {
+        "name": "新颖性评分",
+        "unit": "分",
+        "decimals": 1,
+        "normal": [
+          1,
+          9
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              5
+            ]
+          ]
+        },
+        "category": "score"
+      },
+      {
+        "name": "实验充分性评分",
+        "unit": "分",
+        "decimals": 1,
+        "normal": [
+          1,
+          9
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              5
+            ]
+          ]
+        },
+        "category": "score"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "新颖性评分": [
+          [
+            -1000000000.0,
+            2.5
+          ]
+        ],
+        "实验充分性评分": [
+          [
+            -1000000000.0,
+            2.5
+          ]
+        ]
+      },
+      "1": {
+        "新颖性评分": [
+          [
+            2.5,
+            5
+          ]
+        ],
+        "实验充分性评分": [
+          [
+            2.5,
+            5
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "'缺乏关键对照' in state['审稿意见正文'] and '补做' not in state['作者回复']",
+        "then": [
+          {
+            "label": "recommendation",
+            "value": "major"
+          },
+          {
+            "label": "needs_new_experiment",
+            "value": true
+          }
+        ]
+      },
+      {
+        "when": "state['新颖性评分'] > 7",
+        "then": [
+          {
+            "label": "recommendation",
+            "value": "minor"
+          },
+          {
+            "label": "needs_new_experiment",
+            "value": false
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "recommendation",
+            "value": "reject"
+          },
+          {
+            "label": "needs_new_experiment",
+            "value": false
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "score": {
+          "share": 0.35,
+          "quota": 10,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "审稿意见正文": "review",
+      "作者回复": "response",
+      "编辑批注": "editorial",
+      "投稿类型": "type",
+      "新颖性评分": "score",
+      "实验充分性评分": "score"
+    }
+  }
+}

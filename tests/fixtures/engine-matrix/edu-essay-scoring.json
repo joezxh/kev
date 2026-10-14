@@ -1,0 +1,308 @@
+{
+  "name": "作文评分",
+  "domain": "Spike：arith 形状",
+  "state": "（spike）",
+  "state_example": {
+    "内容分": "8.1 分",
+    "结构分": "8.1 分",
+    "语言分": "8.1 分",
+    "字数": "810.0 字",
+    "拼写错误数": "4.0 个",
+    "跑题判定分": "8.1 分"
+  },
+  "questions": {
+    "final_band": {
+      "type": "score",
+      "instructions": "最终等级？",
+      "criteria": [
+        "不合格",
+        "及格",
+        "良好",
+        "优秀"
+      ]
+    },
+    "plagiarism_flag": {
+      "type": "noul",
+      "instructions": "是否需要查重复核？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "内容分",
+        "unit": "分",
+        "decimals": 1,
+        "normal": [
+          1,
+          9
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              4
+            ]
+          ]
+        },
+        "category": "rubric"
+      },
+      {
+        "name": "结构分",
+        "unit": "分",
+        "decimals": 1,
+        "normal": [
+          1,
+          9
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              4
+            ]
+          ]
+        },
+        "category": "rubric"
+      },
+      {
+        "name": "语言分",
+        "unit": "分",
+        "decimals": 1,
+        "normal": [
+          1,
+          9
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              4
+            ]
+          ]
+        },
+        "category": "rubric"
+      },
+      {
+        "name": "字数",
+        "unit": "字",
+        "decimals": 0,
+        "normal": [
+          200,
+          900
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              300
+            ]
+          ]
+        },
+        "category": "mechanics"
+      },
+      {
+        "name": "拼写错误数",
+        "unit": "个",
+        "decimals": 0,
+        "normal": [
+          0,
+          5
+        ],
+        "critical": {
+          "high": [
+            [
+              10,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "mechanics"
+      },
+      {
+        "name": "跑题判定分",
+        "unit": "分",
+        "decimals": 1,
+        "normal": [
+          0.5,
+          9
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              2
+            ]
+          ]
+        },
+        "category": "rubric"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "内容分": [
+          [
+            -1000000000.0,
+            2.0
+          ]
+        ],
+        "结构分": [
+          [
+            -1000000000.0,
+            2.0
+          ]
+        ],
+        "语言分": [
+          [
+            -1000000000.0,
+            2.0
+          ]
+        ],
+        "字数": [
+          [
+            -1000000000.0,
+            150.0
+          ]
+        ],
+        "拼写错误数": [
+          [
+            15.0,
+            1000000000.0
+          ]
+        ],
+        "跑题判定分": [
+          [
+            -1000000000.0,
+            1.0
+          ]
+        ]
+      },
+      "1": {
+        "内容分": [
+          [
+            2.0,
+            4
+          ]
+        ],
+        "结构分": [
+          [
+            2.0,
+            4
+          ]
+        ],
+        "语言分": [
+          [
+            2.0,
+            4
+          ]
+        ],
+        "字数": [
+          [
+            153.0,
+            300
+          ]
+        ],
+        "拼写错误数": [
+          [
+            10,
+            15.0
+          ]
+        ],
+        "跑题判定分": [
+          [
+            1.0,
+            2
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "state['内容分'] * 0.5 + state['结构分'] * 0.3 + state['语言分'] * 0.2 >= 7",
+        "then": [
+          {
+            "label": "final_band",
+            "value": 3
+          },
+          {
+            "label": "plagiarism_flag",
+            "value": false
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "final_band",
+            "value": 1
+          },
+          {
+            "label": "plagiarism_flag",
+            "value": false
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "rubric": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "mechanics": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "内容分": "rubric",
+      "结构分": "rubric",
+      "语言分": "rubric",
+      "字数": "mechanics",
+      "拼写错误数": "mechanics",
+      "跑题判定分": "rubric"
+    }
+  }
+}

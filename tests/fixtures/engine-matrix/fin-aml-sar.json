@@ -1,0 +1,339 @@
+{
+  "name": "可疑交易报告",
+  "domain": "Spike：bands 形状",
+  "state": "（spike）",
+  "state_example": {
+    "现金占比": "18.0 %",
+    "单日笔数": "7.0 笔",
+    "拆分相似度": "36.0 分",
+    "对手账户数": "9.0 个",
+    "冷静期天数": "81.0 天",
+    "累计金额": "36.0 万元"
+  },
+  "questions": {
+    "file_sar": {
+      "type": "noul",
+      "instructions": "是否应提交可疑交易报告？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "上报时限档位？",
+      "criteria": [
+        "立即",
+        "24 小时",
+        "三日内",
+        "无需上报"
+      ]
+    },
+    "driver": {
+      "type": "choice",
+      "instructions": "触发点属于哪一类？",
+      "criteria": {
+        "none": "无",
+        "velocity": "频次类",
+        "pattern": "模式类",
+        "network": "对手类",
+        "size": "金额类",
+        "duration": "时效类",
+        "composition": "结构类"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "现金占比",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          0,
+          20
+        ],
+        "critical": {
+          "high": [
+            [
+              45,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "composition"
+      },
+      {
+        "name": "单日笔数",
+        "unit": "笔",
+        "decimals": 0,
+        "normal": [
+          1,
+          8
+        ],
+        "critical": {
+          "high": [
+            [
+              15,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "velocity"
+      },
+      {
+        "name": "拆分相似度",
+        "unit": "分",
+        "decimals": 1,
+        "normal": [
+          0,
+          40
+        ],
+        "critical": {
+          "high": [
+            [
+              75,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "pattern"
+      },
+      {
+        "name": "对手账户数",
+        "unit": "个",
+        "decimals": 0,
+        "normal": [
+          1,
+          10
+        ],
+        "critical": {
+          "high": [
+            [
+              25,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "network"
+      },
+      {
+        "name": "冷静期天数",
+        "unit": "天",
+        "decimals": 0,
+        "normal": [
+          5,
+          90
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              3
+            ]
+          ]
+        },
+        "category": "duration"
+      },
+      {
+        "name": "累计金额",
+        "unit": "万元",
+        "decimals": 1,
+        "normal": [
+          1,
+          40
+        ],
+        "critical": {
+          "high": [
+            [
+              60,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "size"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "现金占比": [
+          [
+            67.5,
+            1000000000.0
+          ]
+        ],
+        "单日笔数": [
+          [
+            22.0,
+            1000000000.0
+          ]
+        ],
+        "拆分相似度": [
+          [
+            112.5,
+            1000000000.0
+          ]
+        ],
+        "对手账户数": [
+          [
+            38.0,
+            1000000000.0
+          ]
+        ],
+        "冷静期天数": [
+          [
+            -1000000000.0,
+            2.0
+          ]
+        ],
+        "累计金额": [
+          [
+            90.0,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "现金占比": [
+          [
+            45,
+            67.0
+          ]
+        ],
+        "单日笔数": [
+          [
+            15,
+            22.0
+          ]
+        ],
+        "拆分相似度": [
+          [
+            75,
+            111.8
+          ]
+        ],
+        "对手账户数": [
+          [
+            25,
+            37.0
+          ]
+        ],
+        "冷静期天数": [
+          [
+            2.0,
+            3
+          ]
+        ],
+        "累计金额": [
+          [
+            60,
+            89.4
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "file_sar",
+            "value": false
+          },
+          {
+            "label": "urgency",
+            "value": 3
+          },
+          {
+            "label": "driver",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "file_sar",
+            "value": true
+          },
+          {
+            "label": "urgency",
+            "value": "min_tier(state, fields, tier_windows)"
+          },
+          {
+            "label": "driver",
+            "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "composition": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "velocity": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "pattern": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "现金占比": "composition",
+      "单日笔数": "velocity",
+      "拆分相似度": "pattern",
+      "对手账户数": "network",
+      "冷静期天数": "duration",
+      "累计金额": "size"
+    }
+  }
+}

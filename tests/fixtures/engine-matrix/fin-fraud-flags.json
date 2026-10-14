@@ -1,0 +1,132 @@
+{
+  "name": "交易欺诈识别",
+  "domain": "Spike：bool 形状",
+  "state": "（spike）",
+  "state_example": {
+    "异地大额": "true",
+    "新设备": "true",
+    "短时连续": "true",
+    "收款人变更": "true",
+    "登录异常": "true",
+    "历史欺诈名单": "true"
+  },
+  "questions": {
+    "is_fraud": {
+      "type": "noul",
+      "instructions": "是否为欺诈交易？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "action": {
+      "type": "choice",
+      "instructions": "处置动作？",
+      "criteria": {
+        "hold": "暂扣",
+        "verify": "二次核验",
+        "clear": "放行"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "异地大额",
+        "type": "bool",
+        "category": "geo"
+      },
+      {
+        "name": "新设备",
+        "type": "bool",
+        "category": "device"
+      },
+      {
+        "name": "短时连续",
+        "type": "bool",
+        "category": "velocity"
+      },
+      {
+        "name": "收款人变更",
+        "type": "bool",
+        "category": "payee"
+      },
+      {
+        "name": "登录异常",
+        "type": "bool",
+        "category": "session"
+      },
+      {
+        "name": "历史欺诈名单",
+        "type": "bool",
+        "category": "history"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {},
+      "1": {}
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "state['异地大额'] and state['新设备']",
+        "then": [
+          {
+            "label": "is_fraud",
+            "value": true
+          },
+          {
+            "label": "action",
+            "value": "hold"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "is_fraud",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "clear"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {},
+    "panel_category": {
+      "异地大额": "geo",
+      "新设备": "device",
+      "短时连续": "velocity",
+      "收款人变更": "payee",
+      "登录异常": "session",
+      "历史欺诈名单": "history"
+    }
+  }
+}

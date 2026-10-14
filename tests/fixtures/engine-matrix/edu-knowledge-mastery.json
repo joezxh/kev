@@ -1,0 +1,358 @@
+{
+  "name": "知识点薄弱项定位",
+  "domain": "Spike：list 形状",
+  "state": "（spike）",
+  "state_example": {
+    "知识点掌握": [
+      {
+        "topic": 1,
+        "mastery": 1,
+        "attempts": 1
+      }
+    ],
+    "错题聚类": [
+      {
+        "cluster": 1,
+        "count": 1
+      }
+    ],
+    "章节覆盖率": "90.0 %",
+    "平均正确率": "85.5 %",
+    "练习频次": "18.0 次",
+    "遗忘曲线斜率": "0.9 分"
+  },
+  "questions": {
+    "remedial": {
+      "type": "noul",
+      "instructions": "是否需要补强练习？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "target": {
+      "type": "choice",
+      "instructions": "先补哪一块？",
+      "criteria": {
+        "none": "无",
+        "mastery": "掌握度",
+        "errors": "错因",
+        "coverage": "覆盖",
+        "retention": "保持"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "知识点掌握",
+        "type": "list",
+        "category": "mastery",
+        "min": 2,
+        "max": 4,
+        "items": {
+          "element": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "topic",
+                "type": "text",
+                "values": [
+                  "极限与连续",
+                  "多元微分",
+                  "级数",
+                  "特征值",
+                  "抽样分布"
+                ]
+              },
+              {
+                "name": "mastery",
+                "unit": "",
+                "decimals": 2,
+                "normal": [
+                  0,
+                  1
+                ]
+              },
+              {
+                "name": "attempts",
+                "unit": "",
+                "decimals": 0,
+                "normal": [
+                  1,
+                  20
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "错题聚类",
+        "type": "list",
+        "category": "errors",
+        "min": 2,
+        "max": 3,
+        "items": {
+          "element": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "cluster",
+                "type": "text",
+                "values": [
+                  "计算失误",
+                  "概念混淆",
+                  "方法选错"
+                ]
+              },
+              {
+                "name": "count",
+                "unit": "",
+                "decimals": 0,
+                "normal": [
+                  0,
+                  12
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "章节覆盖率",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          30,
+          100
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              60
+            ]
+          ]
+        },
+        "category": "coverage"
+      },
+      {
+        "name": "平均正确率",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          40,
+          95
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              55
+            ]
+          ]
+        },
+        "category": "accuracy"
+      },
+      {
+        "name": "练习频次",
+        "unit": "次",
+        "decimals": 0,
+        "normal": [
+          1,
+          20
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              2
+            ]
+          ]
+        },
+        "category": "practice"
+      },
+      {
+        "name": "遗忘曲线斜率",
+        "unit": "分",
+        "decimals": 2,
+        "normal": [
+          0.1,
+          1.0
+        ],
+        "critical": {
+          "high": [
+            [
+              1.2,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "retention"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "章节覆盖率": [
+          [
+            -1000000000.0,
+            30.0
+          ]
+        ],
+        "平均正确率": [
+          [
+            -1000000000.0,
+            27.5
+          ]
+        ],
+        "练习频次": [
+          [
+            -1000000000.0,
+            1.0
+          ]
+        ],
+        "遗忘曲线斜率": [
+          [
+            1.8,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "章节覆盖率": [
+          [
+            30.6,
+            60
+          ]
+        ],
+        "平均正确率": [
+          [
+            28.1,
+            55
+          ]
+        ],
+        "练习频次": [
+          [
+            1.0,
+            2
+          ]
+        ],
+        "遗忘曲线斜率": [
+          [
+            1.2,
+            1.79
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "any(m['mastery'] < 0.5 for m in state['知识点掌握'])",
+        "then": [
+          {
+            "label": "remedial",
+            "value": true
+          },
+          {
+            "label": "target",
+            "value": "mastery"
+          }
+        ]
+      },
+      {
+        "when": "any(e['count'] > 5 for e in state['错题聚类'])",
+        "then": [
+          {
+            "label": "remedial",
+            "value": true
+          },
+          {
+            "label": "target",
+            "value": "errors"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "remedial",
+            "value": false
+          },
+          {
+            "label": "target",
+            "value": "none"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "coverage": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "accuracy": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "practice": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "知识点掌握": "mastery",
+      "错题聚类": "errors",
+      "章节覆盖率": "coverage",
+      "平均正确率": "accuracy",
+      "练习频次": "practice",
+      "遗忘曲线斜率": "retention"
+    }
+  }
+}

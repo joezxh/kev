@@ -1,0 +1,318 @@
+{
+  "name": "合成产率评价",
+  "domain": "Spike：arith 形状",
+  "state": "（spike）",
+  "state_example": {
+    "粗产物质量": "4.5 g",
+    "理论产量": "5.4 g",
+    "纯度": "89.1 %",
+    "催化剂负载": "9.0 mol%",
+    "反应时间": "21.6 h",
+    "底物当量": "2.7 eq"
+  },
+  "questions": {
+    "optimize": {
+      "type": "noul",
+      "instructions": "是否需要条件优化？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "grade": {
+      "type": "score",
+      "instructions": "工艺档位？",
+      "criteria": [
+        "不可用",
+        "可重复",
+        "优",
+        "标杆"
+      ]
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "粗产物质量",
+        "unit": "g",
+        "decimals": 2,
+        "normal": [
+          0.1,
+          5.0
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              0.2
+            ]
+          ]
+        },
+        "category": "mass"
+      },
+      {
+        "name": "理论产量",
+        "unit": "g",
+        "decimals": 2,
+        "normal": [
+          0.2,
+          6.0
+        ],
+        "critical": {
+          "high": [
+            [
+              5.0,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "mass"
+      },
+      {
+        "name": "纯度",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          60,
+          99
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              90
+            ]
+          ]
+        },
+        "category": "purity"
+      },
+      {
+        "name": "催化剂负载",
+        "unit": "mol%",
+        "decimals": 1,
+        "normal": [
+          0.5,
+          10
+        ],
+        "critical": {
+          "high": [
+            [
+              12,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "cost"
+      },
+      {
+        "name": "反应时间",
+        "unit": "h",
+        "decimals": 1,
+        "normal": [
+          0.5,
+          24
+        ],
+        "critical": {
+          "high": [
+            [
+              48,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "time"
+      },
+      {
+        "name": "底物当量",
+        "unit": "eq",
+        "decimals": 2,
+        "normal": [
+          1.0,
+          3.0
+        ],
+        "critical": {
+          "high": [
+            [
+              5.0,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "cost"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "粗产物质量": [
+          [
+            -1000000000.0,
+            0.1
+          ]
+        ],
+        "理论产量": [
+          [
+            7.5,
+            1000000000.0
+          ]
+        ],
+        "纯度": [
+          [
+            -1000000000.0,
+            45.0
+          ]
+        ],
+        "催化剂负载": [
+          [
+            18.0,
+            1000000000.0
+          ]
+        ],
+        "反应时间": [
+          [
+            72.0,
+            1000000000.0
+          ]
+        ],
+        "底物当量": [
+          [
+            7.5,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "粗产物质量": [
+          [
+            0.1,
+            0.2
+          ]
+        ],
+        "理论产量": [
+          [
+            5.0,
+            7.45
+          ]
+        ],
+        "纯度": [
+          [
+            45.9,
+            90
+          ]
+        ],
+        "催化剂负载": [
+          [
+            12,
+            17.9
+          ]
+        ],
+        "反应时间": [
+          [
+            48,
+            71.5
+          ]
+        ],
+        "底物当量": [
+          [
+            5.0,
+            7.45
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "state['粗产物质量'] / state['理论产量'] * 100 >= 70 and state['纯度'] >= 95",
+        "then": [
+          {
+            "label": "optimize",
+            "value": false
+          },
+          {
+            "label": "grade",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "optimize",
+            "value": true
+          },
+          {
+            "label": "grade",
+            "value": 1
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "mass": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "purity": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "cost": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "粗产物质量": "mass",
+      "理论产量": "mass",
+      "纯度": "purity",
+      "催化剂负载": "cost",
+      "反应时间": "time",
+      "底物当量": "cost"
+    }
+  }
+}

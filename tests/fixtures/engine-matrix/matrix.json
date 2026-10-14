@@ -1,0 +1,294 @@
+[
+  {
+    "slug": "fin-credit-limit",
+    "shape": "bands",
+    "name": "信用卡额度复审",
+    "domain": "fin",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "fin-fraud-flags",
+    "shape": "bool",
+    "name": "交易欺诈识别",
+    "domain": "fin",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "fin-aml-sar",
+    "shape": "bands",
+    "name": "可疑交易报告",
+    "domain": "fin",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "fin-insurance-denial",
+    "shape": "enum",
+    "name": "理赔拒付判定",
+    "domain": "fin",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "fin-default-score",
+    "shape": "arith",
+    "name": "违约预警分级",
+    "domain": "fin",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "fin-option-expiry",
+    "shape": "date",
+    "name": "期权到期处置",
+    "domain": "fin",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "fin-portfolio-rebalance",
+    "shape": "list",
+    "name": "组合再平衡",
+    "domain": "fin",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "fin-covenant-text",
+    "shape": "text",
+    "name": "贷款契约违约",
+    "domain": "fin",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "edu-early-warning",
+    "shape": "bands",
+    "name": "学业困难预警",
+    "domain": "edu",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "edu-course-placement",
+    "shape": "enum",
+    "name": "课程分流安置",
+    "domain": "edu",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "edu-essay-scoring",
+    "shape": "arith",
+    "name": "作文评分",
+    "domain": "edu",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "edu-academic-integrity",
+    "shape": "bool",
+    "name": "学术诚信嫌疑",
+    "domain": "edu",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "edu-scholarship",
+    "shape": "bands",
+    "name": "奖学金资格判定",
+    "domain": "edu",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "edu-enrollment-deadline",
+    "shape": "date",
+    "name": "注册截止处置",
+    "domain": "edu",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "edu-knowledge-mastery",
+    "shape": "list",
+    "name": "知识点薄弱项定位",
+    "domain": "edu",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "edu-statement-fit",
+    "shape": "text",
+    "name": "个人陈述匹配",
+    "domain": "edu",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "sci-gw-candidate",
+    "shape": "bands",
+    "name": "引力波候选事件判定",
+    "domain": "sci",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "sci-variant-pathogenicity",
+    "shape": "enum",
+    "name": "基因变异致病性分级",
+    "domain": "sci",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "sci-reaction-yield",
+    "shape": "arith",
+    "name": "合成产率评价",
+    "domain": "sci",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "sci-reproducibility",
+    "shape": "bool",
+    "name": "复现可行性判定",
+    "domain": "sci",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "sci-power-analysis",
+    "shape": "bands",
+    "name": "样本量充足性",
+    "domain": "sci",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "sci-target-visibility",
+    "shape": "date",
+    "name": "观测窗口可行性",
+    "domain": "sci",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "sci-material-composition",
+    "shape": "list",
+    "name": "材料相稳定性",
+    "domain": "sci",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "sci-review-accept",
+    "shape": "text",
+    "name": "审稿建议判定",
+    "domain": "sci",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "law-sentencing",
+    "shape": "bands",
+    "name": "量刑区间预判",
+    "domain": "law",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "law-jurisdiction-venue",
+    "shape": "enum",
+    "name": "管辖法院确定",
+    "domain": "law",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "law-statute-limitations",
+    "shape": "date",
+    "name": "诉讼时效判定",
+    "domain": "law",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "law-contract-breach",
+    "shape": "text",
+    "name": "合同违约认定",
+    "domain": "law",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "law-evidence-admissibility",
+    "shape": "bool",
+    "name": "证据可采性",
+    "domain": "law",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "law-overtime-compliance",
+    "shape": "arith",
+    "name": "加班费合规核算",
+    "domain": "law",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "law-patent-claims",
+    "shape": "list",
+    "name": "专利新颖性初筛",
+    "domain": "law",
+    "spike_records": 0,
+    "spike_error": "KeyError: 'normal'"
+  },
+  {
+    "slug": "law-comparative-negligence",
+    "shape": "bands",
+    "name": "过错比例划分",
+    "domain": "law",
+    "spike_records": 30,
+    "spike_error": ""
+  },
+  {
+    "slug": "fin-credit-adverse",
+    "shape": "catalog",
+    "name": "征信风险事件复核",
+    "domain": "fin",
+    "spike_records": 0,
+    "spike_error": "",
+    "added": "PR1b"
+  },
+  {
+    "slug": "edu-unit-remediation",
+    "shape": "catalog",
+    "name": "薄弱单元补救",
+    "domain": "edu",
+    "spike_records": 0,
+    "spike_error": "",
+    "added": "PR1b"
+  },
+  {
+    "slug": "sci-incident-triage",
+    "shape": "catalog",
+    "name": "集群故障分诊",
+    "domain": "sci",
+    "spike_records": 0,
+    "spike_error": "",
+    "added": "PR1b"
+  },
+  {
+    "slug": "law-evidence-weight",
+    "shape": "catalog",
+    "name": "拟提交证据评估",
+    "domain": "law",
+    "spike_records": 0,
+    "spike_error": "",
+    "added": "PR1b"
+  }
+]

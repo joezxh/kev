@@ -1,0 +1,338 @@
+{
+  "name": "过错比例划分",
+  "domain": "Spike：bands 形状",
+  "state": "（spike）",
+  "state_example": {
+    "超速幅度": "27.0 %",
+    "注意义务违反项数": "3.0 项",
+    "伤害等级": "9.0 级",
+    "对方过错比例": "54.0 %",
+    "保险覆盖": "90.0 %",
+    "逃逸情节": "4.0 分"
+  },
+  "questions": {
+    "primary_liability": {
+      "type": "noul",
+      "instructions": "我方是否承担主责？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "share": {
+      "type": "score",
+      "instructions": "责任比例档位？",
+      "criteria": [
+        "无责",
+        "次责",
+        "同责",
+        "主责"
+      ]
+    },
+    "driver": {
+      "type": "choice",
+      "instructions": "加重因素？",
+      "criteria": {
+        "none": "无",
+        "fault": "违章",
+        "harm": "后果",
+        "counter": "对方过错",
+        "coverage": "保险",
+        "aggravation": "逃逸"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "超速幅度",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          0,
+          30
+        ],
+        "critical": {
+          "high": [
+            [
+              45,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "fault"
+      },
+      {
+        "name": "注意义务违反项数",
+        "unit": "项",
+        "decimals": 0,
+        "normal": [
+          0,
+          3
+        ],
+        "critical": {
+          "high": [
+            [
+              4,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "fault"
+      },
+      {
+        "name": "伤害等级",
+        "unit": "级",
+        "decimals": 0,
+        "normal": [
+          5,
+          10
+        ],
+        "critical": {
+          "high": [
+            [
+              4,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "harm"
+      },
+      {
+        "name": "对方过错比例",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          0,
+          60
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              10
+            ]
+          ]
+        },
+        "category": "counter"
+      },
+      {
+        "name": "保险覆盖",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          20,
+          100
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              30
+            ]
+          ]
+        },
+        "category": "coverage"
+      },
+      {
+        "name": "逃逸情节",
+        "unit": "分",
+        "decimals": 0,
+        "normal": [
+          0,
+          5
+        ],
+        "critical": {
+          "high": [
+            [
+              6,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "aggravation"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "超速幅度": [
+          [
+            67.5,
+            1000000000.0
+          ]
+        ],
+        "注意义务违反项数": [
+          [
+            6.0,
+            1000000000.0
+          ]
+        ],
+        "伤害等级": [
+          [
+            6.0,
+            1000000000.0
+          ]
+        ],
+        "对方过错比例": [
+          [
+            -1000000000.0,
+            5.0
+          ]
+        ],
+        "保险覆盖": [
+          [
+            -1000000000.0,
+            15.0
+          ]
+        ],
+        "逃逸情节": [
+          [
+            9.0,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "超速幅度": [
+          [
+            45,
+            67.0
+          ]
+        ],
+        "注意义务违反项数": [
+          [
+            4,
+            6.0
+          ]
+        ],
+        "伤害等级": [
+          [
+            4,
+            6.0
+          ]
+        ],
+        "对方过错比例": [
+          [
+            5.1,
+            10
+          ]
+        ],
+        "保险覆盖": [
+          [
+            15.3,
+            30
+          ]
+        ],
+        "逃逸情节": [
+          [
+            6,
+            9.0
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "primary_liability",
+            "value": false
+          },
+          {
+            "label": "share",
+            "value": 3
+          },
+          {
+            "label": "driver",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "primary_liability",
+            "value": true
+          },
+          {
+            "label": "share",
+            "value": "min_tier(state, fields, tier_windows)"
+          },
+          {
+            "label": "driver",
+            "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "fault": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "harm": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "counter": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "超速幅度": "fault",
+      "注意义务违反项数": "fault",
+      "伤害等级": "harm",
+      "对方过错比例": "counter",
+      "保险覆盖": "coverage",
+      "逃逸情节": "aggravation"
+    }
+  }
+}

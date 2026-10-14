@@ -1,0 +1,146 @@
+{
+  "name": "复现可行性判定",
+  "domain": "Spike：bool 形状",
+  "state": "（spike）",
+  "state_example": {
+    "代码可得": "true",
+    "权重可得": "true",
+    "数据可得": "true",
+    "随机种子公开": "true",
+    "样本量一致": "true",
+    "统计方法一致": "true"
+  },
+  "questions": {
+    "reproducible": {
+      "type": "noul",
+      "instructions": "判定为可复现？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "action": {
+      "type": "choice",
+      "instructions": "后续动作？",
+      "criteria": {
+        "none": "无",
+        "contact": "联系作者",
+        "partial": "部分复现报告",
+        "abandon": "放弃"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "代码可得",
+        "type": "bool",
+        "category": "artifact"
+      },
+      {
+        "name": "权重可得",
+        "type": "bool",
+        "category": "artifact"
+      },
+      {
+        "name": "数据可得",
+        "type": "bool",
+        "category": "data"
+      },
+      {
+        "name": "随机种子公开",
+        "type": "bool",
+        "category": "protocol"
+      },
+      {
+        "name": "样本量一致",
+        "type": "bool",
+        "category": "protocol"
+      },
+      {
+        "name": "统计方法一致",
+        "type": "bool",
+        "category": "protocol"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {},
+      "1": {}
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "state['代码可得'] and state['数据可得'] and state['随机种子公开']",
+        "then": [
+          {
+            "label": "reproducible",
+            "value": true
+          },
+          {
+            "label": "action",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "when": "state['数据可得']",
+        "then": [
+          {
+            "label": "reproducible",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "contact"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "reproducible",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "abandon"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {},
+    "panel_category": {
+      "代码可得": "artifact",
+      "权重可得": "artifact",
+      "数据可得": "data",
+      "随机种子公开": "protocol",
+      "样本量一致": "protocol",
+      "统计方法一致": "protocol"
+    }
+  }
+}

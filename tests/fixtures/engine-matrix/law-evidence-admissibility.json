@@ -1,0 +1,145 @@
+{
+  "name": "证据可采性",
+  "domain": "Spike：bool 形状",
+  "state": "（spike）",
+  "state_example": {
+    "取证程序合法": "true",
+    "已告知权利": "true",
+    "原件存在": "true",
+    "签字完整": "true",
+    "保管链连续": "true",
+    "取证在时效内": "true"
+  },
+  "questions": {
+    "admissible": {
+      "type": "noul",
+      "instructions": "证据是否可采？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "action": {
+      "type": "choice",
+      "instructions": "质证策略？",
+      "criteria": {
+        "accept": "采信",
+        "exclude": "排除",
+        "supplement": "补强"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "取证程序合法",
+        "type": "bool",
+        "category": "procedure"
+      },
+      {
+        "name": "已告知权利",
+        "type": "bool",
+        "category": "procedure"
+      },
+      {
+        "name": "原件存在",
+        "type": "bool",
+        "category": "form"
+      },
+      {
+        "name": "签字完整",
+        "type": "bool",
+        "category": "form"
+      },
+      {
+        "name": "保管链连续",
+        "type": "bool",
+        "category": "chain"
+      },
+      {
+        "name": "取证在时效内",
+        "type": "bool",
+        "category": "chain"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {},
+      "1": {}
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "not state['取证程序合法'] or not state['已告知权利']",
+        "then": [
+          {
+            "label": "admissible",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "exclude"
+          }
+        ]
+      },
+      {
+        "when": "not state['原件存在'] or not state['保管链连续']",
+        "then": [
+          {
+            "label": "admissible",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "supplement"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "admissible",
+            "value": true
+          },
+          {
+            "label": "action",
+            "value": "accept"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {},
+    "panel_category": {
+      "取证程序合法": "procedure",
+      "已告知权利": "procedure",
+      "原件存在": "form",
+      "签字完整": "form",
+      "保管链连续": "chain",
+      "取证在时效内": "chain"
+    }
+  }
+}

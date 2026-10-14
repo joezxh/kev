@@ -1,0 +1,225 @@
+{
+  "name": "期权到期处置",
+  "domain": "Spike：date 形状",
+  "state": "（spike）",
+  "state_example": {
+    "到期日": "2026-01-15",
+    "今日": "2026-01-15",
+    "最近财报日": "2026-01-15",
+    "行权状态": "实值",
+    "隐含波动率": "54.0 %",
+    "剩余保证金": "180.0 万元"
+  },
+  "questions": {
+    "must_act": {
+      "type": "noul",
+      "instructions": "是否必须在到期前处置？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "action": {
+      "type": "choice",
+      "instructions": "处置方式？",
+      "criteria": {
+        "close": "平仓",
+        "roll": "展期",
+        "hold": "持有",
+        "exercise": "行权"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "到期日",
+        "type": "date",
+        "category": "time",
+        "range": [
+          "2026-10-01",
+          "2026-10-31"
+        ]
+      },
+      {
+        "name": "今日",
+        "type": "date",
+        "category": "time",
+        "range": [
+          "2026-10-01",
+          "2026-10-12"
+        ]
+      },
+      {
+        "name": "最近财报日",
+        "type": "date",
+        "category": "time",
+        "range": [
+          "2026-08-01",
+          "2026-09-30"
+        ]
+      },
+      {
+        "name": "行权状态",
+        "type": "enum",
+        "values": [
+          "实值",
+          "平值",
+          "虚值"
+        ],
+        "category": "moneyness"
+      },
+      {
+        "name": "隐含波动率",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          10,
+          60
+        ],
+        "critical": {
+          "high": [
+            [
+              80,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "risk"
+      },
+      {
+        "name": "剩余保证金",
+        "unit": "万元",
+        "decimals": 1,
+        "normal": [
+          5,
+          200
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              10
+            ]
+          ]
+        },
+        "category": "margin"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "隐含波动率": [
+          [
+            120.0,
+            1000000000.0
+          ]
+        ],
+        "剩余保证金": [
+          [
+            -1000000000.0,
+            5.0
+          ]
+        ]
+      },
+      "1": {
+        "隐含波动率": [
+          [
+            80,
+            119.2
+          ]
+        ],
+        "剩余保证金": [
+          [
+            5.1,
+            10
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "(state['到期日'] - state['今日']).days <= 3",
+        "then": [
+          {
+            "label": "must_act",
+            "value": true
+          },
+          {
+            "label": "action",
+            "value": "close"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "must_act",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "hold"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "risk": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "margin": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "到期日": "time",
+      "今日": "time",
+      "最近财报日": "time",
+      "行权状态": "moneyness",
+      "隐含波动率": "risk",
+      "剩余保证金": "margin"
+    }
+  }
+}

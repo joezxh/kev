@@ -1,0 +1,223 @@
+{
+  "name": "观测窗口可行性",
+  "domain": "Spike：date 形状",
+  "state": "（spike）",
+  "state_example": {
+    "目标过境时": "2026-01-15",
+    "日落时": "2026-01-15",
+    "月落时": "2026-01-15",
+    "排期日期": "2026-01-15",
+    "地平高度": "76.5 度",
+    "月龄": "26.1 天"
+  },
+  "questions": {
+    "observable": {
+      "type": "noul",
+      "instructions": "本晚是否可观测？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "action": {
+      "type": "choice",
+      "instructions": "调度结论？",
+      "criteria": {
+        "schedule": "排入",
+        "skip": "跳过",
+        "fallback": "备用目标"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "目标过境时",
+        "type": "date",
+        "category": "window",
+        "range": [
+          "2026-10-01",
+          "2026-10-31"
+        ]
+      },
+      {
+        "name": "日落时",
+        "type": "date",
+        "category": "window",
+        "range": [
+          "2026-10-01",
+          "2026-10-31"
+        ]
+      },
+      {
+        "name": "月落时",
+        "type": "date",
+        "category": "window",
+        "range": [
+          "2026-10-01",
+          "2026-10-31"
+        ]
+      },
+      {
+        "name": "排期日期",
+        "type": "date",
+        "category": "schedule",
+        "range": [
+          "2026-10-01",
+          "2026-10-31"
+        ]
+      },
+      {
+        "name": "地平高度",
+        "unit": "度",
+        "decimals": 1,
+        "normal": [
+          10,
+          85
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              25
+            ]
+          ]
+        },
+        "category": "geometry"
+      },
+      {
+        "name": "月龄",
+        "unit": "天",
+        "decimals": 1,
+        "normal": [
+          0,
+          29
+        ],
+        "critical": {
+          "high": [
+            [
+              20,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "moon"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "地平高度": [
+          [
+            -1000000000.0,
+            12.5
+          ]
+        ],
+        "月龄": [
+          [
+            30.0,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "地平高度": [
+          [
+            12.8,
+            25
+          ]
+        ],
+        "月龄": [
+          [
+            20,
+            29.8
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "state['地平高度'] > 30 and state['月龄'] < 7",
+        "then": [
+          {
+            "label": "observable",
+            "value": true
+          },
+          {
+            "label": "action",
+            "value": "schedule"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "observable",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "skip"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "geometry": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "moon": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "目标过境时": "window",
+      "日落时": "window",
+      "月落时": "window",
+      "排期日期": "schedule",
+      "地平高度": "geometry",
+      "月龄": "moon"
+    }
+  }
+}

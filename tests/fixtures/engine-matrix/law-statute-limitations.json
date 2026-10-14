@@ -1,0 +1,173 @@
+{
+  "name": "诉讼时效判定",
+  "domain": "Spike：date 形状",
+  "state": "（spike）",
+  "state_example": {
+    "侵害行为发生日": "2026-01-15",
+    "知道损害日": "2026-01-15",
+    "起诉日": "2026-01-15",
+    "最后一次催收日": "2026-01-15",
+    "中断事由": "催告",
+    "案由": "借款"
+  },
+  "questions": {
+    "time_barred": {
+      "type": "noul",
+      "instructions": "是否已过诉讼时效？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "action": {
+      "type": "choice",
+      "instructions": "处理建议？",
+      "criteria": {
+        "none": "可诉",
+        "defense": "提时效抗辩",
+        "evidence": "补中断证据"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "侵害行为发生日",
+        "type": "date",
+        "category": "event",
+        "range": [
+          "2018-01-01",
+          "2023-12-31"
+        ]
+      },
+      {
+        "name": "知道损害日",
+        "type": "date",
+        "category": "knowledge",
+        "range": [
+          "2020-01-01",
+          "2024-12-31"
+        ]
+      },
+      {
+        "name": "起诉日",
+        "type": "date",
+        "category": "filing",
+        "range": [
+          "2025-01-01",
+          "2026-06-30"
+        ]
+      },
+      {
+        "name": "最后一次催收日",
+        "type": "date",
+        "category": "tollling",
+        "range": [
+          "2024-01-01",
+          "2026-06-30"
+        ]
+      },
+      {
+        "name": "中断事由",
+        "type": "enum",
+        "values": [
+          "催告",
+          "承诺履行",
+          "起诉",
+          "无"
+        ],
+        "category": "interruption"
+      },
+      {
+        "name": "案由",
+        "type": "enum",
+        "values": [
+          "借款",
+          "买卖",
+          "侵权",
+          "租赁"
+        ],
+        "category": "cause"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {},
+      "1": {}
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "(state['起诉日'] - state['知道损害日']).days > 1095 and state['中断事由'] == '无'",
+        "then": [
+          {
+            "label": "time_barred",
+            "value": true
+          },
+          {
+            "label": "action",
+            "value": "defense"
+          }
+        ]
+      },
+      {
+        "when": "state['中断事由'] != '无'",
+        "then": [
+          {
+            "label": "time_barred",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "evidence"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "time_barred",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "none"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {},
+    "panel_category": {
+      "侵害行为发生日": "event",
+      "知道损害日": "knowledge",
+      "起诉日": "filing",
+      "最后一次催收日": "tollling",
+      "中断事由": "interruption",
+      "案由": "cause"
+    }
+  }
+}

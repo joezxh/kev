@@ -1,0 +1,178 @@
+{
+  "name": "管辖法院确定",
+  "domain": "Spike：enum 形状",
+  "state": "（spike）",
+  "state_example": {
+    "案由": "合同",
+    "被告住所地": "本地",
+    "合同履行地": "约定地",
+    "标的物所在地": "境内",
+    "仲裁条款": "有 有效",
+    "标的额级别": "基层"
+  },
+  "questions": {
+    "venue": {
+      "type": "choice",
+      "instructions": "受理机关？",
+      "criteria": {
+        "court_local": "本地法院",
+        "court_other": "外地法院",
+        "arbitration": "仲裁委",
+        "foreign": "涉外程序"
+      }
+    },
+    "transfer": {
+      "type": "noul",
+      "instructions": "是否需要移送？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "案由",
+        "type": "enum",
+        "values": [
+          "合同",
+          "侵权",
+          "公司",
+          "劳动",
+          "家事"
+        ],
+        "category": "cause"
+      },
+      {
+        "name": "被告住所地",
+        "type": "enum",
+        "values": [
+          "本地",
+          "外地",
+          "境外"
+        ],
+        "category": "defendant"
+      },
+      {
+        "name": "合同履行地",
+        "type": "enum",
+        "values": [
+          "约定地",
+          "实际地",
+          "无"
+        ],
+        "category": "place"
+      },
+      {
+        "name": "标的物所在地",
+        "type": "enum",
+        "values": [
+          "境内",
+          "境外",
+          "移动"
+        ],
+        "category": "res"
+      },
+      {
+        "name": "仲裁条款",
+        "type": "enum",
+        "values": [
+          "有 有效",
+          "有 无效",
+          "无"
+        ],
+        "category": "arbitration"
+      },
+      {
+        "name": "标的额级别",
+        "type": "enum",
+        "values": [
+          "基层",
+          "中级",
+          "高级"
+        ],
+        "category": "level"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {},
+      "1": {}
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "state['仲裁条款'] == '有 有效'",
+        "then": [
+          {
+            "label": "venue",
+            "value": "arbitration"
+          },
+          {
+            "label": "transfer",
+            "value": true
+          }
+        ]
+      },
+      {
+        "when": "state['被告住所地'] == '境外' or state['标的物所在地'] == '境外'",
+        "then": [
+          {
+            "label": "venue",
+            "value": "foreign"
+          },
+          {
+            "label": "transfer",
+            "value": true
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "venue",
+            "value": "court_local"
+          },
+          {
+            "label": "transfer",
+            "value": false
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {},
+    "panel_category": {
+      "案由": "cause",
+      "被告住所地": "defendant",
+      "合同履行地": "place",
+      "标的物所在地": "res",
+      "仲裁条款": "arbitration",
+      "标的额级别": "level"
+    }
+  }
+}

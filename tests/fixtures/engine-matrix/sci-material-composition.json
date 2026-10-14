@@ -1,0 +1,346 @@
+{
+  "name": "材料相稳定性",
+  "domain": "Spike：list 形状",
+  "state": "（spike）",
+  "state_example": {
+    "组分": [
+      {
+        "element": 1,
+        "fraction": 1
+      }
+    ],
+    "相竞争": [
+      {
+        "phase": 1,
+        "energy": 1
+      }
+    ],
+    "形成能": "-0.09 eV/atom",
+    "带隙": "4.5 eV",
+    "体模量": "270.0 GPa",
+    "凸包距离": "0.18 eV/atom"
+  },
+  "questions": {
+    "stable": {
+      "type": "noul",
+      "instructions": "是否为稳定相？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "next_step": {
+      "type": "choice",
+      "instructions": "下一步？",
+      "criteria": {
+        "synthesize": "尝试合成",
+        "tune": "调组分",
+        "discard": "丢弃"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "组分",
+        "type": "list",
+        "category": "composition",
+        "min": 2,
+        "max": 4,
+        "items": {
+          "element": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "element",
+                "type": "text",
+                "values": [
+                  "Li",
+                  "Fe",
+                  "O",
+                  "P",
+                  "S"
+                ]
+              },
+              {
+                "name": "fraction",
+                "unit": "",
+                "decimals": 3,
+                "normal": [
+                  0,
+                  1
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "相竞争",
+        "type": "list",
+        "category": "phase",
+        "min": 2,
+        "max": 3,
+        "items": {
+          "element": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "phase",
+                "type": "text",
+                "values": [
+                  "olivine",
+                  "rock salt",
+                  "maricite"
+                ]
+              },
+              {
+                "name": "energy",
+                "unit": "",
+                "decimals": 4,
+                "normal": [
+                  -0.5,
+                  0.5
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "形成能",
+        "unit": "eV/atom",
+        "decimals": 3,
+        "normal": [
+          -1.5,
+          -0.1
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              -0.05
+            ]
+          ]
+        },
+        "category": "stability"
+      },
+      {
+        "name": "带隙",
+        "unit": "eV",
+        "decimals": 2,
+        "normal": [
+          0.1,
+          5
+        ],
+        "critical": {
+          "high": [
+            [
+              6,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "electronic"
+      },
+      {
+        "name": "体模量",
+        "unit": "GPa",
+        "decimals": 1,
+        "normal": [
+          20,
+          300
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              15
+            ]
+          ]
+        },
+        "category": "mechanical"
+      },
+      {
+        "name": "凸包距离",
+        "unit": "eV/atom",
+        "decimals": 4,
+        "normal": [
+          0.0,
+          0.2
+        ],
+        "critical": {
+          "high": [
+            [
+              0.1,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "stability"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "形成能": [
+          [
+            -1000000000.0,
+            -0.025
+          ]
+        ],
+        "带隙": [
+          [
+            9.0,
+            1000000000.0
+          ]
+        ],
+        "体模量": [
+          [
+            -1000000000.0,
+            7.5
+          ]
+        ],
+        "凸包距离": [
+          [
+            0.15,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "形成能": [
+          [
+            -0.026,
+            -0.05
+          ]
+        ],
+        "带隙": [
+          [
+            6,
+            8.94
+          ]
+        ],
+        "体模量": [
+          [
+            7.7,
+            15
+          ]
+        ],
+        "凸包距离": [
+          [
+            0.1,
+            0.149
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "all(p['energy'] > 0 for p in state['相竞争']) and state['凸包距离'] < 0.01",
+        "then": [
+          {
+            "label": "stable",
+            "value": true
+          },
+          {
+            "label": "next_step",
+            "value": "synthesize"
+          }
+        ]
+      },
+      {
+        "when": "any(f['fraction'] > 0.6 for f in state['组分'])",
+        "then": [
+          {
+            "label": "stable",
+            "value": false
+          },
+          {
+            "label": "next_step",
+            "value": "tune"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "stable",
+            "value": false
+          },
+          {
+            "label": "next_step",
+            "value": "discard"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "stability": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "electronic": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "mechanical": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "组分": "composition",
+      "相竞争": "phase",
+      "形成能": "stability",
+      "带隙": "electronic",
+      "体模量": "mechanical",
+      "凸包距离": "stability"
+    }
+  }
+}

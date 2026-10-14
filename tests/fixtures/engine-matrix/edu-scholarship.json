@@ -1,0 +1,338 @@
+{
+  "name": "奖学金资格判定",
+  "domain": "Spike：bands 形状",
+  "state": "（spike）",
+  "state_example": {
+    "绩点": "3.6 点",
+    "家庭年收入": "18.0 万元",
+    "已修学分": "144.0 分",
+    "志愿服务时长": "72.0 小时",
+    "竞赛加分": "9.0 分",
+    "挂科门数": "1.0 门"
+  },
+  "questions": {
+    "eligible": {
+      "type": "noul",
+      "instructions": "是否具备申请资格？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "tier": {
+      "type": "score",
+      "instructions": "资助档位？",
+      "criteria": [
+        "不予资助",
+        "三等",
+        "二等",
+        "一等"
+      ]
+    },
+    "driver": {
+      "type": "choice",
+      "instructions": "决定性因素？",
+      "criteria": {
+        "none": "无",
+        "grade": "学业",
+        "need": "经济",
+        "service": "服务",
+        "merit": "竞赛",
+        "progress": "进度"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "绩点",
+        "unit": "点",
+        "decimals": 2,
+        "normal": [
+          2.5,
+          4.0
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              3.2
+            ]
+          ]
+        },
+        "category": "grade"
+      },
+      {
+        "name": "家庭年收入",
+        "unit": "万元",
+        "decimals": 1,
+        "normal": [
+          1,
+          20
+        ],
+        "critical": {
+          "high": [
+            [
+              15,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "need"
+      },
+      {
+        "name": "已修学分",
+        "unit": "分",
+        "decimals": 0,
+        "normal": [
+          20,
+          160
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              30
+            ]
+          ]
+        },
+        "category": "progress"
+      },
+      {
+        "name": "志愿服务时长",
+        "unit": "小时",
+        "decimals": 1,
+        "normal": [
+          0,
+          80
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              20
+            ]
+          ]
+        },
+        "category": "service"
+      },
+      {
+        "name": "竞赛加分",
+        "unit": "分",
+        "decimals": 1,
+        "normal": [
+          0,
+          10
+        ],
+        "critical": {
+          "high": [
+            [
+              5,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "merit"
+      },
+      {
+        "name": "挂科门数",
+        "unit": "门",
+        "decimals": 0,
+        "normal": [
+          0,
+          1
+        ],
+        "critical": {
+          "high": [
+            [
+              2,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "grade"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "绩点": [
+          [
+            -1000000000.0,
+            1.6
+          ]
+        ],
+        "家庭年收入": [
+          [
+            22.5,
+            1000000000.0
+          ]
+        ],
+        "已修学分": [
+          [
+            -1000000000.0,
+            15.0
+          ]
+        ],
+        "志愿服务时长": [
+          [
+            -1000000000.0,
+            10.0
+          ]
+        ],
+        "竞赛加分": [
+          [
+            7.5,
+            1000000000.0
+          ]
+        ],
+        "挂科门数": [
+          [
+            3.0,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "绩点": [
+          [
+            1.63,
+            3.2
+          ]
+        ],
+        "家庭年收入": [
+          [
+            15,
+            22.4
+          ]
+        ],
+        "已修学分": [
+          [
+            15.0,
+            30
+          ]
+        ],
+        "志愿服务时长": [
+          [
+            10.2,
+            20
+          ]
+        ],
+        "竞赛加分": [
+          [
+            5,
+            7.5
+          ]
+        ],
+        "挂科门数": [
+          [
+            2,
+            3.0
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "eligible",
+            "value": false
+          },
+          {
+            "label": "tier",
+            "value": 3
+          },
+          {
+            "label": "driver",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "eligible",
+            "value": true
+          },
+          {
+            "label": "tier",
+            "value": "min_tier(state, fields, tier_windows)"
+          },
+          {
+            "label": "driver",
+            "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "grade": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "need": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "progress": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "绩点": "grade",
+      "家庭年收入": "need",
+      "已修学分": "progress",
+      "志愿服务时长": "service",
+      "竞赛加分": "merit",
+      "挂科门数": "grade"
+    }
+  }
+}

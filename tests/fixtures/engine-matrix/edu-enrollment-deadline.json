@@ -1,0 +1,159 @@
+{
+  "name": "注册截止处置",
+  "domain": "Spike：date 形状",
+  "state": "（spike）",
+  "state_example": {
+    "截止日期": "2026-01-15",
+    "今日": "2026-01-15",
+    "缴费完成日": "2026-01-15",
+    "签证签发日": "2026-01-15",
+    "延期申请": "已批",
+    "注册状态": "已完成"
+  },
+  "questions": {
+    "at_risk": {
+      "type": "noul",
+      "instructions": "是否会错过注册？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "action": {
+      "type": "choice",
+      "instructions": "处置？",
+      "criteria": {
+        "none": "无",
+        "escalate": "上报教务",
+        "hold": "保留学籍",
+        "defer": "延期入学"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "截止日期",
+        "type": "date",
+        "category": "deadline",
+        "range": [
+          "2026-09-01",
+          "2026-09-30"
+        ]
+      },
+      {
+        "name": "今日",
+        "type": "date",
+        "category": "today",
+        "range": [
+          "2026-09-01",
+          "2026-09-15"
+        ]
+      },
+      {
+        "name": "缴费完成日",
+        "type": "date",
+        "category": "payment",
+        "range": [
+          "2026-08-15",
+          "2026-09-20"
+        ]
+      },
+      {
+        "name": "签证签发日",
+        "type": "date",
+        "category": "visa",
+        "range": [
+          "2026-07-01",
+          "2026-08-31"
+        ]
+      },
+      {
+        "name": "延期申请",
+        "type": "enum",
+        "values": [
+          "已批",
+          "审批中",
+          "无"
+        ],
+        "category": "extension"
+      },
+      {
+        "name": "注册状态",
+        "type": "enum",
+        "values": [
+          "已完成",
+          "未完成",
+          "部分"
+        ],
+        "category": "status"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {},
+      "1": {}
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "(state['截止日期'] - state['今日']).days <= 5 and state['缴费完成日'] > state['今日']",
+        "then": [
+          {
+            "label": "at_risk",
+            "value": true
+          },
+          {
+            "label": "action",
+            "value": "escalate"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "at_risk",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "none"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {},
+    "panel_category": {
+      "截止日期": "deadline",
+      "今日": "today",
+      "缴费完成日": "payment",
+      "签证签发日": "visa",
+      "延期申请": "extension",
+      "注册状态": "status"
+    }
+  }
+}

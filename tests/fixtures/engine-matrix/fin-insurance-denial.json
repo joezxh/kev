@@ -1,0 +1,180 @@
+{
+  "name": "理赔拒付判定",
+  "domain": "Spike：enum 形状",
+  "state": "（spike）",
+  "state_example": {
+    "险种": "寿险",
+    "损伤类型": "疾病",
+    "等待期状态": "已过期",
+    "医院等级": "三甲",
+    "报案时效": "及时",
+    "免责条款命中": "无"
+  },
+  "questions": {
+    "deny": {
+      "type": "noul",
+      "instructions": "是否拒付？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "reason": {
+      "type": "choice",
+      "instructions": "拒付理由类别？",
+      "criteria": {
+        "none": "无",
+        "waiting": "等待期",
+        "exclusion": "免责",
+        "timeliness": "时效",
+        "nature": "性质"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "险种",
+        "type": "enum",
+        "values": [
+          "寿险",
+          "重疾",
+          "医疗",
+          "意外"
+        ],
+        "category": "product"
+      },
+      {
+        "name": "损伤类型",
+        "type": "enum",
+        "values": [
+          "疾病",
+          "意外",
+          "既往症",
+          "先天性"
+        ],
+        "category": "cause"
+      },
+      {
+        "name": "等待期状态",
+        "type": "enum",
+        "values": [
+          "已过期",
+          "未过期",
+          "待定"
+        ],
+        "category": "waiting"
+      },
+      {
+        "name": "医院等级",
+        "type": "enum",
+        "values": [
+          "三甲",
+          "三乙",
+          "二级",
+          "社区"
+        ],
+        "category": "provider"
+      },
+      {
+        "name": "报案时效",
+        "type": "enum",
+        "values": [
+          "及时",
+          "超期",
+          "存疑"
+        ],
+        "category": "timeliness"
+      },
+      {
+        "name": "免责条款命中",
+        "type": "enum",
+        "values": [
+          "无",
+          "单条",
+          "多条"
+        ],
+        "category": "exclusion"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {},
+      "1": {}
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "state['等待期状态'] == '未过期'",
+        "then": [
+          {
+            "label": "deny",
+            "value": true
+          },
+          {
+            "label": "reason",
+            "value": "waiting"
+          }
+        ]
+      },
+      {
+        "when": "state['免责条款命中'] != '无'",
+        "then": [
+          {
+            "label": "deny",
+            "value": true
+          },
+          {
+            "label": "reason",
+            "value": "exclusion"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "deny",
+            "value": false
+          },
+          {
+            "label": "reason",
+            "value": "none"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {},
+    "panel_category": {
+      "险种": "product",
+      "损伤类型": "cause",
+      "等待期状态": "waiting",
+      "医院等级": "provider",
+      "报案时效": "timeliness",
+      "免责条款命中": "exclusion"
+    }
+  }
+}

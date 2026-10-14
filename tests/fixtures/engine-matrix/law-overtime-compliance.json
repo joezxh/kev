@@ -1,0 +1,318 @@
+{
+  "name": "加班费合规核算",
+  "domain": "Spike：arith 形状",
+  "state": "（spike）",
+  "state_example": {
+    "标准月薪": "27000.0 元",
+    "工作日加班小时": "18.0 h",
+    "休息日加班小时": "14.4 h",
+    "法定节假日小时": "7.2 h",
+    "当月应出勤天数": "21.0 天",
+    "实发加班费": "3600.0 元"
+  },
+  "questions": {
+    "compliant": {
+      "type": "noul",
+      "instructions": "加班费是否足额合规？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "gap_band": {
+      "type": "score",
+      "instructions": "差额档位？",
+      "criteria": [
+        "无差额",
+        "小额差额",
+        "显著差额",
+        "严重不足"
+      ]
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "标准月薪",
+        "unit": "元",
+        "decimals": 0,
+        "normal": [
+          3000,
+          30000
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              2600
+            ]
+          ]
+        },
+        "category": "wage"
+      },
+      {
+        "name": "工作日加班小时",
+        "unit": "h",
+        "decimals": 1,
+        "normal": [
+          0,
+          20
+        ],
+        "critical": {
+          "high": [
+            [
+              24,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "overtime"
+      },
+      {
+        "name": "休息日加班小时",
+        "unit": "h",
+        "decimals": 1,
+        "normal": [
+          0,
+          16
+        ],
+        "critical": {
+          "high": [
+            [
+              20,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "overtime"
+      },
+      {
+        "name": "法定节假日小时",
+        "unit": "h",
+        "decimals": 1,
+        "normal": [
+          0,
+          8
+        ],
+        "critical": {
+          "high": [
+            [
+              12,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "overtime"
+      },
+      {
+        "name": "当月应出勤天数",
+        "unit": "天",
+        "decimals": 0,
+        "normal": [
+          18,
+          23
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              16
+            ]
+          ]
+        },
+        "category": "attendance"
+      },
+      {
+        "name": "实发加班费",
+        "unit": "元",
+        "decimals": 0,
+        "normal": [
+          0,
+          4000
+        ],
+        "critical": {
+          "high": [
+            [
+              5000,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "payment"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "标准月薪": [
+          [
+            -1000000000.0,
+            1300.0
+          ]
+        ],
+        "工作日加班小时": [
+          [
+            36.0,
+            1000000000.0
+          ]
+        ],
+        "休息日加班小时": [
+          [
+            30.0,
+            1000000000.0
+          ]
+        ],
+        "法定节假日小时": [
+          [
+            18.0,
+            1000000000.0
+          ]
+        ],
+        "当月应出勤天数": [
+          [
+            -1000000000.0,
+            8.0
+          ]
+        ],
+        "实发加班费": [
+          [
+            7500.0,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "标准月薪": [
+          [
+            1326.0,
+            2600
+          ]
+        ],
+        "工作日加班小时": [
+          [
+            24,
+            35.8
+          ]
+        ],
+        "休息日加班小时": [
+          [
+            20,
+            29.8
+          ]
+        ],
+        "法定节假日小时": [
+          [
+            12,
+            17.9
+          ]
+        ],
+        "当月应出勤天数": [
+          [
+            8.0,
+            16
+          ]
+        ],
+        "实发加班费": [
+          [
+            5000,
+            7450.0
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "state['实发加班费'] >= (state['工作日加班小时'] * 1.5 + state['休息日加班小时'] * 2 + state['法定节假日小时'] * 3) * state['标准月薪'] / 21.75 / 8",
+        "then": [
+          {
+            "label": "compliant",
+            "value": true
+          },
+          {
+            "label": "gap_band",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "compliant",
+            "value": false
+          },
+          {
+            "label": "gap_band",
+            "value": 2
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "wage": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "overtime": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "attendance": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "标准月薪": "wage",
+      "工作日加班小时": "overtime",
+      "休息日加班小时": "overtime",
+      "法定节假日小时": "overtime",
+      "当月应出勤天数": "attendance",
+      "实发加班费": "payment"
+    }
+  }
+}

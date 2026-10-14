@@ -1,0 +1,145 @@
+{
+  "name": "学术诚信嫌疑",
+  "domain": "Spike：bool 形状",
+  "state": "（spike）",
+  "state_example": {
+    "相似度超阈": "true",
+    "同设备提交": "true",
+    "同 IP 集中提交": "true",
+    "写作风格突变": "true",
+    "引用缺失": "true",
+    "时间戳异常": "true"
+  },
+  "questions": {
+    "cheating_suspect": {
+      "type": "noul",
+      "instructions": "是否存在学术不端嫌疑？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "action": {
+      "type": "choice",
+      "instructions": "处理方式？",
+      "criteria": {
+        "dismiss": "不处理",
+        "review": "人工复核",
+        "penalty": "直接计分处罚"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "相似度超阈",
+        "type": "bool",
+        "category": "similarity"
+      },
+      {
+        "name": "同设备提交",
+        "type": "bool",
+        "category": "device"
+      },
+      {
+        "name": "同 IP 集中提交",
+        "type": "bool",
+        "category": "network"
+      },
+      {
+        "name": "写作风格突变",
+        "type": "bool",
+        "category": "style"
+      },
+      {
+        "name": "引用缺失",
+        "type": "bool",
+        "category": "citation"
+      },
+      {
+        "name": "时间戳异常",
+        "type": "bool",
+        "category": "timing"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {},
+      "1": {}
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "state['相似度超阈'] and state['同设备提交']",
+        "then": [
+          {
+            "label": "cheating_suspect",
+            "value": true
+          },
+          {
+            "label": "action",
+            "value": "penalty"
+          }
+        ]
+      },
+      {
+        "when": "state['相似度超阈'] or state['写作风格突变']",
+        "then": [
+          {
+            "label": "cheating_suspect",
+            "value": true
+          },
+          {
+            "label": "action",
+            "value": "review"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "cheating_suspect",
+            "value": false
+          },
+          {
+            "label": "action",
+            "value": "dismiss"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {},
+    "panel_category": {
+      "相似度超阈": "similarity",
+      "同设备提交": "device",
+      "同 IP 集中提交": "network",
+      "写作风格突变": "style",
+      "引用缺失": "citation",
+      "时间戳异常": "timing"
+    }
+  }
+}

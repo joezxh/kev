@@ -1,0 +1,226 @@
+{
+  "name": "贷款契约违约",
+  "domain": "Spike：text 形状",
+  "state": "（spike）",
+  "state_example": {
+    "契约条款": "（示例文本）",
+    "财报附注": "（示例文本）",
+    "董事会决议": "（示例文本）",
+    "贷款类型": "流贷",
+    "资产负债率": "63.0 %",
+    "利息保障倍数": "7.2 倍"
+  },
+  "questions": {
+    "breach": {
+      "type": "noul",
+      "instructions": "是否构成契约违约？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "remedy": {
+      "type": "choice",
+      "instructions": "贷后处置？",
+      "criteria": {
+        "none": "无",
+        "waiver": "豁免",
+        "accelerate": "提前收贷",
+        "repricing": "重定价"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "契约条款",
+        "type": "text",
+        "category": "covenant",
+        "values": [
+          "第 4.2 条 财务承诺：合并资产负债率不得超过 70%。",
+          "第 5.1 条 交叉违约：借款人在其他融资项下的违约视同本贷款违约。",
+          "第 6.3 条 分红限制：违约存续期间不得向股东分配利润。"
+        ]
+      },
+      {
+        "name": "财报附注",
+        "type": "text",
+        "category": "evidence",
+        "values": [
+          "附注 3：短期借款增加主要用于营运资金周转。",
+          "附注 7：存在一项未决诉讼，已计提预计负债。"
+        ]
+      },
+      {
+        "name": "董事会决议",
+        "type": "text",
+        "category": "governance",
+        "values": [
+          "通过 2026 年度授信续作方案。",
+          "同意处置闲置厂房并提前偿还部分项目贷款。"
+        ]
+      },
+      {
+        "name": "贷款类型",
+        "type": "enum",
+        "values": [
+          "流贷",
+          "项目贷",
+          "并购贷"
+        ],
+        "category": "product"
+      },
+      {
+        "name": "资产负债率",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          30,
+          70
+        ],
+        "critical": {
+          "high": [
+            [
+              80,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "leverage"
+      },
+      {
+        "name": "利息保障倍数",
+        "unit": "倍",
+        "decimals": 2,
+        "normal": [
+          1.5,
+          8
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              1.2
+            ]
+          ]
+        },
+        "category": "coverage"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "资产负债率": [
+          [
+            120.0,
+            1000000000.0
+          ]
+        ],
+        "利息保障倍数": [
+          [
+            -1000000000.0,
+            0.6
+          ]
+        ]
+      },
+      "1": {
+        "资产负债率": [
+          [
+            80,
+            119.2
+          ]
+        ],
+        "利息保障倍数": [
+          [
+            0.61,
+            1.2
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "'财务承诺' in state['契约条款'] and state['资产负债率'] > 80",
+        "then": [
+          {
+            "label": "breach",
+            "value": true
+          },
+          {
+            "label": "remedy",
+            "value": "accelerate"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "breach",
+            "value": false
+          },
+          {
+            "label": "remedy",
+            "value": "none"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "leverage": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "coverage": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "契约条款": "covenant",
+      "财报附注": "evidence",
+      "董事会决议": "governance",
+      "贷款类型": "product",
+      "资产负债率": "leverage",
+      "利息保障倍数": "coverage"
+    }
+  }
+}

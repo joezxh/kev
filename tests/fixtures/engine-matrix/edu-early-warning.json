@@ -1,0 +1,338 @@
+{
+  "name": "学业困难预警",
+  "domain": "Spike：bands 形状",
+  "state": "（spike）",
+  "state_example": {
+    "出勤率": "89.1 %",
+    "作业提交率": "90.0 %",
+    "期中成绩": "86.0 分",
+    "缺课连续天数": "3.0 天",
+    "平台学习时长": "27.0 小时",
+    "测验下滑幅度": "7.0 分"
+  },
+  "questions": {
+    "at_risk": {
+      "type": "noul",
+      "instructions": "是否进入困难预警？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "介入时限档位？",
+      "criteria": [
+        "本周内",
+        "两周内",
+        "本月内",
+        "无需介入"
+      ]
+    },
+    "driver": {
+      "type": "choice",
+      "instructions": "预警主因？",
+      "criteria": {
+        "none": "无",
+        "attendance": "出勤",
+        "homework": "作业",
+        "grade": "成绩",
+        "engagement": "投入",
+        "trend": "趋势"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "出勤率",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          70,
+          99
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              60
+            ]
+          ]
+        },
+        "category": "attendance"
+      },
+      {
+        "name": "作业提交率",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          50,
+          100
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              45
+            ]
+          ]
+        },
+        "category": "homework"
+      },
+      {
+        "name": "期中成绩",
+        "unit": "分",
+        "decimals": 0,
+        "normal": [
+          55,
+          95
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              50
+            ]
+          ]
+        },
+        "category": "grade"
+      },
+      {
+        "name": "缺课连续天数",
+        "unit": "天",
+        "decimals": 0,
+        "normal": [
+          0,
+          3
+        ],
+        "critical": {
+          "high": [
+            [
+              7,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "attendance"
+      },
+      {
+        "name": "平台学习时长",
+        "unit": "小时",
+        "decimals": 1,
+        "normal": [
+          2,
+          30
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              1.0
+            ]
+          ]
+        },
+        "category": "engagement"
+      },
+      {
+        "name": "测验下滑幅度",
+        "unit": "分",
+        "decimals": 0,
+        "normal": [
+          0,
+          8
+        ],
+        "critical": {
+          "high": [
+            [
+              15,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "trend"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "出勤率": [
+          [
+            -1000000000.0,
+            30.0
+          ]
+        ],
+        "作业提交率": [
+          [
+            -1000000000.0,
+            22.5
+          ]
+        ],
+        "期中成绩": [
+          [
+            -1000000000.0,
+            25.0
+          ]
+        ],
+        "缺课连续天数": [
+          [
+            10.0,
+            1000000000.0
+          ]
+        ],
+        "平台学习时长": [
+          [
+            -1000000000.0,
+            0.5
+          ]
+        ],
+        "测验下滑幅度": [
+          [
+            22.0,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "出勤率": [
+          [
+            30.6,
+            60
+          ]
+        ],
+        "作业提交率": [
+          [
+            22.9,
+            45
+          ]
+        ],
+        "期中成绩": [
+          [
+            26.0,
+            50
+          ]
+        ],
+        "缺课连续天数": [
+          [
+            7,
+            10.0
+          ]
+        ],
+        "平台学习时长": [
+          [
+            0.5,
+            1.0
+          ]
+        ],
+        "测验下滑幅度": [
+          [
+            15,
+            22.0
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "at_risk",
+            "value": false
+          },
+          {
+            "label": "urgency",
+            "value": 3
+          },
+          {
+            "label": "driver",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "at_risk",
+            "value": true
+          },
+          {
+            "label": "urgency",
+            "value": "min_tier(state, fields, tier_windows)"
+          },
+          {
+            "label": "driver",
+            "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "attendance": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "homework": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "grade": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "出勤率": "attendance",
+      "作业提交率": "homework",
+      "期中成绩": "grade",
+      "缺课连续天数": "attendance",
+      "平台学习时长": "engagement",
+      "测验下滑幅度": "trend"
+    }
+  }
+}

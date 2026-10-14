@@ -1,0 +1,339 @@
+{
+  "name": "样本量充足性",
+  "domain": "Spike：bands 形状",
+  "state": "（spike）",
+  "state_example": {
+    "效应量": "1.08 d",
+    "样本量": "450.0 例",
+    "统计功效": "85.5 %",
+    "测量噪声": "18.0 %",
+    "重复次数": "18.0 次",
+    "脱落率": "13.5 %"
+  },
+  "questions": {
+    "underpowered": {
+      "type": "noul",
+      "instructions": "是否为低效设计？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "action_band": {
+      "type": "score",
+      "instructions": "处置档位？",
+      "criteria": [
+        "重做设计",
+        "增补样本",
+        "可接受",
+        "优秀"
+      ]
+    },
+    "driver": {
+      "type": "choice",
+      "instructions": "主因？",
+      "criteria": {
+        "none": "无",
+        "effect": "效应量",
+        "size": "样本量",
+        "power": "功效",
+        "noise": "噪声",
+        "design": "重复",
+        "attrition": "脱落"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "效应量",
+        "unit": "d",
+        "decimals": 2,
+        "normal": [
+          0.2,
+          1.2
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              0.3
+            ]
+          ]
+        },
+        "category": "effect"
+      },
+      {
+        "name": "样本量",
+        "unit": "例",
+        "decimals": 0,
+        "normal": [
+          20,
+          500
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              40
+            ]
+          ]
+        },
+        "category": "size"
+      },
+      {
+        "name": "统计功效",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          50,
+          95
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              70
+            ]
+          ]
+        },
+        "category": "power"
+      },
+      {
+        "name": "测量噪声",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          1,
+          20
+        ],
+        "critical": {
+          "high": [
+            [
+              30,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "noise"
+      },
+      {
+        "name": "重复次数",
+        "unit": "次",
+        "decimals": 0,
+        "normal": [
+          2,
+          20
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              3
+            ]
+          ]
+        },
+        "category": "design"
+      },
+      {
+        "name": "脱落率",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          0,
+          15
+        ],
+        "critical": {
+          "high": [
+            [
+              25,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "attrition"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "效应量": [
+          [
+            -1000000000.0,
+            0.15
+          ]
+        ],
+        "样本量": [
+          [
+            -1000000000.0,
+            20.0
+          ]
+        ],
+        "统计功效": [
+          [
+            -1000000000.0,
+            35.0
+          ]
+        ],
+        "测量噪声": [
+          [
+            45.0,
+            1000000000.0
+          ]
+        ],
+        "重复次数": [
+          [
+            -1000000000.0,
+            2.0
+          ]
+        ],
+        "脱落率": [
+          [
+            37.5,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "效应量": [
+          [
+            0.15,
+            0.3
+          ]
+        ],
+        "样本量": [
+          [
+            20.0,
+            40
+          ]
+        ],
+        "统计功效": [
+          [
+            35.7,
+            70
+          ]
+        ],
+        "测量噪声": [
+          [
+            30,
+            44.7
+          ]
+        ],
+        "重复次数": [
+          [
+            2.0,
+            3
+          ]
+        ],
+        "脱落率": [
+          [
+            25,
+            37.2
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "underpowered",
+            "value": false
+          },
+          {
+            "label": "action_band",
+            "value": 3
+          },
+          {
+            "label": "driver",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "underpowered",
+            "value": true
+          },
+          {
+            "label": "action_band",
+            "value": "min_tier(state, fields, tier_windows)"
+          },
+          {
+            "label": "driver",
+            "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "effect": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "size": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "power": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "效应量": "effect",
+      "样本量": "size",
+      "统计功效": "power",
+      "测量噪声": "noise",
+      "重复次数": "design",
+      "脱落率": "attrition"
+    }
+  }
+}

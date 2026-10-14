@@ -1,0 +1,223 @@
+{
+  "name": "个人陈述匹配",
+  "domain": "Spike：text 形状",
+  "state": "（spike）",
+  "state_example": {
+    "个人陈述": "（示例文本）",
+    "项目方向描述": "（示例文本）",
+    "推荐信摘要": "（示例文本）",
+    "申请批次": "一批",
+    "绩点": "3.6 点",
+    "科研经历月数": "22.0 月"
+  },
+  "questions": {
+    "fits": {
+      "type": "noul",
+      "instructions": "方向是否匹配？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "decision": {
+      "type": "choice",
+      "instructions": "初筛结论？",
+      "criteria": {
+        "reject": "淘汰",
+        "interview": "进面",
+        "wait": "候补"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "个人陈述",
+        "type": "text",
+        "category": "statement",
+        "values": [
+          "本科阶段我主攻分布式系统，实现过共识算法的简化版本。",
+          "我的兴趣集中在编译器后端与程序分析。",
+          "希望研究生阶段继续研究分布式系统的一致性与容错。"
+        ]
+      },
+      {
+        "name": "项目方向描述",
+        "type": "text",
+        "category": "program",
+        "values": [
+          "本方向聚焦分布式系统、云原生基础设施与存储引擎。",
+          "本方向聚焦程序语言、编译器与软件度量。"
+        ]
+      },
+      {
+        "name": "推荐信摘要",
+        "type": "text",
+        "category": "letter",
+        "values": [
+          "该生工程能力强，课程项目全部获评优秀。"
+        ]
+      },
+      {
+        "name": "申请批次",
+        "type": "enum",
+        "values": [
+          "一批",
+          "二批"
+        ],
+        "category": "batch"
+      },
+      {
+        "name": "绩点",
+        "unit": "点",
+        "decimals": 2,
+        "normal": [
+          2.5,
+          4.0
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              3.0
+            ]
+          ]
+        },
+        "category": "grade"
+      },
+      {
+        "name": "科研经历月数",
+        "unit": "月",
+        "decimals": 0,
+        "normal": [
+          0,
+          24
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              3
+            ]
+          ]
+        },
+        "category": "experience"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "绩点": [
+          [
+            -1000000000.0,
+            1.5
+          ]
+        ],
+        "科研经历月数": [
+          [
+            -1000000000.0,
+            2.0
+          ]
+        ]
+      },
+      "1": {
+        "绩点": [
+          [
+            1.53,
+            3.0
+          ]
+        ],
+        "科研经历月数": [
+          [
+            2.0,
+            3
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "'分布式系统' in state['个人陈述'] and '分布式系统' in state['项目方向描述']",
+        "then": [
+          {
+            "label": "fits",
+            "value": true
+          },
+          {
+            "label": "decision",
+            "value": "interview"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "fits",
+            "value": false
+          },
+          {
+            "label": "decision",
+            "value": "reject"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "grade": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "experience": {
+          "share": 0.35,
+          "quota": 5,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "个人陈述": "statement",
+      "项目方向描述": "program",
+      "推荐信摘要": "letter",
+      "申请批次": "batch",
+      "绩点": "grade",
+      "科研经历月数": "experience"
+    }
+  }
+}

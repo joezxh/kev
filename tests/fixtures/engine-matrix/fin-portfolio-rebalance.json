@@ -1,0 +1,368 @@
+{
+  "name": "组合再平衡",
+  "domain": "Spike：list 形状",
+  "state": "（spike）",
+  "state_example": {
+    "持仓": [
+      {
+        "code": 1,
+        "weight": 1,
+        "target": 1
+      }
+    ],
+    "相关性对": [
+      {
+        "a": 1,
+        "b": 1,
+        "rho": 1
+      }
+    ],
+    "组合波动": "18.0 %",
+    "现金比例": "18.0 %",
+    "换手率": "54.0 %",
+    "最大回撤": "13.5 %"
+  },
+  "questions": {
+    "rebalance": {
+      "type": "noul",
+      "instructions": "是否需要再平衡？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "first_move": {
+      "type": "choice",
+      "instructions": "先动哪一块？",
+      "criteria": {
+        "none": "不动",
+        "weight": "权重偏离",
+        "rho": "相关性",
+        "risk": "风险预算",
+        "liquidity": "流动性",
+        "cost": "成本"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "持仓",
+        "type": "list",
+        "category": "positions",
+        "min": 2,
+        "max": 4,
+        "items": {
+          "element": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "code",
+                "type": "text",
+                "values": [
+                  "600519",
+                  "000001",
+                  "510300",
+                  "588000"
+                ]
+              },
+              {
+                "name": "weight",
+                "unit": "",
+                "decimals": 1,
+                "normal": [
+                  1,
+                  40
+                ]
+              },
+              {
+                "name": "target",
+                "unit": "",
+                "decimals": 1,
+                "normal": [
+                  1,
+                  40
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "相关性对",
+        "type": "list",
+        "category": "correlation",
+        "min": 2,
+        "max": 3,
+        "items": {
+          "element": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "a",
+                "type": "text",
+                "values": [
+                  "600519",
+                  "000001",
+                  "510300"
+                ]
+              },
+              {
+                "name": "b",
+                "type": "text",
+                "values": [
+                  "588000",
+                  "510300",
+                  "000001"
+                ]
+              },
+              {
+                "name": "rho",
+                "unit": "",
+                "decimals": 2,
+                "normal": [
+                  0,
+                  1
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "组合波动",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          5,
+          20
+        ],
+        "critical": {
+          "high": [
+            [
+              28,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "risk"
+      },
+      {
+        "name": "现金比例",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          1,
+          20
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              0.5
+            ]
+          ]
+        },
+        "category": "liquidity"
+      },
+      {
+        "name": "换手率",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          5,
+          60
+        ],
+        "critical": {
+          "high": [
+            [
+              90,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "cost"
+      },
+      {
+        "name": "最大回撤",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          1,
+          15
+        ],
+        "critical": {
+          "high": [
+            [
+              25,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "risk"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "组合波动": [
+          [
+            42.0,
+            1000000000.0
+          ]
+        ],
+        "现金比例": [
+          [
+            -1000000000.0,
+            0.2
+          ]
+        ],
+        "换手率": [
+          [
+            135.0,
+            1000000000.0
+          ]
+        ],
+        "最大回撤": [
+          [
+            37.5,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "组合波动": [
+          [
+            28,
+            41.7
+          ]
+        ],
+        "现金比例": [
+          [
+            0.3,
+            0.5
+          ]
+        ],
+        "换手率": [
+          [
+            90,
+            134.1
+          ]
+        ],
+        "最大回撤": [
+          [
+            25,
+            37.2
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "any(abs(p['weight'] - p['target']) > 5 for p in state['持仓'])",
+        "then": [
+          {
+            "label": "rebalance",
+            "value": true
+          },
+          {
+            "label": "first_move",
+            "value": "weight"
+          }
+        ]
+      },
+      {
+        "when": "any(c['rho'] > 0.8 for c in state['相关性对'])",
+        "then": [
+          {
+            "label": "rebalance",
+            "value": true
+          },
+          {
+            "label": "first_move",
+            "value": "rho"
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "rebalance",
+            "value": false
+          },
+          {
+            "label": "first_move",
+            "value": "none"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "risk": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "liquidity": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "cost": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "持仓": "positions",
+      "相关性对": "correlation",
+      "组合波动": "risk",
+      "现金比例": "liquidity",
+      "换手率": "cost",
+      "最大回撤": "risk"
+    }
+  }
+}

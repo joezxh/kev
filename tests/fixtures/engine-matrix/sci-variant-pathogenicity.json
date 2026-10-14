@@ -1,0 +1,179 @@
+{
+  "name": "基因变异致病性分级",
+  "domain": "Spike：enum 形状",
+  "state": "（spike）",
+  "state_example": {
+    "遗传模式": "常显",
+    "功能影响": "无义",
+    "人群频率证据": "常见",
+    "保守性": "高",
+    "家系共分离": "支持",
+    "功能实验证据": "支持"
+  },
+  "questions": {
+    "acmg_class": {
+      "type": "choice",
+      "instructions": "ACMG 分级？",
+      "criteria": {
+        "pathogenic": "致病",
+        "likely": "可能致病",
+        "vus": "意义不明",
+        "likely_benign": "可能良性",
+        "benign": "良性"
+      }
+    },
+    "report_to_clinician": {
+      "type": "noul",
+      "instructions": "是否需要向临床报告？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "遗传模式",
+        "type": "enum",
+        "values": [
+          "常显",
+          "常隐",
+          "X 连锁",
+          "线粒体"
+        ],
+        "category": "inheritance"
+      },
+      {
+        "name": "功能影响",
+        "type": "enum",
+        "values": [
+          "无义",
+          "错义",
+          "剪切位点",
+          "同义"
+        ],
+        "category": "consequence"
+      },
+      {
+        "name": "人群频率证据",
+        "type": "enum",
+        "values": [
+          "常见",
+          "罕见",
+          "缺失"
+        ],
+        "category": "frequency"
+      },
+      {
+        "name": "保守性",
+        "type": "enum",
+        "values": [
+          "高",
+          "中",
+          "低"
+        ],
+        "category": "conservation"
+      },
+      {
+        "name": "家系共分离",
+        "type": "enum",
+        "values": [
+          "支持",
+          "不支持",
+          "无数据"
+        ],
+        "category": "segregation"
+      },
+      {
+        "name": "功能实验证据",
+        "type": "enum",
+        "values": [
+          "支持",
+          "不支持",
+          "无"
+        ],
+        "category": "functional"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {},
+      "1": {}
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "state['功能影响'] == '无义' and state['人群频率证据'] == '罕见' and state['家系共分离'] == '支持'",
+        "then": [
+          {
+            "label": "acmg_class",
+            "value": "pathogenic"
+          },
+          {
+            "label": "report_to_clinician",
+            "value": true
+          }
+        ]
+      },
+      {
+        "when": "state['功能影响'] == '同义'",
+        "then": [
+          {
+            "label": "acmg_class",
+            "value": "benign"
+          },
+          {
+            "label": "report_to_clinician",
+            "value": false
+          }
+        ]
+      },
+      {
+        "when": "True",
+        "then": [
+          {
+            "label": "acmg_class",
+            "value": "vus"
+          },
+          {
+            "label": "report_to_clinician",
+            "value": false
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {},
+    "panel_category": {
+      "遗传模式": "inheritance",
+      "功能影响": "consequence",
+      "人群频率证据": "frequency",
+      "保守性": "conservation",
+      "家系共分离": "segregation",
+      "功能实验证据": "functional"
+    }
+  }
+}

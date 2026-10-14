@@ -1,0 +1,338 @@
+{
+  "name": "信用卡额度复审",
+  "domain": "Spike：bands 形状",
+  "state": "（spike）",
+  "state_example": {
+    "月收入": "27000.0 元",
+    "负债比": "54.0 %",
+    "征信分": "648.0 分",
+    "逾期次数": "3.0 次",
+    "账户年龄": "108.0 月",
+    "近三月查询": "5.0 次"
+  },
+  "questions": {
+    "needs_review": {
+      "type": "noul",
+      "instructions": "是否需要人工复审？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    },
+    "limit_band": {
+      "type": "score",
+      "instructions": "应给哪一档额度？",
+      "criteria": [
+        "冻结",
+        "保守",
+        "标准",
+        "宽松"
+      ]
+    },
+    "driver": {
+      "type": "choice",
+      "instructions": "主要风险来自哪类指标？",
+      "criteria": {
+        "none": "无",
+        "income": "收入类",
+        "leverage": "杠杆类",
+        "credit": "征信类",
+        "risk": "行为类",
+        "duration": "账龄类"
+      }
+    }
+  },
+  "guidance": "丢弃用的 spike 场景。",
+  "variety": [
+    "spike"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "月收入",
+        "unit": "元",
+        "decimals": 0,
+        "normal": [
+          3000,
+          30000
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              2500
+            ]
+          ]
+        },
+        "category": "income"
+      },
+      {
+        "name": "负债比",
+        "unit": "%",
+        "decimals": 1,
+        "normal": [
+          10,
+          60
+        ],
+        "critical": {
+          "high": [
+            [
+              70,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "leverage"
+      },
+      {
+        "name": "征信分",
+        "unit": "分",
+        "decimals": 0,
+        "normal": [
+          560,
+          720
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              580
+            ]
+          ]
+        },
+        "category": "credit"
+      },
+      {
+        "name": "逾期次数",
+        "unit": "次",
+        "decimals": 0,
+        "normal": [
+          0,
+          3
+        ],
+        "critical": {
+          "high": [
+            [
+              4,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "risk"
+      },
+      {
+        "name": "账户年龄",
+        "unit": "月",
+        "decimals": 0,
+        "normal": [
+          6,
+          120
+        ],
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              6
+            ]
+          ]
+        },
+        "category": "duration"
+      },
+      {
+        "name": "近三月查询",
+        "unit": "次",
+        "decimals": 0,
+        "normal": [
+          0,
+          6
+        ],
+        "critical": {
+          "high": [
+            [
+              8,
+              1000000000.0
+            ]
+          ]
+        },
+        "category": "risk"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 3,
+        "max": 6
+      }
+    ],
+    "categories": {},
+    "tier_windows": {
+      "0": {
+        "月收入": [
+          [
+            -1000000000.0,
+            1250.0
+          ]
+        ],
+        "负债比": [
+          [
+            105.0,
+            1000000000.0
+          ]
+        ],
+        "征信分": [
+          [
+            -1000000000.0,
+            290.0
+          ]
+        ],
+        "逾期次数": [
+          [
+            6.0,
+            1000000000.0
+          ]
+        ],
+        "账户年龄": [
+          [
+            -1000000000.0,
+            3.0
+          ]
+        ],
+        "近三月查询": [
+          [
+            12.0,
+            1000000000.0
+          ]
+        ]
+      },
+      "1": {
+        "月收入": [
+          [
+            1275.0,
+            2500
+          ]
+        ],
+        "负债比": [
+          [
+            70,
+            104.3
+          ]
+        ],
+        "征信分": [
+          [
+            296.0,
+            580
+          ]
+        ],
+        "逾期次数": [
+          [
+            4,
+            6.0
+          ]
+        ],
+        "账户年龄": [
+          [
+            3.0,
+            6
+          ]
+        ],
+        "近三月查询": [
+          [
+            8,
+            12.0
+          ]
+        ]
+      }
+    },
+    "contexts": [
+      "上下文 A：",
+      "上下文 B："
+    ],
+    "patients": [
+      "主体-1",
+      "主体-2"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "needs_review",
+            "value": false
+          },
+          {
+            "label": "limit_band",
+            "value": 3
+          },
+          {
+            "label": "driver",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {
+            "label": "needs_review",
+            "value": true
+          },
+          {
+            "label": "limit_band",
+            "value": "min_tier(state, fields, tier_windows)"
+          },
+          {
+            "label": "driver",
+            "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "by_category": {
+        "income": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        },
+        "leverage": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 1,
+              "weight": 1.0
+            }
+          ]
+        },
+        "credit": {
+          "share": 0.35,
+          "quota": 3,
+          "tier_split": [
+            {
+              "tier": 0,
+              "weight": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "panel_category": {
+      "月收入": "income",
+      "负债比": "leverage",
+      "征信分": "credit",
+      "逾期次数": "risk",
+      "账户年龄": "duration",
+      "近三月查询": "risk"
+    }
+  }
+}
