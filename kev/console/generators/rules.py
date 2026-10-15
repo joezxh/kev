@@ -68,13 +68,32 @@ def _eval(expression: str, names: dict, functions: Dict[str, Callable[..., Any]]
                         rule_id=where, expression=expression) from error
 
 
+def is_tautology(expression: str) -> bool:
+    """Whether a rule's `when` is a literal truth — the shape a catch-all is written as (`"True"`, `"1"`).
+
+    The exit gate counts how many records were labelled by such a rule (gate G1's 兜底命中率 ≤ 0.6): a run where most
+    answers came from the rule that asks nothing is a spec whose real rules never fired, which is the same silent
+    collapse `write_records` has always warned about, just counted over rules instead of over labels.
+    """
+    try:
+        body = ast.parse(expression, mode="eval").body
+    except SyntaxError:
+        return False
+    return isinstance(body, ast.Constant) and bool(body.value)
+
+
 def evaluate(rules: List[dict], names: dict, functions: Dict[str, Callable[..., Any]],
-             label_keys: Dict[str, Set[str]]) -> Dict[str, Any]:
+             label_keys: Dict[str, Set[str]], trace: Optional[dict] = None) -> Dict[str, Any]:
     """First-match-wins over `rules` against one record's `names`; the labels of the first rule that applies.
 
     `label_keys` is {question id: the keys that question's labels come from} — the spec's own contract, which is what
     tells a bare-name label (`weight`) apart from a typo (`weigth`). Returns {} when no rule applies, which the engine
     treats as "skip this record", never as a label.
+
+    `trace` is an optional out-param for *which* rule answered (`{"rule": ref, "fallback": is_tautology(when)}`). It
+    exists because the engine's exit gate needs the fallback share, and the only honest way to get it is the rule the
+    scan actually matched: recomputing the answer with a second scan would be a second authority over a spec's rules,
+    and the two would drift exactly on the records that disagree.
     """
     for index, rule in enumerate(rules):
         where = rule_ref(rule, index)
@@ -93,6 +112,9 @@ def evaluate(rules: List[dict], names: dict, functions: Dict[str, Callable[..., 
                     labels[qid] = _eval(value, names, functions, f"{where} -> {qid}")
                 else:
                     labels[qid] = value
+            if trace is not None:
+                trace.clear()
+                trace.update({"rule": where, "fallback": is_tautology(rule.get("when", ""))})
             return labels
         except ops.MissingEvidence:
             continue

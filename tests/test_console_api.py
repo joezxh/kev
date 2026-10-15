@@ -5,6 +5,7 @@
 
 Run: uv run python -m pytest tests/test_console_api.py -q
 """
+import json
 import pytest
 from fastapi.testclient import TestClient
 from pathlib import Path
@@ -307,3 +308,33 @@ def test_generator_validate_passes_a_shipped_spec(client, monkeypatch):
     monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(FIXTURES / "engine-matrix"))
     report = validate(client, "fin-default-score")
     assert report["errors"] == [] and report["records"] > 0, report
+
+
+def fixture_spec_dir(tmp_path, slug, floor=None):
+    """One fixture spec, copied into its own resolution directory, optionally with the exit gate's threshold added."""
+    spec = json.loads((FIXTURES / "engine-matrix" / f"{slug}.json").read_text(encoding="utf-8"))
+    if floor is not None:
+        spec["generator"].setdefault("plan_targets", {})["floor"] = floor
+    directory = tmp_path / slug
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "spec.json").write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
+    return tmp_path
+
+
+def test_generator_validate_reports_the_gate_without_failing_a_spec_that_declared_no_floor(client, tmp_path, monkeypatch):
+    """§3 的出口行在路由上分两半：`errors` 始终只说「这个 spec 生成不了」，闸门读出的分布缺口是另一个字段。
+    fin-covenant-text 的两条 remedy 在 n=120 也是零（矩阵里的 `NEVER_LABELLED`），所以 8 条记录的预览必然报缺口；
+    但它从没声明 `floor`，于是只是报告，不是拒绝。"""
+    monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(fixture_spec_dir(tmp_path, "fin-covenant-text")))
+    report = validate(client, "fin-covenant-text")
+    assert report["errors"] == [] and report["records"] > 0, report
+    assert any("is never labelled" in gap for gap in report["gate_gaps"]), report["gate_gaps"]
+
+
+def test_generator_validate_fails_a_spec_that_asked_to_be_judged_and_has_a_gap(client, tmp_path, monkeypatch):
+    """同一个 spec，加上 `plan_targets.floor` —— 闸门就从「打印数字」变成「不通过」，而 `rule_id` 是 `<gate>`：
+    这不是哪条规则读不懂，是这份文件教不出某个答案（design doc §3 的 exit row）。"""
+    monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(fixture_spec_dir(tmp_path, "fin-covenant-text", floor=0.05)))
+    errors = validate(client, "fin-covenant-text")["errors"]
+    assert errors and {error["rule_id"] for error in errors} == {"<gate>"}, errors
+    assert any("is never labelled" in error["message"] for error in errors), errors

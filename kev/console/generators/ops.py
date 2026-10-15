@@ -3,11 +3,18 @@
 Each operator here is a pure function with a docstring that cites the gen_*.py source line it replaces, so a reviewer
 can trace the spec back to the legacy code. Operators are registered in ALLOWED (alphabetical) and consumed by
 `rules.evaluate` / the surface evaluator through `derive.operators`, which is the one place the rng gets bound.
+
+The numeric *samplers* that used to live here (`normal_value`, `critical_value`, `crossed`) are in `values.py` since PR3:
+nothing in ALLOWED calls them, and reading `field["normal"]` / `field["critical"]` directly instead of the declared
+`bounds` is what made §6 defect 5 (a sentinel `1e9` taken for the threshold) and defect 8 (the threshold pinned to the
+range's lower end) possible. The tier arithmetic stays, because a tier is what a *rule* reads.
 """
 from __future__ import annotations
 from datetime import date
 from random import Random
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from . import values
 
 
 def bool_to_str(b: bool) -> str:
@@ -23,12 +30,11 @@ def any_outside_critical(state: dict, fields: List[dict]) -> bool:
     for field in fields:
         if field["name"] not in state:
             continue
-        # Reuse the same boundary parser: the spec stores decimals; we round parsed value to that.
         try:
-            value = _parse_value(state[field["name"]], field.get("decimals", 1))
+            value = values.parse_value(state[field["name"]], values.decimals_of(field))
         except (ValueError, KeyError):
             continue
-        if _is_in_critical_range(value, field):
+        if values.in_critical(value, field):
             return True
     return False
 
@@ -40,10 +46,10 @@ def min_tier(state: dict, fields: List[dict], tier_windows: dict) -> int:
         if field["name"] not in state:
             continue
         try:
-            value = _parse_value(state[field["name"]], field.get("decimals", 1))
+            value = values.parse_value(state[field["name"]], values.decimals_of(field))
         except (ValueError, KeyError):
             continue
-        if not _is_in_critical_range(value, field):
+        if not values.in_critical(value, field):
             continue
         # Walk tier_windows from 0 upward; first tier that contains value wins.
         for tier_str, mapping in tier_windows.items():
@@ -68,10 +74,10 @@ def fastest_tier_critical_item(state: dict, fields: List[dict], categories: dict
         if field["name"] not in state:
             continue
         try:
-            value = _parse_value(state[field["name"]], field.get("decimals", 1))
+            value = values.parse_value(state[field["name"]], values.decimals_of(field))
         except (ValueError, KeyError):
             continue
-        if not _is_in_critical_range(value, field):
+        if not values.in_critical(value, field):
             continue
         for tier_str, mapping in tier_windows.items():
             if int(tier_str) != tier:
@@ -85,109 +91,24 @@ def fastest_tier_critical_item(state: dict, fields: List[dict], categories: dict
     return "none"
 
 
-def _parse_value(formatted, decimals: int) -> float:
-    """`"6.2 mmol/L"` -> `6.2`. Drops the unit suffix after the first space.
-
-    Since PR2a the field view holds a number (design doc D3), so a number comes back rounded the same way it would have
-    been parsed — one function still answers both worlds, which is what lets a spec's own `"6.2 mmol/L"` (the legacy
-    generators still hand one to these helpers) and an engine's `6.2` mean the same criticality.
-    """
-    if isinstance(formatted, bool) or formatted is None:
-        raise ValueError(f"{formatted!r} is not a measurement")
-    if isinstance(formatted, (int, float)):
-        return round(float(formatted), decimals)
-    head = formatted.split(" ", 1)[0]
-    return round(float(head), decimals)
-
-
-def _is_in_critical_range(value: float, field: dict) -> bool:
-    """True iff `value` falls inside the field's critical.low or critical.high range."""
-    crit = field.get("critical", {})
-    for side, ranges in crit.items():
-        for low, high in ranges:
-            if low <= value <= high:
-                return True
-    return False
-
-
-def normal_value(rng: Random, field: dict) -> float:
-    """Replaces gen_critical_value.normal_value."""
-    from common import boundary_value
-    low, high = field["normal"]
-    return boundary_value(rng, threshold=low, low=low, high=high, near=0.0, decimals=field.get("decimals", 1))
-
-
-def critical_value(rng: Random, field: dict) -> float:
-    """Replaces gen_critical_value.critical_value."""
-    from common import boundary_value
-    crit = field.get("critical", {})
-    for side, ranges in crit.items():
-        if not ranges:
-            continue
-        low, high = ranges[0]
-        threshold = high if side == "high" else low
-        return boundary_value(rng, threshold=threshold, low=low, high=high, near=0.0, decimals=field.get("decimals", 1))
-    raise ValueError(f"field {field['name']} has no critical range")
-
-
-def crossed(rng: Random, field: dict) -> float:
-    """Replaces gen_critical_value.crossed — a safe-side value just outside critical."""
-    from common import boundary_value
-    crit = field.get("critical", {})
-    for side, ranges in crit.items():
-        if not ranges:
-            continue
-        low, high = ranges[0]
-        normal = field["normal"]
-        if side == "high":
-            # Safe side: just below critical.low
-            threshold = high
-            safe_low, safe_high = normal[1] - (high - low), high - 0.01
-            return boundary_value(rng, threshold=safe_high, low=safe_low, high=safe_high, near=0.0, decimals=field.get("decimals", 1))
-        else:
-            threshold = low
-            safe_low, safe_high = low + 0.01, normal[0] + (low - normal[0])
-            return boundary_value(rng, threshold=safe_low, low=safe_low, high=safe_high, near=0.0, decimals=field.get("decimals", 1))
-    raise ValueError(f"field {field['name']} has no critical range")
-
-
 def realize_tier(rng: Random, field: dict, tier: int, tier_windows: dict) -> Optional[float]:
-    """Replaces gen_critical_value.realize_tier — a value whose notification tier is exactly `tier`, or None."""
+    """Replaces gen_critical_value.realize_tier — a value whose notification tier is exactly `tier`, or None.
+
+    Verification, not arithmetic: the range the tier declares is where the draw comes from, but the tier that comes back
+    is the one `min_tier` reads out of the value, so a window shared with a faster tier cannot quietly mislabel the record.
+    """
     name = field["name"]
     mapping = tier_windows.get(str(tier), {})
     ranges = mapping.get(name)
     if not ranges:
         return None
     low, high = rng.choice(ranges)
-    decimals = field.get("decimals", 1)
+    decimals = values.decimals_of(field)
     for _ in range(6):
-        value = round(rng.uniform(low, high), decimals)
-        if _is_in_critical_range(value, field) and min_tier({name: value}, [field], tier_windows) == tier:
+        value = values.quantize(rng.uniform(low, high), decimals)
+        if values.in_critical(value, field) and min_tier({name: value}, [field], tier_windows) == tier:
             return value
     return None
-
-
-def _format(field: dict, value: float, with_unit: bool = True) -> str:
-    """Replaces gen_critical_value.format_measurement.
-
-    The renderer of a measurement's *surface*, not of its value: since PR2a the field view carries a number and only the
-    record's text goes through here (`sampler.BoundarySampler.render`, gated by `generator.render_units`).
-    """
-    decimals = field.get("decimals", 1)
-    unit = field.get("unit", "")
-    rounded = round(value, decimals)
-    if with_unit and unit:
-        return f"{rounded} {unit}"
-    return str(rounded)
-
-
-def typed_value(field: dict, value: float) -> float:
-    """The value a numeric field's view holds: the number, rounded to the field's own `decimals` (design doc D3).
-
-    Rounded here rather than only at render time so the rule, the critical check and the shipped text agree on one
-    number — a rule that reads 6.245 while the model reads "6.2 mmol/L" would be a label the prompt cannot support.
-    """
-    return round(value, field.get("decimals", 1))
 
 
 class MissingEvidence(LookupError):

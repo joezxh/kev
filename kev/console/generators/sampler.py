@@ -31,6 +31,20 @@ def place(root: dict, path: List[str], value: Any) -> None:
     cursor[path[-1]] = value
 
 
+# What one record looks like, as the spec declares it (design doc D6). These were literals until PR3, copied out of
+# `gen_critical_value.build` — and `tests/fixtures/critical-value/spec.json` already carried them as the numbers 2-5 and
+# 0.35 came from, which is why the defaults below are the released behaviour rather than a new one:
+#   min / max                fields per record, the triggering one included (legacy: 1 + `randint(2, 5)`)
+#   weight_trigger_extra     chance that a second measurement crosses its bound as well
+#   max_trigger_extra        how many candidates that second crossing is tried on
+#   max_trigger_tier_drift   how many tiers nearer the fast end that extra may sit (0 = never faster than the target,
+#                            which is what keeps the record realising the tier the plan asked for)
+# `weight_normal` is accepted for the released specs and deliberately not read here: how many records stay unsteered is
+# the plan's decision (`plan_targets`, design doc D5), and a second place that answers it is a second truth.
+SELECTOR_DEFAULTS: Dict[str, Any] = {"min": 3, "max": 6, "weight_normal": 1.0, "weight_trigger_extra": 0.35,
+                                     "max_trigger_extra": 2, "max_trigger_tier_drift": 0}
+
+
 class BoundarySampler:
     def __init__(self, fields: List[dict], selectors: List[dict], tier_windows: Optional[Dict[str, dict]] = None,
                  spec: Optional[dict] = None):
@@ -46,6 +60,43 @@ class BoundarySampler:
         if self.render_units not in ("on", "off"):
             raise values.UnsupportedField(
                 f"generator.render_units must be 'on' or 'off', not {self.render_units!r}")
+        self.selector = self._selector(selectors[0] if selectors else {})
+
+    @staticmethod
+    def _selector(declared: dict) -> Dict[str, Any]:
+        """One selector, the spec's keys over the defaults — checked once, so a typo cannot sample a whole run wrong.
+
+        `min`/`max` count the *fields in one record*, not the extras: the released specs say `{"min": 3, "max": 6}` for
+        what the legacy builder wrote as `1 + rng.randint(2, 5)`. A spec whose minimum the field list cannot fill is not
+        refused — the draw is clamped to what exists (design doc D6, which also removes the implicit "a spec needs six
+        fields" floor the clamp was hacked in for).
+        """
+        if not isinstance(declared, dict):
+            raise values.UnsupportedField(f"generator.selectors[0] must be an object, not {declared!r}")
+        unknown = sorted(set(declared) - set(SELECTOR_DEFAULTS))
+        if unknown:
+            raise values.UnsupportedField(
+                f"generator.selectors[0] declares {unknown}; known: {', '.join(sorted(SELECTOR_DEFAULTS))}")
+        selector = {**SELECTOR_DEFAULTS, **declared}
+        try:
+            low, high = int(selector["min"]), int(selector["max"])
+        except (TypeError, ValueError) as error:
+            raise values.UnsupportedField(f"selectors min/max must be integers: {error}") from None
+        if low < 1 or high < low:
+            raise values.UnsupportedField(f"selectors declare {low}..{high} fields per record, which is not 1 <= min <= max")
+        for key in ("weight_normal", "weight_trigger_extra", "max_trigger_tier_drift"):
+            try:
+                float(selector[key])
+            except (TypeError, ValueError) as error:
+                raise values.UnsupportedField(f"selectors.{key} must be a number: {error}") from None
+        if not 0.0 <= float(selector["weight_trigger_extra"]) <= 1.0:
+            raise values.UnsupportedField(f"selectors.weight_trigger_extra must be a probability, "
+                                          f"not {selector['weight_trigger_extra']!r}")
+        if int(selector["max_trigger_extra"]) < 0:
+            raise values.UnsupportedField(f"selectors.max_trigger_extra cannot be negative: {selector['max_trigger_extra']!r}")
+        selector["min"], selector["max"] = low, high
+        selector["max_trigger_extra"] = int(selector["max_trigger_extra"])
+        return selector
 
     def sample(self, state_target, rng: Random) -> Optional[Dict[str, Any]]:
         """One flat field view, typed (design doc D3). Returns None if the target is not realizable.
@@ -75,13 +126,15 @@ class BoundarySampler:
             triggering_field = rng.choice(matching or self.fields)
         else:
             triggering_field = rng.choice(self.fields)
-        # Step 2: pick 2-5 non-triggering fields (the count moves to `selectors` in PR3, design doc D6), clamped to
-        # how many the spec actually declares: a three-field scenario — one catalog pool and two companions, which is
-        # how PR1b's catalog fixtures are cut — used to die in `rng.sample` when the draw asked for five. The clamp is
-        # also what makes a catalog pool unavoidable in such a spec, so every record carries a `_meta.derive`.
+        # Step 2: fill the record to the selector's own size. `min`/`max` count the fields a record carries, the
+        # triggering one included, so the extras are that many minus one, clamped to how many the spec actually declares:
+        # a three-field scenario — one catalog pool and two companions, which is how PR1b's catalog fixtures are cut —
+        # used to die in `rng.sample` when the draw asked for five. The clamp is also what makes a catalog pool
+        # unavoidable in such a spec, so every record carries a `_meta.derive`.
         others = [f for f in self.fields if f["name"] != triggering_field["name"]]
         chosen = {triggering_field["name"]: triggering_field}
-        for extra in rng.sample(others, min(rng.randint(2, 5), len(others))):
+        want = max(0, rng.randint(self.selector["min"], self.selector["max"]) - 1)
+        for extra in rng.sample(others, min(want, len(others))):
             chosen[extra["name"]] = extra
         # Step 3: sample a value of each field's own type. A catalog field answers with the candidates it drew, which
         # is the label basis rather than a value: `derive.split` takes it out of this view before the engine builds a
@@ -93,23 +146,26 @@ class BoundarySampler:
         value = ops.realize_tier(rng, triggering_field, tier, self.tier_windows)
         if value is None:
             return None
-        state[triggering_field["name"]] = ops.typed_value(triggering_field, value)
+        state[triggering_field["name"]] = values.typed_value(triggering_field, value)
         # Sometimes add a second critical item (carry-over logic from gen_critical_value.build). Numeric fields only:
         # parsing "true" or a clause text as a measurement is not a thing.
-        if rng.random() < 0.35:
+        if rng.random() < self.selector["weight_trigger_extra"]:
             numeric = {n: f for n, f in chosen.items() if values.field_type(f) == "numeric"}
             # The view is typed since D3, so the critical check reads these values directly — the format/parse round
             # trip this used to need was only ever a consequence of the unit living in the value.
             non_critical = [
                 n for n, f in numeric.items()
-                if not ops._is_in_critical_range(state[n], f)
+                if not values.in_critical(state[n], f)
             ]
-            for other in rng.sample(non_critical, min(2, len(non_critical))):
-                v2 = ops.critical_value(rng, numeric[other])
-                if ops._is_in_critical_range(v2, numeric[other]) and \
+            for other in rng.sample(non_critical, min(self.selector["max_trigger_extra"], len(non_critical))):
+                v2 = values.critical_value(numeric[other], rng)
+                # The extra may never be faster than the tier the plan asked for (a drift of 0, the released number):
+                # the record's tier is the fastest across its critical items, so a faster companion would realise a
+                # different tier than the quota paid for.
+                if v2 is not None and values.in_critical(v2, numeric[other]) and \
                    ops.min_tier({other: v2}, [numeric[other]],
-                                self.tier_windows) >= tier:
-                    state[other] = ops.typed_value(numeric[other], v2)
+                                self.tier_windows) >= tier - self.selector["max_trigger_tier_drift"]:
+                    state[other] = values.typed_value(numeric[other], v2)
                     break
         return state
 
@@ -135,7 +191,7 @@ class BoundarySampler:
         if kind == "numeric":
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 return value
-            return ops._format(field, value, with_unit=self.render_units == "on")
+            return values.format_value(field, value, with_unit=self.render_units == "on")
         if kind == "list" and isinstance(value, list):
             element = (field.get("items") or {}).get("element")
             return [self.render(element, item) for item in value] if element is not None else value

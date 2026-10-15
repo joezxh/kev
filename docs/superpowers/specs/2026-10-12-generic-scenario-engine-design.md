@@ -1,7 +1,7 @@
 # 通用场景生成引擎（B2）设计文档
 
 - 日期：2026-10-12
-- 状态：§7 的四个未决问题已于 2026-10-12 评审定案（含本轮新发现：D10 catalog、D11 双通道）；**PR1a 已完成**（退出判据与有意遗留见 §5.1），待 PR1b 开工
+- 状态：§7 的四个未决问题已于 2026-10-12 评审定案（含本轮新发现：D10 catalog、D11 双通道）；**PR3 已完成**（退出判据、G1 的实际债务与合取配额的依据见 §5.7），待 PR4 开工
 - 依据：`.superpowers/spike/b2-findings.md`（32 场景矩阵 + 仓库六份 fixture 探针 + 现存质量闸门审计 + simpleeval 能力实测）；
   本轮补充核对：fixture `generator.fields` 键分布统计、`state_key_probe.py`（spec 规则读的 state 键 vs legacy 实际给的 state 键）、
   `gen_triage.py`/`gen_diagnosis.py` 的表面构造与 `derive()`、`kev/api.py:49-55` 的 `render` 展平行为
@@ -247,21 +247,21 @@ legacy 已经给了答案：`CONTEXTS`/`VITALS`/`COMORBID`/`CHANNELS`/`DURATIONS
 
 | 文件 · 位置 | 今天 | 改成 | 关掉 |
 | --- | --- | --- | --- |
-| `ops.py:103-141`（`normal_value`/`critical_value`/`realize_tier`） | 每个字段必读 `field["normal"]` | 拆成 `NumericSampler` 的实现，其余类型各一个 `sample(field, rng, spec)` | F1 |
-| `sampler.py:38-78` | 一条路径处理所有字段 | 按 `field["type"]` 分派；`selectors` 读 spec；二次越界概率/条数来自 spec | F1/F6 |
+| `ops.py:103-141`（`normal_value`/`critical_value`/`realize_tier`） | 每个字段必读 `field["normal"]` | 拆成 `NumericSampler` 的实现，其余类型各一个 `sample(field, rng, spec)`。**PR3 收口**：三个数值几何函数从 `ops` 迁进 `values`（§6 缺陷 9 的绝对导入随迁而消，`ops` 只留 `realize_tier`） | F1 |
+| `sampler.py:38-78` | 一条路径处理所有字段 | 按 `field["type"]` 分派；`selectors` 读 spec；二次越界概率/条数来自 spec。**PR3 落定**：三处字面量（`randint(2, 5)`、`rng.random() < 0.35`、`min(2, ...)`）改读 `selectors[0]`，并取消「字段必须 ≥6」的隐性下限（D6，见 §5.7） | F1/F6 |
 | `sampler.py:89-95`（`make_record`） | 拼 `patient/context/labs/...` | 按 `field.path` + `aux` 落位 | F2 |
 | `ops._format` / `_parse_value` | 值即 `"6.2 mmol/L"` 字符串 | 记录存 typed value；格式化仅在 `render_units: "on"` 时用于渲染 | F3/D3 |
 | `engine.py:76`（names 表） | 四个固定符号 | + 派生量（today/anchor）；`let` 经 §5.3 否证，不做。**PR2b 落定**：`engine._rule_names` 组装，`state` 换 `ops.rule_view`，派生通道由 `derive.extra_names` 提供 | F4 |
 | `engine.py:84-93` | `except: continue` / `except: pass` | `RuleError` 抛出，带 rule_id 与表达式。**PR2b 落定**：私有副本删掉，唯一的 `rules.evaluate`——缺键（`ops.MissingEvidence`）= 本条不适用，其余异常 = `RuleError`，`engine.run` 在采样之前先跑 `rules.static_errors` | F4 |
 | `ops.py:236-257`（ALLOWED，20 个） | 医疗派生算子，无 `float/sum/sorted` | 通用集 + 派生集 + 原 20 个 | F3/F4 |
-| `plan.py:181-201` | `quota` 绝对条数、`share` 弃用 | 权重归一化 + `by_label` + `floor` 判定 | F5/F7 |
-| `pair.py:34-46`、`engine.py:184` | 只认 `state["labs"]`、只翻数值 | 按类型翻转 + path 落位 | F2/F8(D8) |
+| `plan.py:181-201` | `quota` 绝对条数、`share` 弃用 | 权重归一化 + `by_label` + `floor` 判定。**PR3 落定**：权重按 n 归一，`by_label` 是「问句×答案」的**合取**格，`quota` 与 `weight` 同时出现或在搜索之前静态报错（D5，见 §5.7） | F5/F7 |
+| `pair.py:34-46`、`engine.py:184` | 只认 `state["labs"]`、只翻数值 | 按类型翻转 + path 落位。**PR3 落定**：八类各有翻转法，numeric 走 `values.crossed` 的安全侧，catalog 按「换一个抽中的候选」（D8、§6 缺陷 5，见 §5.7） | F2/F8(D8) |
 | `common.py:33-45`、`app.py:494-547` | spec 三处真相源 | `resolve_spec(slug)` 单一入口 | 缺陷 2 |
 | `sampler.py:38-56`（字段即有值） | 只有「给字段取值」一种采样 | 新增 `catalog` 采样器：从带属性候选池抽 k 个 | F1/D10 |
 | `common.py:58-82`（`labelled`） | `record = {state, questions}` | 允许附带 `_meta.derive`（标签依据，不进渲染） | D11 |
 | `gen_triage.py:106-116` 的字符串拼接 | 表面组装只存在于 Python 源码里 | `surface` 字段 + `symptom_names`/`join_by`/`default_if_empty` 算子 | D11 |
 | `ops.py:106` 的 `field["normal"]` | 界名硬编码 | `bounds` 字典，引擎不解释语义 | D12 |
-| `engine.run` 出口 | 打印 warning 后返回 0 | 自动跑现存闸门，不达标非零退出并回报缺口 | F7 |
+| `engine.run` 出口 | 打印 warning 后返回 0 | 自动跑现存闸门，不达标非零退出并回报缺口。**PR3 落定**：`quality_gaps` 出一份清单，`run` 逐条打 `engine: gate <slug>: <缺口>`，偶发 miss 打 `engine: note`；strict 只在 spec 自己声明 `plan_targets.floor` 或 `--gate strict` 时成立（见 §4 G1、§5.7） | F7 |
 
 ---
 
@@ -271,12 +271,22 @@ legacy 已经给了答案：`CONTEXTS`/`VITALS`/`COMORBID`/`CHANNELS`/`DURATIONS
 里的猴补丁与绝对路径），逐条断言：
 
 - **G1 形状×领域覆盖**：8 类字段 × 4 个领域至少各 1 个场景，n=120 产出满 N；`split_data.check_record` 0 问题；
-  每个标签 ≥5%；无「从未出现」标签；兜底规则命中率 ≤0.6。
-- **G2 n 不变性**：同一 spec 在 n = 30 / 300 / 3000 下，每个标签占比漂移 <5 个百分点。
+  每个标签 ≥5%；无「从未出现」标签；兜底规则命中率 ≤0.6。**PR3 绿，但适用范围要写明**：n=120 是「floor 成为整数记录条数」
+  的最小尺寸（`0.05 × 120 = 6`），形状面与结构面（满 N + `check_record` 全清）在 38 份上全绿，而分布面只在
+  spec **自己声明了 `plan_targets.floor`** 的那些场景上才阻断（否则 28 份早于本闸门的 spec 会因没人选过的阈值红 CI）。
+  PR3 实测的债务与逐场景钉进 `test_engine_matrix.py` 的 `NEVER_LABELLED`/`UNDER_FLOOR`/`CATCH_ALL`/`GATE_CLEAN`，见 §5.7。
+- **G2 n 不变性**：同一 spec 在 n = 30 / 300 / 3000 下，每个标签占比漂移 <5 个百分点。**PR3 绿**（三份声明 floor 的
+  spec 全档 `rc=0` 且零 `gate` 行，最坏 1.67pp）；**前提是一条语义定案**：`by_label` 必须是合取目标，因为单问句
+  目标只钉住一个问句，其余问句交给自然分布——而 n=30 时一个 17% 标签自己的二项散布（1σ = 6.9pp）已经大过 5pp 的栏。
+  实测（200 个种子）：只写 `final_band` 时 `plagiarism_flag:true` 有 **49% 的跑出在 5pp 之外**（最坏 16.90pp），
+  合取格下 200 次全是同一份（23.3%，sd 0.00pp）。数字与依据见 §5.7。
 - **G3 fail-loud**：三份故意写坏的 spec（未知算子、未知 state 键、非法 label 值）各让 CI 红，且错误里能读出
   `rule_id` 与原因（防 T4 退化成「跑通了但全落兜底」）。**PR2b 绿**：三份在 `tests/fixtures/engine-broken/`，另
   加一份 `tests/fixtures/engine-empty/`（静态全对但零产出）钉住「空文件不是通过」。
 - **G4 零 Python**：2 个新场景（spike 里没出现过的形状，例如「审批链路由 = enum+date+list」）只提交 spec，即通过 G1。
+  **PR3 绿**：两份在 `tests/fixtures/engine-matrix/`（`law-appeal-window`、`edu-late-work-escalation`，sidecar 标
+  `"added": "PR3"`），只交 JSON，且因为自己声明了 `floor`，它们是在 strict 口径下过的 G1；「零 Python」实现为可机检断言
+  （每个字段名与每个 `qid` 不得出现在 `kev/console/generators/*.py` 里），见 §5.7。
 - **G5 自家 fixture**：六份 fixture 由 engine 跑通并通过 G1 判定（record-summary 的非法 JSON 先修），且每个场景的
   `render(state)` 与 legacy 产出对齐（含 `unit: ""` 不产生尾随空格）。
 - **G6 骨架**：任一非医疗场景的产出里断言 `'patient' not in state`、`'labs' not in state`。
@@ -287,6 +297,9 @@ legacy 已经给了答案：`CONTEXTS`/`VITALS`/`COMORBID`/`CHANNELS`/`DURATIONS
   `_meta.derive` 里的属性值不作为独立行出现在表面。这条是 D11 的唯一机器护栏。
 
 成本：矩阵子集（每形状 1 个 + G3/G4/G8）进 PR CI，32 份全量 + G2 的 3000 档进夜间。
+**PR3 实测**（Windows、CPU）：G1 的 38 份 × n=120 共 14.5s（整个 `test_engine_matrix.py` 135 passed）；G2 只跑
+声明 floor 的三份，n=3000 单份 16.2 / 14.3 / 11.9s，所以 3000 档由 `KEV_MATRIX_FULL=1` 控制（gate 子集 41 passed / 57.6s），
+PR CI 默认只跑到 n=300。
 
 ---
 
@@ -298,7 +311,7 @@ legacy 已经给了答案：`CONTEXTS`/`VITALS`/`COMORBID`/`CHANNELS`/`DURATIONS
 | PR1b ✅ 见 §5.2 | D10 catalog 采样器 + D11 双通道（`_meta.derive` + `join_by`/`where`/`default_if_empty`/`pick` 算子）+ D15 递归 element schema | T1 满八类、T9；G8 绿；G1 里 diagnosis/triage 形状的场景能产出满 N 且不泄漏 |
 | PR2a ✅ 见 §5.4 | D3 typed value + `render_units` 声明 + date 求值视图 + 6 份 fixture 的字面量迁移 | G7 绿；`LEDGER` 从 12 缩到 5（实测出账 7） |
 | PR2b ✅ 见 §5.5 | D4 求值器/算子/fail-loud/静态校验（含 `generator/validate` 语义修正、§6 缺陷 9 的沙盒那半）+ G3 三份反例 | T3、T4；arith/date/list 场景标签正确；G3 绿；`LEDGER` 只剩不由求值器负责的一条 |
-| PR3 | D5 配额 + `by_label` + D6 selectors + D8 最小对（含 §6 缺陷 5 的 `ops.crossed` 安全侧；catalog 按「换一个候选」翻转）+ 出口接现存闸门 | T5、G1、G2、G4 绿 |
+| PR3 ✅ 见 §5.7 | D5 配额 + `by_label` + D6 selectors + D8 最小对（含 §6 缺陷 5 的 `ops.crossed` 安全侧；catalog 按「换一个候选」翻转）+ 出口接现存闸门 | T5、G1、G2、G4 绿（`LEDGER` 清空：最后的 `edu-essay-scoring` 两问句由合取 `by_label` 出账） |
 | PR4 | 六 fixture 收编：其中 diagnosis/triage/nursing-quality 三份的规则需按 legacy 表面重写（§6 缺陷 3），legacy 仍在，双路做对照产出差异报告 | T6、G5、G8 在六份 fixture 上绿 |
 | PR5 | 迁移六场景到 spec、平价测试改属性断言、删 `gen_*.py` | G7 的新形态绿 |
 
@@ -518,9 +531,49 @@ PR 3 与 PR 4 之间是 **hunk 级**分离（`git apply --cached` 只打我们�
 （`db.py`、`executor.py`、`stages/*`、`stage_params.py`、`test_console_{contract,executor,distill_routes,goldset_distill,services_publish}.py`
 ——包括那几个 `encoding=` 行，它们挂在**他们新增**的 `write_text` 上，不是本任务的约定闸门修法）。
 
+### 5.7 PR3 完成记录（2026-10-15）
+
+判据实测（`tests/test_engine_matrix.py` = **135 passed / 14.5s**；`KEV_MATRIX_FULL=1` 下 gate 子集 **41 passed / 57.6s**）：
+`LEDGER` 清空——PR2b 留下的 `edu-essay-scoring` 两个问句（`final_band`、`plagiarism_flag`）出账，逐问句写进
+`PAID_BY_PR3`，与 `LEDGER == {}` 构成双向断言（塌回去是失败，而不是悄悄把债单写大）。付账的方式不是新算子，
+是 D5 的两件事：把值从下界放开（缺陷 8）让加权分的规则能命中，以及让 spec 能按名字要一个答案（`by_label`）。
+
+| 判据 | 证据 |
+| --- | --- |
+| T5 / G1 结构面 | 38 份 × n=120（seed 0）全部恰 120 条、`split_data.check_record` 0 问题、退出码全 0。n=120 不是随手写的：`0.05 × 120 = 6` 是 floor 成为整数记录条数的最小尺寸，n=60 时 `UNDER_FLOOR` 的格子直接归零，分不清「铺不到」与「抽不到」 |
+| G1 债务面 | 闸门读出的债与 spec 欠的债逐场景相等（`test_g1_the_gate_reports_exactly_the_debt_this_spec_owes`）：26 份 / 33 个问句 / **51 个从未被标注的答案**（`NEVER_LABELLED`）、8 份 / **14 个 under-floor 答案**（`UNDER_FLOOR`）、**13 份兜底命中率 > 0.6**（`CATCH_ALL`，最差 `sci-reaction-yield` 0.99、`fin-covenant-text` 0.98、`edu-enrollment-deadline` 0.97）、**10 份全清**（`GATE_CLEAN`）；断言里 `bool(never or under or catch) == (slug not in GATE_CLEAN)` 把「报债」与「有债」钉成同一件事 |
+| 出口的适用范围 | `strict = (--gate strict) or (--gate auto 且 spec 声明了 floor)`。28 份报债的场景退出码仍 0；三份声明 floor 的（`edu-essay-scoring`、`edu-late-work-escalation`、`law-appeal-window`）默认就是 strict，债务清单里第一份 `edu-course-placement` 在 `--gate strict` 下退出码 1（且 `gate_debt` 非空），同一份在 `--gate warn` 下为 0；`edu-essay-scoring` 在 `--gate strict` 下也是 0——闸门不得咬它最好的客户（`test_g1_strictness_is_exactly_where_a_gap_exists`） |
+| T5 / G2 | 三份 floor spec 在 n=30/300/3000 全部 `rc=0` 且零 `engine: gate` 行；最坏漂移 **1.67pp**，而它等于配额在 n=30 的取整（`plagiarism_flag:true` 计 25% → 7.5 条 → 7/30 = 23.3%），不是抽样噪声：`.tmp-pr3-arithmetic.py` 重算最大余数分配能一字推出这三个数 |
+| D5 配额 | 权重按 n 归一：五块 `{share: 0.35, quota: 55}` 在 n=787 各得 55 条，在 n=60 得 5/4/4/4/4（最大余数法），剩下是 `None` 槽，计划长度恒等于 n；`quota` 与 `weight` 同时出现 → 在第一条抽取之前 `PlanError`；`by_label` 声明不存在的问句（"which the spec does not ask"）或该问没有的答案（"the question answers 0, 1, 2"）→ 同样前置拒绝且不落半写文件 |
+| D6 selectors | `selectors[0]` 真生效：`min=max=5` ⇒ 每条恰 5 个字段；缺省 ⇒ {3,4,5,6}；三字段 spec 钳到 {3}（「字段必须 ≥6」的隐性下限取消，PR1b 现场发现的第 2 件事）。七类读不得的 selector 在构造时报错而不是运行时 `KeyError` |
+| D8 / 缺陷 5 | 八类各有翻转法，各 200/200 次无一翻不出（numeric 阈值另一侧、enum 另一值、bool 取反、text 换串、date 半窗口两侧、list 增删一个元素、object 恰好一个子字段、catalog 恰好换一个抽中的候选且仍无重复）；`values.crossed` 的安全带用 `onset ∓ step` 而不是 `normal` 的宽度，返回前再查一次 `in_critical`，双侧临界字段算不出安全侧时返回 `None` 而不是发一个仍在临界区的 twin。law-sentencing n=40/seed 3/`--pairs 0.9` → **59 条**（PR1a 时同一命令 40 条里 twin 只 1）；fin-credit-adverse n=30 同参 → **38 条**（catalog 场景，PR1b 时它们没有 `plan_targets` 因而恒 0 twin） |
+| 缺陷 8 | `values.normal_value` 的阈值取 `rng.uniform(low, high)`（区间内随机点）而不是 `normal[0]`，`quantize` 按 `decimals` 定类型（`decimals <= 0` → `int`，否则恰好那么多位小数），于是同一列不再同时出 `"0 个"` 与 `"160.0 个"`；这正是 `edu-essay-scoring` 的 `final_band` 在 PR2a/PR2b 之后仍然塌缩的那条根因（三个分量钉在 `normal [1, 9]` 的下界，`>= 7` 几乎不可达） |
+| 缺陷 9 | 三个数值几何函数从 `ops.py` 整体迁进 `values.py`，`ops.py` 只留 `realize_tier` 与算子表，`from common import …` 在引擎侧归零（只剩六个 legacy `gen_*.py`，D9 里 PR5 删它们）；`engine.py` 也不再往 `sys.path` 里插 generators 目录，全部相对导入——「把 `kev` 当库 import 就 `ModuleNotFoundError`」那条路从此不存在 |
+| G4 零 Python | `law-appeal-window`、`edu-late-work-escalation` 两份只交 JSON：n=120 满 N、`check_record` 全清，且因为自己声明了 `floor`，它们是在 strict 口径下过的 G1；shape 都是 `bands`、`spike_records=0`（spike 从未跑过它们，所以不可能进 20/32 的崩溃计数）。「零 Python」的可机检形态：每个字段名与每个 `qid` 都不得出现在 `kev/console/generators/*.py` 的拼接文本里；`edu-late-work-escalation` 另钉住记录形状由 spec 声明（`selectors == [{min: 4, max: 4}]`、4 个字段、6 个 `by_label` 格且每格含 `" & "`、每格覆盖两个问句，采样恒得 4 个键） |
+| 路由（§3 出口行） | `generator/validate` 分两半返回：`errors` 只说「这份 spec 生成不了」，闸门缺口在 `gate_gaps` 字段。同一个 `fin-covenant-text`：不加 floor → `errors: []` 并报告 `remedy:repricing` 与 `remedy:waiver` 「is never labelled」；加 `floor: 0.05` → `errors: [{rule_id: "<gate>"}]`。阈值只有一份来源（`engine.quality_gaps`），路由不自己重算份额（`tests/test_console_api.py` 32 passed） |
+
+**合取 `by_label` 是 G2 的前提，这一条是量出来的而不是推出来的**（`.tmp-pr3-spread.py`，同一份 `edu-essay-scoring`、200 个种子读 n=30，参照同一计划的 n=3000 读数）：
+
+| 计划形状 | `plagiarism_flag:true` 在 n=30 的散布 | 距 n=3000 读数 | 200 次里超过 5pp |
+| --- | --- | --- | --- |
+| shipped 的八个合取格 | 23.3%（200 次全同，sd 0.00pp） | 1.67pp（取整，每次都是这个数） | **0** |
+| 只写 `final_band` 四格 | mean 17.1%、sd **6.75pp**（17% 标签的二项预测 6.87pp），从 0% 到 33.3% | 中位 3.57pp、最坏 **16.90pp** | **98（49%）** |
+
+计划钉不住的问句就归自然分布所有，而 n=30 处一个 17% 标签的 1σ 已经是 6.9pp——所以「漂移 <5pp」在这一档对未规划的问句本质上是抛硬币。**写 §4 时我先有的证据是「漂 10pp」的单次读数（它仍在上面那个分布里，只是当时把它当成了期望值），本轮把它换成了 200 次读数的散布**；`plan.py::LabelTarget` 与本文件 §4 的措辞同步更正。
+
+**`LABEL_ATTEMPTS = 600` 的算术依据**（`.tmp-pr3-arithmetic.py`）：稀有格 `final_band:3 & plagiarism_flag:true` 的自然命中率实测 **2.6%**（31/1,200 条不加 steer 的记录），计划向它要 4%。抽不中的概率 P(miss) = (1 − p)^attempts：60 次 → **20.8%**，600 次 → **1.5e-7**；一个 5% 的格子 60 次 → 4.6%，600 次 → 4.3e-14。miss 不是免费的：该槽落回自然记录，代价是「份额偏 P(miss) × (配额 − 自然率)」与「随 n 变化的抖动 sqrt(P(miss)(1 − P(miss)) / 槽数)」——后者正是 G2 禁止的东西（稀有格在 n=30 只有 1.2 个槽，拖 1.4pp）。而它对健康的目标免费：重试在第一次命中就 break（一个自然率为 p 的格子期望花 1/p 次抽取，5% 约 20、2.6% 约 39）。**本轮自查发现上一版的注释里 1.8% / 1.2% / 2.2e-5 / 2.7e-9 四个数乘不平**（(1 − 0.018)^60 = 34%，不是 1.2%），已按实测更正（`engine.py:89-99`）。
+
+**PR3 有意留下的三件事**：
+
+1. **51 个从未被标注的答案不在本 PR 修**：它们不是引擎采不出，而是 spec 从没写过能举起它们的规则（`plagiarism_flag` 在 PR3 之前就是这种债的样本）。G1 现在能把它们逐条报出来，报出来才算债；修它们是 PR4/后续的场景写作。同理 `plan.py` 顶注里那两个 spec 写了引擎不认的键（`by_issue_type`/`by_missing_element`）也不拒，PR4 重写时自然收到 `by_label`。
+2. **`by_label` 是拒绝采样而不是定向 steer**：引擎不知道「哪个字段必须越界」才会让规则给出 `final_band:3`，只能重抽。定向化需要 spec 自己写下「这个答案由哪个字段的哪条界产生」，那是 schema 扩张，不在 D5 里。代价可接受：规则能到达的格子平均 1/p 次抽取，到不了的格子一个 600 次探针就定性上报。
+3. **G5（六份 fixture 收编）与 PR4 的对照报告未动**：本 PR 的判据是 T5/G1/G2/G4，legacy 仍在线（D9）。
+
+**回归取证的边界**：三件套（`test_engine_matrix.py` + `test_medical_generators.py` + `test_conventions.py`）+ `test_console_api.py` + `test_generators.py` = **219 passed / 3 failed**，三条红全部是 §6 缺陷 10（`kev/contrastive.py:28` 的 `%-d` 在 Windows 上 `ValueError: Invalid format string`）；已核 `git status` 对 `kev/contrastive.py` 与 `tests/test_generators.py` 为空 ⇒ 两份都在 HEAD，与 PR3 无关，Linux CI 不跑这一条。本 PR 只改 `kev/console/generators/` 与测试；`app.py` 的路由未动（出口在 PR2b 已接），只新增了 §5.7 那两条路由测试。
+
 ---
 
-## 6. 顺带修的仓库缺陷（1、4 已随 PR1a 修掉，2 与 9 的后半已随 PR2b 修掉，新发现 5–10）
+## 6. 顺带修的仓库缺陷（1、4 已随 PR1a 修掉，2 与 9 的后半已随 PR2b 修掉，5、8 与 9 的前半已随 PR3 修掉，新发现 5–10）
 
 1. `tests/fixtures/record-summary/spec.json:167` 写的是 Python `True`，该文件不是合法 JSON，任何加载即抛
    （本轮实测：`Expecting value: line 167 column 52`）。**PR1a 已修**（改 `true`）。
@@ -543,7 +596,9 @@ PR 3 与 PR 4 之间是 **hunk 级**分离（`git apply --cached` 只打我们�
    于是 `critical.low` 写哨兵 `-1e9` 时永远翻不出临界区，上界哨兵 `1e9` 也只有约 25% 命中：矩阵里 99 个带 `critical`
    的数值字段只有 52 个可翻，`law-sentencing`（seed 3、`--pairs 0.9`）40 条中 targets 9 / coin 9 / trigger 9 而 twin 只 1 条。
    属 D8 的工作量本体（「按类型翻转」必须先把「另一侧」算对），PR3 修；PR1a 不假装它已好，测试只断言高侧数值字段
-   能翻与非 numeric 字段返回 `None`。
+   能翻与非 numeric 字段返回 `None`。**PR3 已修**：安全带改成从阈值自己推（`onset ∓ step`，而不是 `normal` 的宽度），
+   返回前再查一次 `in_critical`，算不出安全侧就返回 `None`；八类各自可翻（各 200/200），law-sentencing 同参
+   从「40 条里 twin 只 1」到 **59 条**（§5.7）。
 6. **`test_medical_generators.py:70` 的「每份 spec ≥3 问」在 main 上本来就是红的**（正因缺陷 4，从没人在 CI 见过）：
    `medication.json` 只有 2 问且 `distill.kev_track: false`，开放式问答与蒸馏轨场景本无多头部可喂。
    PR1a 把断言收到 Kev 轨（`(spec.get("distill") or {}).get("kev_track", True)`），而不是改数据凑测试。
@@ -564,12 +619,17 @@ PR 3 与 PR 4 之间是 **hunk 级**分离（`git apply --cached` 只打我们�
    **定案留给 PR3**：PR2a 只把值改成 typed，没有动这条分布，也没有动 `int` 阈值经 `_format` 输出 `"0 个"` 而浮点输出
    `"160.0 个"` 的不一致（`round(0, 1)` 仍是 `int`）。改它会移动 `LEDGER`，把 F3 的信号淹在分布变更里。
    **PR2b 复核已确认它是活的**：`edu-essay-scoring` 是 `LEDGER` 在 PR2b 之后唯一的留守，而它的 `final_band` 就欠在这条上
-   （82 个三元组里 `(1,1,1)` 出现 16 次，n=200 才命中 1 次 `>= 7`），见 §5.5。
+   （82 个三元组里 `(1,1,1)` 出现 16 次，n=200 才命中 1 次 `>= 7`），见 §5.5。**PR3 已修**：`values.normal_value` 的阈值取
+   区间内随机点，`quantize` 按 `decimals` 定类型（`decimals <= 0` → `int`）；`edu-essay-scoring` 因此出账，`LEDGER` 清空（§5.7）。
 9. **tier 路径上三个 `ops` 函数的 import 是坏的**：`ops.normal_value`/`critical_value`/`crossed` 都写
    `from common import boundary_value`（绝对导入），只有当 `kev/console/generators` 目录本身在 `sys.path` 上才成立——
    `engine.py:28-30` 恰好把它插进去了，所以引擎路径能用、把 `kev` 当库 `import` 时会 `ModuleNotFoundError`。
    今天矩阵里没有任何 spec 触发它（`plan_targets: {}` → `state_target` 恒为 `None` → sampler 第 4 步不执行），
    PR3 上配额就会天天走这条路。**定案：PR3 修**（改成 `from . import common`），PR1b 只记录。
+   **PR3 已修，但不是按原计划的方式**：不是把那三行改成相对导入，而是把三个数值几何函数（`normal_value`/`critical_value`/`crossed`）
+   整体迁进 `values.py`（它本来就是 `from . import common` 的消费者），`ops.py` 只留 `realize_tier`——绝对导入随迁而消，
+   而不是被改写；`engine.py` 也不再往 `sys.path` 插 generators 目录（HEAD 上那六行「让引擎不依赖 cwd」的补丁），
+   引擎模块之间全部相对导入（§5.7）。
    同一项探针还确认了 §7.1 第三问的沙盒边界：simpleeval 1.0.8 拒绝 `__` 与 `func_` 前缀的属性访问（所以
    `__globals__` 不可达），但普通属性可达：`pick.args` 能拆到引擎绑进去的 `Random` 对象。PR2 重写求值器时
    应该把算子表包成不可拆的对象（或直接交给 `RuleEvaluator`），本 PR 不假装它不存在。**这一半已随 PR2b 闭合**

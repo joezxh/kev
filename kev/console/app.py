@@ -513,7 +513,7 @@ def generator_dry_run(slug: str, body: dict, store: Store = Depends(get_store)) 
     n = body.get("n", 100)
     seed = body.get("seed", 0)
     from kev.console.generators.engine import run as engine_run
-    from common import label_table as _lt
+    from kev.console.generators.common import label_table as _lt
     import tempfile
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
         tmp_path = Path(tmp.name)
@@ -539,7 +539,8 @@ def generator_validate(slug: str, body: dict, store: Store = Depends(get_store))
     """
     from kev.console.generators import rules
     from kev.console.generators.common import resolve_spec
-    from kev.console.generators.engine import run as engine_run
+    from kev.console.generators.engine import gate_gaps, run as engine_run
+    from kev.console.generators.plan import PlanAllocator, PlanError
     import tempfile
     try:
         spec = resolve_spec(slug)
@@ -548,13 +549,18 @@ def generator_validate(slug: str, body: dict, store: Store = Depends(get_store))
     problems = rules.static_problems(spec)
     if problems:
         return {"errors": [{"rule_id": where, "message": message} for where, message in problems]}
+    plan_errors = PlanAllocator((spec.get("generator") or {}).get("plan_targets") or {}).static_errors()
+    if plan_errors:
+        return {"errors": [{"rule_id": "<plan>", "message": message} for message in plan_errors]}
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:
         try:
-            engine_run(["--scenario", slug, "--n", "8", "--out", str(tmp_path), "--seed", "0", "--pairs", "0"])
+            code = engine_run(["--scenario", slug, "--n", "8", "--out", str(tmp_path), "--seed", "0", "--pairs", "0"])
         except rules.RuleError as error:
             return {"errors": [{"rule_id": error.rule_id or "<run>", "message": str(error)}]}
+        except PlanError as error:
+            return {"errors": [{"rule_id": "<plan>", "message": str(error)}]}
         except Exception as error:  # a spec the engine refuses for another reason is still an error, not a pass
             return {"errors": [{"rule_id": "<run>", "message": f"{type(error).__name__}: {error}"}]}
         rows = tmp_path.read_text(encoding="utf-8").splitlines() if tmp_path.exists() else []
@@ -562,7 +568,13 @@ def generator_validate(slug: str, body: dict, store: Store = Depends(get_store))
             return {"errors": [{"rule_id": "<run>",
                                 "message": "the spec produced no records: no rule gave any record a complete set of "
                                            "labels"}]}
-        return {"errors": [], "records": len(rows)}
+        # The exit gate's numbers, as a field of their own (design doc §3's exit row): `errors` keeps meaning "this spec
+        # cannot generate", and a label under the floor at n=8 is a warning about the *shipped* run's size, not about a
+        # preview of eight records. `code` is the engine's own verdict — strict only when the spec declared a floor.
+        gaps = gate_gaps(spec, [json.loads(line) for line in rows])
+        if gaps and code:
+            return {"errors": [{"rule_id": "<gate>", "message": gap} for gap in gaps]}
+        return {"errors": [], "records": len(rows), "gate_gaps": gaps}
     finally:
         try:
             tmp_path.unlink()

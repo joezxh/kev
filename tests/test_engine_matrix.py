@@ -1,11 +1,12 @@
-"""The spec-driven engine on scenarios that are not medical (tests/fixtures/engine-matrix, design doc D1/D2/D7/D10/D11/D12/D13/D15).
+"""The spec-driven engine on scenarios that are not medical (tests/fixtures/engine-matrix, design doc D1/D2/D5/D6/D7/D8/D10/D11/D12/D13/D15).
 
 What this file guards is the B2 premise the spike measured: 20 of the 32 finance / education / research / legal
 scenarios died inside the sampler (`ops.normal_value` read `field["normal"]` for every field, whatever its type — F1),
 and the ones that survived came out shaped like a lab report because `make_record` hardcoded `patient` / `labs` (F2).
-Both are engine defects, not domain ones, so the guard is a matrix of 36 scenarios rather than a medical test with a
-new name: 32 the spike ran, plus four `catalog` ones PR1b added — a spike cannot have measured a field type the engine
-refused to sample. `resolve_spec` (D7) is here too: three spec truth sources meant a preview showed the committed copy
+Both are engine defects, not domain ones, so the guard is a matrix of 38 scenarios rather than a medical test with a
+new name: 32 the spike ran, four `catalog` ones PR1b added (a spike cannot have measured a field type the engine
+refused to sample), and two PR3 added the other way round — written only as JSON, to prove a new industry needs no
+Python (gate G4). `resolve_spec` (D7) is here too: three spec truth sources meant a preview showed the committed copy
 of what the user had just edited, and a scenario that lived only in the DB raised FileNotFoundError.
 
 PR1b's half of the file is the derive channel (D10/D11) and gate G8: a catalog field's candidates carry the label in
@@ -14,16 +15,26 @@ their own attributes, so the guard is that neither those attribute names nor a `
 
 What this file does NOT claim: that every scenario's labels are right. PR2 taught the evaluator typed values, date
 arithmetic, generator expressions and the difference between "this record lacks the evidence" and "this spec is
-unusable" (design doc F3/F4, §5.4/§5.5), and the ledger fell from twelve questions to two. The ones left are
-`test_the_degenerate_ledger_is_what_pr2_left`'s set, and neither is an evaluator failure any more: one question needs a
-threshold its sampler almost never reaches (design doc §6, defect 8), the other a rule the spec never wrote. Green
-here means "no scenario loses its labels because the engine cannot read the record", which is PR2b's exit condition,
-not "every scenario is trainable".
+unusable" (design doc F3/F4, §5.4/§5.5), and the ledger fell from twelve questions to two. PR3 paid those two by
+letting a spec ask for an answer by name (`plan_targets.by_label`) and making the engine draw until the spec's own
+rules agree (design doc D5), so `LEDGER` is empty and every question of every scenario moves. What is left is a
+different debt, counted in answers rather than in engine failures: at n = 120, 51 declared answers are never produced,
+14 more sit under the 5 % floor, and 13 scenarios let a catch-all rule answer most of their records. Those are
+`NEVER_LABELLED`, `UNDER_FLOOR` and `CATCH_ALL` below, and they are spec-authoring work — `engine.run` exits non-zero
+only where a spec declares a `floor`, because switching the gate on for a scenario whose rule was never written would
+red CI on its history rather than on a regression.
 
-Run: uv run python -m pytest tests/test_engine_matrix.py -q
+Run: uv run python -m pytest tests/test_engine_matrix.py -q. Gate G2's n = 3,000 row (~42 s for the three floored
+scenarios, 16.2 + 14.3 + 11.9) is the nightly half of the design doc's cost line, so it runs under `KEV_MATRIX_FULL=1`;
+the PR CI rows are n = 30 and n = 300.
 """
+import contextlib
+import io
 import json
+import os
 import random
+import re
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -33,7 +44,8 @@ from simpleeval import SimpleEval
 from kev.api import render
 from kev.console import paths
 from kev.console.generators import common, derive, engine, ops, rules, values
-from kev.console.generators.pair import PairBuilder
+from kev.console.generators.pair import PairBuilder, fact_keys
+from kev.console.generators.plan import LabelTarget, PlanAllocator, PlanError
 from kev.console.generators.sampler import BoundarySampler, place
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +55,7 @@ SLUGS = [entry["slug"] for entry in SIDECAR]
 SHAPES = {entry["slug"]: entry["shape"] for entry in SIDECAR}
 CRASHED_IN_SPIKE = {entry["slug"] for entry in SIDECAR if entry["spike_error"]}
 CATALOG_SLUGS = [entry["slug"] for entry in SIDECAR if entry["shape"] == "catalog"]
+PR3_SLUGS = [entry["slug"] for entry in SIDECAR if entry.get("added") == "PR3"]
 
 # Questions whose label is still single-valued, and why. Equality, not a subset: a scenario that collapses again
 # fails here, and a scenario whose debt is paid must be moved to one of the PAID maps below rather than quietly
@@ -51,15 +64,11 @@ CATALOG_SLUGS = [entry["slug"] for entry in SIDECAR if entry["shape"] == "catalo
 # PR2a paid seven of the twelve PR1a left (design doc §5.3) — a typed number, a date the rules can subtract, and six
 # specs that compared a measurement against its own unit string. PR2b's evaluator paid four more (§5.5): the generator
 # expressions `SimpleEval` refused outright and the records that lack a field a rule reads, which used to fall through
-# to the `when: "True"` rule instead of being recognised as "no evidence, no label". What survives is not an evaluator
-# failure at all. `final_band`: the spec scores three components on `normal [1, 9]` where `sample_numeric` pins roughly
-# half the draws on the lower bound (design doc §6, defect 8), so `0.5*内容分 + 0.3*结构分 + 0.2*语言分` almost never
-# reaches the 7 that rule asks for. `plagiarism_flag`: both of the spec's rules write `false` — the scenario never had a
-# rule that could raise the flag. Neither is a rule that cannot read a value, so both belong to PR3's distribution and
-# spec-authoring work, not to the evaluator.
-LEDGER = {
-    "edu-essay-scoring": ["final_band", "plagiarism_flag"],
-}
+# to the `when: "True"` rule instead of being recognised as "no evidence, no label". PR3 paid the last two (§5.6): the
+# spec can now name the answer it wants in `plan_targets.by_label` and the engine draws until the spec's own rules give
+# it, which is what turned `edu-essay-scoring`'s `final_band` from a threshold its sampler almost never reached (design
+# doc §6, defect 8) into a planned share, and gave the scenario a rule that can raise `plagiarism_flag` at all.
+LEDGER: dict = {}
 
 # Out of the ledger at PR2a, spelled per question so a regression that collapses one of them again is a failure here
 # and not a silent re-enlargement of LEDGER above.
@@ -81,6 +90,90 @@ PAID_BY_PR2B = {
     "law-patent-claims": ["action", "novel"],
 }
 
+# Out of the ledger at PR3 — the two questions PR2 left, both paid by a plan that asks for the joint answer rather than
+# for one question's share. A conjunction is the only shape that works: a target naming `final_band` alone leaves
+# `plagiarism_flag` to the natural distribution, which spread 10pp between n = 30 and n = 3,000 (design doc D5, G2).
+PAID_BY_PR3 = {
+    "edu-essay-scoring": ["final_band", "plagiarism_flag"],
+}
+
+# ---------------------------------------------------------------- G1's other half, as debt (design doc §4, G1)
+#
+# The gate has two halves, and only one of them is about the engine. `test_g1_...` pins the structural one: all 38
+# scenarios ship exactly n records that `check_record` accepts. The distribution one — every declared answer at >= 5 %,
+# no catch-all rule carrying the file — is spec authoring, and the matrix is 27 spike specs whose `then` blocks were
+# written before anyone could express a gap. So it is an equality ledger, read out of the gate's own stderr at n = 120
+# seed 0: each entry may only shrink, and a scenario that loses an answer it used to have fails here rather than shipping
+# quieter data. `GATE_CLEAN` is the other side of the same coin — the 10 scenarios with nothing to report, and the
+# reason the gate can be switched on scenario by scenario instead of all at once.
+#
+# Why `engine.run` still exits 0 on the other 28: strictness is exactly where a spec declares `plan_targets.floor`
+# (design doc §3's exit row). Turning the 51 answers below into failures today would red CI on the spike's history,
+# which is a different claim from "this run regressed".
+NEVER_LABELLED = {
+    "fin-credit-limit": {"driver": ["duration", "risk"], "limit_band": ["2"]},
+    "fin-fraud-flags": {"action": ["verify"]},
+    "fin-aml-sar": {"driver": ["duration", "network", "size"], "urgency": ["2"]},
+    "fin-insurance-denial": {"reason": ["nature", "timeliness"]},
+    "fin-default-score": {"grade": ["0", "2"]},
+    "fin-option-expiry": {"action": ["exercise", "roll"]},
+    "fin-portfolio-rebalance": {"first_move": ["cost", "liquidity", "risk"]},
+    "fin-covenant-text": {"remedy": ["repricing", "waiver"]},
+    "edu-early-warning": {"driver": ["engagement", "trend"], "urgency": ["2"]},
+    "edu-course-placement": {"placement": ["audit"]},
+    "edu-scholarship": {"tier": ["2"]},
+    "edu-enrollment-deadline": {"action": ["defer", "hold"]},
+    "edu-knowledge-mastery": {"target": ["coverage", "retention"]},
+    "edu-statement-fit": {"decision": ["wait"]},
+    "sci-gw-candidate": {"confidence": ["2"], "driver": ["astro"]},
+    "sci-variant-pathogenicity": {"acmg_class": ["likely", "likely_benign"]},
+    "sci-reaction-yield": {"grade": ["0", "3"]},
+    "sci-reproducibility": {"action": ["partial"]},
+    "sci-power-analysis": {"action_band": ["2"], "driver": ["attrition", "noise"]},
+    "sci-target-visibility": {"action": ["fallback"]},
+    "sci-review-accept": {"recommendation": ["accept"]},
+    "law-sentencing": {"band": ["2"], "driver": ["harm", "history"]},
+    "law-jurisdiction-venue": {"venue": ["court_other"]},
+    "law-contract-breach": {"remedy": ["cure", "penalty"]},
+    "law-overtime-compliance": {"gap_band": ["1", "3"]},
+    "law-comparative-negligence": {"driver": ["aggravation"], "share": ["2"]},
+}
+
+# Declared, reachable, and thinner than the floor at n = 120: the rule exists, the sampler almost never satisfies it.
+# This is what `by_label` is for, and none of these eight specs asks for it yet.
+UNDER_FLOOR = {
+    "fin-covenant-text": {"breach": ["true"], "remedy": ["accelerate"]},
+    "edu-enrollment-deadline": {"action": ["escalate"], "at_risk": ["true"]},
+    "sci-variant-pathogenicity": {"acmg_class": ["pathogenic"], "report_to_clinician": ["true"]},
+    "sci-reaction-yield": {"grade": ["2"], "optimize": ["false"]},
+    "sci-power-analysis": {"driver": ["design"]},
+    "sci-material-composition": {"next_step": ["synthesize"], "stable": ["true"]},
+    "law-statute-limitations": {"action": ["defense"], "time_barred": ["true"]},
+    "law-comparative-negligence": {"driver": ["coverage"]},
+}
+
+# Share of the run answered by the rule that asks nothing (`when: "True"`), capped at 0.6 by the gate.
+CATCH_ALL = {
+    "edu-enrollment-deadline": 0.97,
+    "edu-statement-fit": 0.80,
+    "fin-covenant-text": 0.98,
+    "fin-default-score": 0.88,
+    "fin-fraud-flags": 0.83,
+    "fin-option-expiry": 0.79,
+    "law-contract-breach": 0.66,
+    "law-overtime-compliance": 0.84,
+    "sci-reaction-yield": 0.99,
+    "sci-reproducibility": 0.66,
+    "sci-review-accept": 0.75,
+    "sci-target-visibility": 0.91,
+    "sci-variant-pathogenicity": 0.82,
+}
+GATE_CLEAN = [
+    "edu-essay-scoring", "edu-academic-integrity", "edu-unit-remediation", "fin-credit-adverse",
+    "law-evidence-admissibility", "law-evidence-weight", "law-patent-claims", "sci-incident-triage",
+    "law-appeal-window", "edu-late-work-escalation",
+]
+
 
 @pytest.fixture(autouse=True)
 def _specs_come_from_the_matrix(monkeypatch):
@@ -96,6 +189,56 @@ def generate(slug, tmp_path, n=40, seed=0, pairs=0.0):
     return [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
 
 
+def gate_run(slug, out, n, seed=0, pairs=0.0, gate=None):
+    """The same CLI path, and everything it has to say about the file: `(exit code, records, stderr lines)`.
+
+    The gate's messages are read off stderr rather than recomputed here because they are the product — what `--gate`,
+    the console's validate route and CI all look at — so a test that re-derived the shares from the records would stay
+    green while the engine reported nothing at all.
+    """
+    argv = ["--scenario", slug, "--n", str(n), "--seed", str(seed), "--pairs", str(pairs), "--out", str(out)]
+    if gate:
+        argv += ["--gate", gate]
+    errors = io.StringIO()
+    with contextlib.redirect_stderr(errors), contextlib.redirect_stdout(io.StringIO()):
+        code = engine.run(argv)
+    records = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()] if out.exists() else []
+    return code, records, [line.strip() for line in errors.getvalue().splitlines() if line.strip()]
+
+
+NEVER_RE = re.compile(r"^(?P<qid>\S+?):(?P<key>\S+) is never labelled")
+UNDER_RE = re.compile(r"^(?P<qid>\S+?):(?P<key>\S+) has (?P<have>\d+) of (?P<total>\d+) records")
+CATCH_RE = re.compile(r"^(?P<share>\d+)% of records")
+
+
+def gate_debt(messages):
+    """One run's gate lines as `(never-labelled, under-floor, catch-all share)` — `{question: [answer, ...]}` both ways."""
+    never: dict = {}
+    under: dict = {}
+    catch = None
+    for line in messages:
+        if not line.startswith("engine: gate "):
+            continue
+        message = line.split(": ", 2)[-1]
+        for pattern, into in ((NEVER_RE, never), (UNDER_RE, under)):
+            if (found := pattern.match(message)):
+                keys = into.setdefault(found["qid"], set())
+                keys.add(found["key"])
+                break
+        else:
+            if found := CATCH_RE.match(message):
+                catch = int(found["share"]) / 100
+    return ({qid: sorted(keys) for qid, keys in sorted(never.items())},
+            {qid: sorted(keys) for qid, keys in sorted(under.items())}, catch)
+
+
+def shares_of(records):
+    """Per question, the share of the file each answer holds — gate G2's quantity."""
+    total = len(records)
+    return {qid: {str(key): count / total for key, count in sorted(counter.items())}
+            for qid, counter in sorted(common.label_table(records).items())}
+
+
 def spec_of(slug):
     return json.loads((FIXTURES / f"{slug}.json").read_text(encoding="utf-8"))
 
@@ -108,17 +251,22 @@ def catalog_fields_of(slug):
     return [field for field in fields_of(slug) if values.field_type(field) == "catalog"]
 
 
+# The scenarios that declare the exit gate's threshold, so they are the ones a gap can fail a run on.
+FLOORED_SLUGS = [slug for slug in SLUGS if "floor" in (spec_of(slug)["generator"].get("plan_targets") or {})]
+
+
 # ---------------------------------------------------------------- fixtures (D14)
 
 
 def test_the_matrix_covers_every_shape_and_keeps_the_spike_record():
-    assert len(SLUGS) == 36 and len(set(SLUGS)) == 36
+    assert len(SLUGS) == 38 and len(set(SLUGS)) == 38
     assert len(CRASHED_IN_SPIKE) == 20, "the sidecar lost which scenarios the spike saw die"
     for entry in SIDECAR:
         assert (FIXTURES / f"{entry['slug']}.json").exists()
         if entry.get("added"):
             # a scenario written after the spike cannot be part of what the spike saw die
             assert entry["spike_error"] == "", entry["slug"]
+            assert entry["spike_records"] == 0, f"{entry['slug']}: a spec the spike never ran has no spike number"
     shapes = {shape: sum(1 for s in SHAPES.values() if s == shape) for shape in set(SHAPES.values())}
     # four domains x eight shapes: a shape with one scenario would prove almost nothing about the dispatch
     assert all(count >= 4 for count in shapes.values()), shapes
@@ -127,6 +275,8 @@ def test_the_matrix_covers_every_shape_and_keeps_the_spike_record():
     assert len(CATALOG_SLUGS) == 4
     for slug in CATALOG_SLUGS:
         assert len(catalog_fields_of(slug)) == 1, f"{slug}: a catalog fixture with two pools is a different test"
+    # G4's two: the scenarios added the other way round, as JSON with no engine change behind them
+    assert PR3_SLUGS == ["law-appeal-window", "edu-late-work-escalation"]
 
 
 # ---------------------------------------------------------------- field types (T1, D12/D13/D15)
@@ -222,7 +372,9 @@ def test_field_declarations_the_engine_cannot_honour_fail_loud():
 
 def test_only_a_critical_bound_numeric_field_can_be_steered_to_a_tier():
     """A plan target names a tier, which only a numeric field with a critical bound can be pushed to; everything else
-    stays a companion field (design doc D6 gives selectors the real choice in PR3)."""
+    stays a companion field. D6's other half is that a companion is now the spec's own choice — `selectors[0]` says how
+    many fields a record carries instead of the literal that assumed the released six — which is why the four-field
+    G4 specs sample exactly four keys per record (`test_g4_declares_its_own_record_shape_and_a_conjunction_per_slot`)."""
     assert values.steerable({"name": "K+", "normal": [1, 2], "critical": {"low": [[0, 1]]}})
     assert not values.steerable({"name": "K+", "normal": [1, 2]})
     assert not values.steerable({"name": "条款", "type": "text", "values": ["a"]})
@@ -438,6 +590,96 @@ def test_place_creates_the_intermediate_dicts():
     assert root == {"a": {"keep": 1, "b": {"c": 2}}, "d": 3}
 
 
+# ---------------------------------------------------------------- the plan and the selector (D5, D6)
+
+
+def test_d5_plan_weights_are_relative_to_the_pool_so_the_plan_scales_with_n():
+    """The released `critical-value` shape: five blocks of `{share: 0.35, quota: 55}`. The quota is the block's weight
+    and the pool is 35 % of n, so the 787-record run the spec was cut for still gets 55 apiece, while a 60-record run
+    asks for 4-5 each instead of steering all 60 the way the absolute numbers did (design doc D5, F5)."""
+    blocks = {name: {"share": 0.35, "quota": 55} for name in ("renal", "cbc", "plt", "glu", "k")}
+    for n, counts in ((787, {"renal": 55, "cbc": 55, "plt": 55, "glu": 55, "k": 55}),
+                      (60, {"renal": 5, "cbc": 4, "plt": 4, "glu": 4, "k": 4})):
+        plan = PlanAllocator({"by_category": blocks}).allocate(n, random.Random(0))
+        assert len(plan) == n
+        assert Counter(name for _, name in (t for t in plan if t)) == Counter(counts), (n, counts)
+        assert sum(1 for target in plan if target is None) == n - sum(counts.values())
+
+
+def test_d5_a_by_label_block_buys_the_joint_answer_and_not_just_one_question():
+    """A target is a conjunction of pairs, so a plan that addresses every question is the only way to hold a share as n
+    moves (gate G2, design doc D5). The allocator hands the block its weight over the pool and the engine is the one
+    that has to find a record whose rules agree."""
+    targets = {"a:1 & b:2": {"weight": 3}, "a:0 & b:2": {"weight": 1}}
+    plan = PlanAllocator({"by_label": targets}).allocate(8, random.Random(0))
+    assert Counter(str(target) for target in plan) == Counter({"a:1 & b:2": 6, "a:0 & b:2": 2})
+    assert all(isinstance(target, LabelTarget) for target in plan)
+    assert {(qid, key) for target in plan for qid, key in target.pairs} == {("a", "1"), ("a", "0"), ("b", "2")}
+
+
+def test_d5_a_plan_that_contradicts_itself_is_named_before_the_first_draw():
+    """Five shapes that would otherwise cost a full run to explain themselves: a quota fighting a weight (two answers
+    to "how many"), a target part that names nothing, two answers of one question, blocks that disagree about the pool
+    they are drawn from, and a key the allocator does not know."""
+    for targets, fragment in (({"by_category": {"x": {"quota": 3, "weight": 2}}}, "declares both `weight`"),
+                              ({"by_label": {"a:1 & ": {"weight": 1}}}, 'parts joined by " & "'),
+                              ({"by_label": {"a:1 & a:2": {"weight": 1}}}, "asks two answers of ['a']"),
+                              ({"by_category": {"x": {"share": 0.2}, "y": {"share": 0.4}}}, "they disagree"),
+                              ({"by_category": {"x": {"normal": 1}}}, r"['normal']"),
+                              ({"normal_share": 1.5}, "is not a share of n (0..1)")):
+        assert any(fragment in error for error in PlanAllocator(targets).static_errors()), (targets, fragment)
+    assert PlanAllocator({"by_label": {"a:1": {"weight": 1}}}).static_errors() == []
+    with pytest.raises(PlanError, match="declares both `weight`"):
+        PlanAllocator({"by_category": {"x": {"quota": 3, "weight": 2}}}).allocate(10, random.Random(0))
+
+
+def test_d5_a_floor_the_questions_cannot_serve_is_refused_before_the_search(tmp_path, monkeypatch):
+    """A gap the exit gate reports is a fact about the spec's rules; this is a fact about its serving contract, and a
+    target the contract cannot answer would be searched `LABEL_ATTEMPTS` times per slot before the gate called it rare.
+    The same for a question the spec never asks."""
+    for answer, fragment in (("window_band:9", "the question answers 0, 1, 2"),
+                             ("no_such_question:0", "which the spec does not ask")):
+        spec = spec_of("law-appeal-window")
+        spec["generator"]["plan_targets"] = {"floor": 0.05, "by_label": {answer: {"weight": 1}}}
+        directory = tmp_path / "bad-plan"
+        directory.mkdir(exist_ok=True)
+        (directory / "spec.json").write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
+        monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(tmp_path))
+        out = tmp_path / "bad-plan.jsonl"
+        with pytest.raises(PlanError, match="answers its questions cannot carry"):
+            engine.run(["--scenario", "bad-plan", "--n", "5", "--seed", "0", "--pairs", "0", "--out", str(out)])
+        assert not out.exists(), "a refused plan must not leave a half-written file"
+
+
+def test_d6_the_selector_is_the_spec_saying_how_many_fields_a_record_carries():
+    """D6: `min`/`max` were literals copied out of the legacy builder (1 + randint(2, 5)) and they count the fields in
+    one record, the triggering one included. `min`/`max` of 3..6 are the released numbers, so omitting the block stays
+    today's behaviour, and the draw is clamped to the fields that exist instead of carrying an implicit "a spec needs
+    six fields" floor — which is what `test_a_three_field_spec_still_fills_every_record` is about."""
+    fields = [{"name": f"f{i}", "type": "enum", "values": ["a", "b"]} for i in range(8)]
+    rng = random.Random(0)
+    sized = BoundarySampler(fields, [{"min": 5, "max": 5}], spec={})
+    assert {len(sized.sample(None, rng)) for _ in range(30)} == {5}
+    default = BoundarySampler(fields, [], spec={})
+    assert {len(default.sample(None, rng)) for _ in range(60)} == {3, 4, 5, 6}
+    clamped = BoundarySampler(fields[:3], [{"min": 3, "max": 6}], spec={})
+    assert {len(clamped.sample(None, rng)) for _ in range(20)} == {3}
+
+
+def test_d6_a_selector_the_engine_cannot_read_is_refused_at_construction():
+    """Checked once, so a typo cannot sample a whole run wrong — the keys are the spec's, and so is a wrong one."""
+    fields = [{"name": "f", "type": "enum", "values": ["a", "b"]}]
+    for declared, message in ((("TONE",), "must be an object"),
+                              ({"min": 6, "max": 3}, "not 1 <= min <= max"),
+                              ({"min": 0}, "not 1 <= min <= max"),
+                              ({"min": "x"}, "must be integers"),
+                              ({"minz": 3}, r"declares \['minz'\]"),
+                              ({"weight_trigger_extra": 1.5}, "must be a probability"),
+                              ({"max_trigger_extra": -1}, "cannot be negative")):
+        with pytest.raises(values.UnsupportedField, match=message):
+            BoundarySampler(fields, [declared], spec={})
+
+
 # ---------------------------------------------------------------- the matrix itself (G1, G6)
 
 
@@ -476,20 +718,24 @@ def test_labels_are_reachable_on_both_sides_where_the_rules_can_read_them(tmp_pa
         assert all(len(counter) >= 2 for counter in tables.values()), (slug, tables)
 
 
-def test_the_degenerate_ledger_is_what_pr2_left(tmp_path):
-    """F3's debt as a set, both directions: the scenarios still collapsed are exactly LEDGER, and the ones PR2a and
-    PR2b paid really do move on both sides now — so the ledger is only allowed to shrink by moving an entry into a PAID
-    map, and a paid scenario that collapses again fails here instead of being quietly written back into the debt list."""
+def test_the_degenerate_ledger_is_empty_since_pr3_paid_the_last_two(gate_dir):
+    """F3's debt as a set, both directions: nothing is collapsed any more — `LEDGER` is empty, so a question that
+    collapses again puts a name in `seen` and fails here instead of quietly re-enlarging the ledger — and the scenarios
+    each PR paid really do move on both sides.
+
+    Read at the gate's own n = 120, which is the size the floor is a whole number of records at: at n = 60 two spike
+    specs drop their single under-floor answer outright and read as collapsed, which is `UNDER_FLOOR`'s claim about the
+    spec's rules, not `LEDGER`'s about the engine."""
     seen = {}
     tables_by_slug = {}
     for slug in SLUGS:
-        tables = common.label_table(generate(slug, tmp_path, n=60))
+        tables = common.label_table(gate_once(slug, gate_dir)[1])
         tables_by_slug[slug] = tables
         flat = sorted(qid for qid, counter in tables.items() if len(counter) == 1)
         if flat:
             seen[slug] = flat
-    assert seen == LEDGER
-    for paid in (PAID_BY_PR2A, PAID_BY_PR2B):
+    assert seen == LEDGER == {}
+    for paid in (PAID_BY_PR2A, PAID_BY_PR2B, PAID_BY_PR3):
         for slug, questions in paid.items():
             for qid in questions:
                 assert len(tables_by_slug[slug][qid]) >= 2, (slug, qid, tables_by_slug[slug][qid])
@@ -501,6 +747,153 @@ def test_the_same_seed_reproduces_the_same_file(tmp_path):
         second = generate(slug, tmp_path, n=30, seed=11)
         assert [json.dumps(r, sort_keys=True, ensure_ascii=False) for r in first] == \
                [json.dumps(r, sort_keys=True, ensure_ascii=False) for r in second], slug
+
+
+# ---------------------------------------------------------------- the exit gate (G1, G2, G4)
+
+#: The size G1 reads the matrix at. 120 is the smallest n for which the 5 % floor is a whole number of records (6)
+#: and still big enough that a 2 % answer is a miss rather than a rounding artefact.
+GATE_N = 120
+
+_GATE_CACHE: dict = {}
+
+
+@pytest.fixture(scope="session")
+def gate_dir(tmp_path_factory):
+    return tmp_path_factory.mktemp("engine-gate")
+
+
+def gate_once(slug, gate_dir, n=GATE_N, seed=0):
+    """One engine run per (slug, n, seed) for the whole file.
+
+    The same run answers four questions below — the record count, the shape of every record, the gate's own lines and
+    the exit code — and 38 scenarios at n = 120 is the slowest thing in this module, so the first caller caches it.
+    """
+    key = (slug, n, seed)
+    if key not in _GATE_CACHE:
+        _GATE_CACHE[key] = gate_run(slug, gate_dir / f"{slug}-{n}-{seed}.jsonl", n, seed=seed)
+    return _GATE_CACHE[key]
+
+
+@pytest.mark.parametrize("slug", SLUGS)
+def test_g1_the_gate_reports_exactly_the_debt_this_spec_owes(slug, gate_dir):
+    """G1, both halves, read off the engine's own stderr rather than recomputed here.
+
+    The structural half is the engine's: every scenario ships exactly n records and `check_record` accepts each one.
+    The distribution half is the spec author's: an answer no rule reaches, an answer under the floor, a catch-all that
+    answers most of the file. Those three are `NEVER_LABELLED`, `UNDER_FLOOR` and `CATCH_ALL`, and the equality is the
+    point in both directions — a scenario that pays a debt has to move its name into the map below (and out of
+    `GATE_CLEAN`'s opposite), and one that gains a new dead answer fails here instead of shipping it quietly.
+
+    The exit code is 0 for all 38, which is §3's exit row, not an absence of gaps: strictness is exactly where a spec
+    declares a `floor`, so 28 spike specs report their history without reddening CI on a threshold nobody chose.
+    """
+    code, records, messages = gate_once(slug, gate_dir)
+    assert len(records) == GATE_N, f"{slug}: {len(records)} of {GATE_N} records"
+    problems = [problem for record in records for problem in common.split_data.check_record(record)]
+    assert problems == [], (slug, problems[:3])
+    never, under, catch = gate_debt(messages)
+    assert never == NEVER_LABELLED.get(slug, {}), slug
+    assert under == UNDER_FLOOR.get(slug, {}), slug
+    assert catch == CATCH_ALL.get(slug), slug
+    assert bool(never or under or catch) == (slug not in GATE_CLEAN), (slug, messages)
+    assert code == 0, (slug, messages)
+
+
+def test_g1_strictness_is_exactly_where_a_gap_exists(gate_dir):
+    """The other side of the exit row: `--gate strict` does fail, so the 28 zeros above are a choice about whose history
+    to red, not a gate that cannot bite. And a clean spec that *did* ask to be judged (`edu-essay-scoring`) still exits
+    0, or the gate would fail on its own best customer."""
+    assert sorted(FLOORED_SLUGS) == ["edu-essay-scoring", "edu-late-work-escalation", "law-appeal-window"]
+    for slug in FLOORED_SLUGS:
+        assert gate_once(slug, gate_dir)[0] == 0, slug
+    owing = sorted(set(SLUGS) - set(GATE_CLEAN))
+    code, _, messages = gate_run(owing[0], gate_dir / f"{owing[0]}-strict.jsonl", GATE_N, gate="strict")
+    assert code == 1, messages
+    assert gate_debt(messages) != ({}, {}, None)
+    code, _, messages = gate_run(GATE_CLEAN[0], gate_dir / f"{GATE_CLEAN[0]}-strict.jsonl", GATE_N, gate="strict")
+    assert (code, messages) == (0, []), messages
+    code, _, _ = gate_run(owing[0], gate_dir / f"{owing[0]}-warn.jsonl", GATE_N, gate="warn")
+    assert code == 0, "`warn` is the pre-PR3 behaviour: the numbers printed, the file kept, the run passed"
+
+
+def test_g2_a_planned_share_does_not_move_with_n(gate_dir):
+    """Gate G2, the arithmetic half of design doc D5: weights over a pool with largest-remainder rounding, and a
+    `by_label` target that names every question's answer, hold the shares as n grows.
+
+    The rounding alone is not enough. A question the plan does not address is left to the natural distribution, and the
+    plan cannot hold what it never asked for: measured at PR3 over 200 seeds of `edu-essay-scoring` at n = 30 against the
+    same plan's n = 3,000 read, `plagiarism_flag:true` under band-only targets spreads sd 6.75pp (the binomial
+    prediction for its 17% rate is 6.87pp) from 0% to 33.3% of the file, and 98 of the 200 runs land more than the gate's
+    5pp away (median 3.57pp, worst 16.90pp). Under the shipped joint cells that question is at 23.3% in all 200 runs.
+    That is why `LabelTarget` is a conjunction.
+
+    The shipped conjunction's own drift is rounding, which is why it is the same number every seed: the worst PR3
+    measured is 1.67pp — `edu-essay-scoring`'s `plagiarism_flag` (plan 25% at n = 30 is 7.5 records) and band 2, and
+    `edu-late-work-escalation`'s two thinner tiers, all between n = 30 and n = 300, and 1.33pp for `law-appeal-window`.
+    n = 3,000 is the nightly row (16.2 + 14.3 + 11.9 s for the three, so the file goes from ~15 s to ~58 s), which is why
+    PR CI reads n = 30 and n = 300.
+
+    `messages == []` is the same claim from the other side: a floored spec that needs retries shows a `note` line and
+    then a gap, so silence means the plan's cells are ones the rules reach without searching.
+    """
+    sizes = [30, 300] + ([3000] if os.environ.get("KEV_MATRIX_FULL") else [])
+    for slug in FLOORED_SLUGS:
+        base = None
+        for n in sizes:
+            code, records, messages = gate_once(slug, gate_dir, n)
+            assert (code, messages) == (0, []), (slug, n, messages)
+            shares = shares_of(records)
+            if base is None:
+                base = shares
+                continue
+            for qid, per_key in base.items():
+                assert set(shares[qid]) == set(per_key), (slug, n, qid)
+                for key, share in per_key.items():
+                    assert abs(shares[qid][key] - share) < 0.05, (slug, n, qid, key, share, shares[qid][key])
+
+
+@pytest.mark.parametrize("slug", PR3_SLUGS)
+def test_g4_a_new_industry_written_only_as_json_passes_the_gate(slug, gate_dir):
+    """G4, the gate these two specs exist to pass: a new industry needs no Python.
+
+    They are the matrix's only scenarios added after the engine rather than before a fix, and each one ships 120
+    records the gate has nothing to say about. The structural claim is that nothing in the generators names a field or
+    a question of theirs — a scenario that needed an engine patch would leave its vocabulary in the engine's Python,
+    and that is exactly the shape `ops.normal_value` reading `field["normal"]` for every type had (F1).
+    """
+    code, records, messages = gate_once(slug, gate_dir)
+    assert (code, messages) == (0, []), (slug, messages)
+    assert len(records) == GATE_N
+    assert all(common.split_data.check_record(record) == [] for record in records), slug
+    engine_source = "\n".join(path.read_text(encoding="utf-8")
+                              for path in sorted((ROOT / "kev/console/generators").glob("*.py")))
+    spec = spec_of(slug)
+    for field in spec["generator"]["fields"]:
+        assert field["name"] not in engine_source, f"{slug}: {field['name']} reached the engine's Python"
+    for qid in spec["questions"]:
+        assert qid not in engine_source, f"{slug}: {qid} reached the engine's Python"
+
+
+def test_g4_declares_its_own_record_shape_and_a_conjunction_per_slot():
+    """What makes the two new specs a G4 rather than two more spike files: `selectors` says four fields per record
+    instead of inheriting a literal that assumed six (D6), and every `by_label` cell is a conjunction over both
+    questions with a `floor` next to it, which is what lets the gate judge the file (D5, G2).
+    """
+    for slug in PR3_SLUGS:
+        gen = spec_of(slug)["generator"]
+        assert gen["selectors"] == [{"min": 4, "max": 4}], slug
+        assert len(gen["fields"]) == 4, slug
+        targets = gen["plan_targets"]
+        assert targets["floor"] == 0.05, slug
+        cells = list(targets["by_label"])
+        assert len(cells) == 6, (slug, cells)
+        assert all(" & " in cell for cell in cells), (slug, cells)
+        questions = set(spec_of(slug)["questions"])
+        assert all({qid for qid, _ in LabelTarget.parse(cell).pairs} == questions for cell in cells), slug
+        rng = random.Random(0)
+        sampler = BoundarySampler(gen["fields"], gen["selectors"], spec={"generator": gen})
+        assert {len(sampler.sample(None, rng)) for _ in range(30)} == {4}, slug
 
 
 # ---------------------------------------------------------------- the rule evaluator (D4, T3/T4, G3)
@@ -610,7 +1003,7 @@ def test_a_rule_that_is_sound_to_parse_and_wrong_to_run_fails_loud():
 
 
 def test_every_shipped_spec_survives_the_static_check():
-    """The 36 matrix specs are what a user copies, so the check that gates them has to be clean on all of them —
+    """The 38 matrix specs are what a user copies, so the check that gates them has to be clean on all of them —
     otherwise G3 refuses the library instead of the broken spec."""
     for slug in SLUGS:
         assert rules.static_errors(spec_of(slug)) == [], slug
@@ -632,40 +1025,104 @@ def test_a_spec_no_record_can_satisfy_is_refused_before_the_first_record(slug, f
     assert not out.exists(), "a refused spec must not leave a half-written file"
 
 
-# ---------------------------------------------------------------- minimal pairs (D8 partially)
+# ---------------------------------------------------------------- minimal pairs (D8)
 
 
-def test_a_pair_flips_a_numeric_field_and_refuses_a_field_it_cannot_move():
-    """PR1a keeps the flip numeric (PR3 makes it typed, design doc D8), but it now works on the flat field view, so a
-    scenario with no `labs` key can have minimal pairs at all."""
+def test_a_pair_moves_every_field_type_the_way_that_type_crosses_a_decision():
+    """D8: the flip is typed, and `build` hands back `(name, twin view, twin derived)` so a catalog pair moves the draw
+    and the engine rebuilds the surfaces from it, instead of editing a string a rule never read.
+
+    Each type has its own other side: a measurement to the safe side of its bound, a pool member to another member, a
+    bool to its negation, a date to the far half of its window, a list by one element, an object by one sub-field, a
+    catalog by one drawn candidate. The low-side measurement is §6 defect 5 paid: the safe window used to be built out of
+    `normal`'s own width, so `critical: {"low": [[-1e9, 30]]}` landed straight back inside its bound and never escaped —
+    0 twins in 200 draws, 200 in 200 now. The refusals under them are not gaps: a one-option pool, a list pinned between
+    its `min` and `max` and a measurement with no `critical` to cross cannot change an answer, and a twin that teaches
+    the same label twice is noise (`common.minimal_pair` refuses it for the same reason)."""
     rng = random.Random(5)
-    field = {"name": "下滑幅度", "unit": "%", "decimals": 1, "normal": [0, 8], "critical": {"high": [[15, 1e9]]}}
     builder = PairBuilder({})
-    state, fields = {"下滑幅度": 30.0}, {"下滑幅度": field}
-    twins = [builder.build(state, fields, "下滑幅度", rng) for _ in range(200)]
-    flipped = [t for t in twins if t is not None]
-    assert flipped, "a high-side critical value never produced a twin in 200 draws"
-    for twin in flipped:
-        # the view is typed since PR2a: the twin carries the safe number itself, and the unit is put back by
-        # `make_record`, not by the flip (design doc D3)
-        assert isinstance(twin["下滑幅度"], (int, float)) and not isinstance(twin["下滑幅度"], bool)
-        assert twin["下滑幅度"] != state["下滑幅度"]
-        assert not ops._is_in_critical_range(twin["下滑幅度"], field)
-    for name in (None, "absent"):
-        assert builder.build(state, fields, name, rng) is None
-    clause = {"条款": {"name": "条款", "type": "text", "values": ["a", "b"]}}
-    assert builder.build({"条款": "a"}, clause, "条款", rng) is None
+    high = {"name": "下滑幅度", "unit": "%", "decimals": 1, "normal": [0, 8], "critical": {"high": [[15, 1e9]]}}
+    low = {"name": "退赔比例", "unit": "%", "decimals": 1, "normal": [0, 100], "critical": {"low": [[-1e9, 30]]}}
+    enum = {"name": "评级", "type": "enum", "values": ["A", "B", "C"]}
+    text = {"name": "条款", "type": "text", "values": ["第 3 条", "第 7 条"]}
+    flag = {"name": "已签名", "type": "bool"}
+    day = {"name": "到期日", "type": "date", "range": ["2026-10-01", "2026-10-31"]}
+    rows = {"name": "持仓", "type": "list", "min": 1, "max": 3, "item_values": ["a", "b", "c"]}
+    parent = {"送达延误天数": 9, "异议已登记": True}
+    nested = {"name": "送达回执", "type": "object", "fields": [
+        {"name": "送达延误天数", "unit": "天", "decimals": 0, "normal": [0, 10], "critical": {"high": [[7, 1e9]]}},
+        {"name": "异议已登记", "type": "bool"}]}
+    pool = [{"name": f"c{i}", "urgency": i} for i in range(4)]
+    catalog = {"name": "症状", "type": "catalog", "pool": pool}
+    drawn = [dict(pool[0]), dict(pool[1])]
+
+    def flips(field, value, derived=None, draws=200):
+        """The moved value from every draw of one field, and a refusal to lose a single one of them."""
+        name = field["name"]
+        results = [builder.build({} if derived else {name: value}, {name: field}, name, rng, derived=derived)
+                   for _ in range(draws)]
+        lost = sum(1 for result in results if result is None)
+        assert lost == 0 and all(result[0] == name for result in results), f"{name}: {lost} of {draws} lost"
+        return [result[2 if derived else 1][name] for result in results]
+
+    assert all(not values.in_critical(v, high) and v < 15 and v != 30.0 for v in flips(high, 30.0))
+    assert all(not values.in_critical(v, low) and v > 30 for v in flips(low, 12.0))
+    assert set(flips(enum, "B")) == {"A", "C"}
+    assert set(flips(text, "第 3 条")) == {"第 7 条"}
+    assert set(flips(flag, True)) == {False}
+    middle = date.fromisoformat("2026-10-16")
+    assert all(date.fromisoformat(v) > middle for v in flips(day, "2026-10-05"))
+    assert all(date.fromisoformat(v) <= middle for v in flips(day, "2026-10-28"))
+    assert all(len(v) == 2 for v in flips(rows, ["a", "b", "c"]))
+    for moved in flips(nested, dict(parent)):
+        assert set(moved) == set(parent)
+        assert sum(1 for key in moved if moved[key] != parent[key]) == 1, moved
+    for moved in flips(catalog, None, derived={"症状": drawn}):
+        assert len(moved) == 2 and sum(1 for c in moved if c not in drawn) == 1, moved
+        assert len({candidate["name"] for candidate in moved}) == 2, "a catalog twin drew the same candidate twice"
+    # the refusals: nothing here can change an answer, so there is no pair to write
+    for field, value in (({"name": "唯一", "type": "enum", "values": ["A"]}, "A"),
+                         ({"name": "标签", "type": "list", "min": 2, "max": 2, "item_values": ["a", "b"]}, ["a", "b"]),
+                         ({"name": "K+", "unit": "mmol/L", "decimals": 1, "normal": [1, 2]}, 1.5)):
+        name = field["name"]
+        assert builder.build({name: value}, {name: field}, name, rng) is None, name
+        assert builder.build({name: value}, {name: field}, "absent", rng) is None, name
 
 
-def test_turning_pairs_on_never_breaks_a_run(tmp_path):
-    """The count of twins is not asserted, because two known gaps cap it and both belong to PR3 (design doc D8): the
-    flip is numeric only, and `ops.crossed` builds its safe window off `normal` in a way that lands back inside a
-    `critical.low` bound, so a field whose danger is on the low side (退赔比例 < 30 %) never escapes it. What PR1a
-    promises is that switching pairs on cannot poison the file — every appended twin is still a valid record."""
+def test_a_catalog_twin_moves_exactly_one_drawn_candidate():
+    """The pool minus the draw is the only place a replacement can come from, so a catalog whose whole pool is already
+    drawn has nothing left to move and the pair is dropped rather than duplicated."""
+    pool = [{"name": "a"}, {"name": "b"}, {"name": "c"}]
+    field = {"name": "症状", "type": "catalog", "pool": pool}
+    builder = PairBuilder({})
+    rng = random.Random(5)
+    moved = builder.build({}, {"症状": field}, "症状", rng, derived={"症状": [dict(pool[0]), dict(pool[1])]})
+    assert moved[2]["症状"][0] in pool and moved[2]["症状"][1] in pool
+    assert sum(1 for c in moved[2]["症状"] if c not in pool[:2]) == 1
+    assert builder.build({}, {"症状": field}, "症状", rng,
+                         derived={"症状": [dict(c) for c in pool]}) is None, "every candidate was already drawn"
+
+
+def test_a_catalog_pair_cannot_smuggle_a_second_fact_into_the_twin():
+    """`fact_keys` is the guard: the field plus the keys its own `surface` builds. A catalog twin changes the draw and
+    every surface spelled out of it, which is one fact seen two ways (D11) — a twin that also moved an unrelated field
+    would demonstrate a boundary no record showed, and the engine drops it."""
+    field = {"name": "症状", "type": "catalog", "surface": {"主诉": "x"}}
+    assert fact_keys(field, "症状") == {"症状", "主诉"}
+    assert fact_keys({"name": "年龄", "unit": "岁"}, "年龄") == {"年龄"}
+
+
+def test_turning_pairs_on_appends_twins_that_are_still_valid_records(tmp_path):
+    """Since D8 an unsteered record has bounds to cross too, so a run with `--pairs` ships more than `--n` lines: the
+    number PR3 measured for this spec is 59 records for n = 40 at seed 3 (the spike's own file, whose `退赔比例` used to
+    be unflippable and is not now). What is promised here is the safe half of turning it on — every appended twin is a
+    record `check_record` accepts, with the same questions as its parent."""
     records = generate("law-sentencing", tmp_path, n=40, seed=3, pairs=0.9)
-    assert records
+    assert len(records) == 59, len(records)
+    questions = set(spec_of("law-sentencing")["questions"])
     for record in records:
         assert common.split_data.check_record(record) == []
+        assert set(record["questions"]) == questions
 
 
 # ---------------------------------------------------------------- the label never reaches the prompt (G8)
@@ -723,11 +1180,12 @@ def test_the_fixtures_documented_example_has_the_keys_a_real_record_has(slug, tm
 
 
 def test_turning_pairs_on_leaves_a_catalog_run_clean(tmp_path):
-    """The pair rule fires only on a steered record and these specs declare no plan targets, so a catalog run ships no
-    twins today (PR3's selectors are what change that, design doc D8). What is promised here is the safe half: switching
-    pairs on cannot drop a draw or smuggle one into the state."""
+    """The pair rule now fires on unsteered records too (design doc D8), so a catalog run with `--pairs` 0.9 ships twins
+    on top of its 30 records — 38 at seed 3, the number PR3 measured with the object flip repaired (100 of 200 draws
+    lost before, 200 of 200 after). What is promised here is the G8 half: a twin may move the draw, it may not drop a
+    draw or smuggle one's attributes into the state."""
     records = generate("fin-credit-adverse", tmp_path, n=30, seed=3, pairs=0.9)
-    assert len(records) == 30
+    assert len(records) == 38, len(records)
     for record in records:
         assert record["_meta"]["derive"]["风险事件"]
         assert not set(state_keys(record["state"])) & {"severity", "reviewable", "segment"}
