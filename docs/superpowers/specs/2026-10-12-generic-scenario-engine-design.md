@@ -550,7 +550,7 @@ PR 3 与 PR 4 之间是 **hunk 级**分离（`git apply --cached` 只打我们�
 | 缺陷 8 | `values.normal_value` 的阈值取 `rng.uniform(low, high)`（区间内随机点）而不是 `normal[0]`，`quantize` 按 `decimals` 定类型（`decimals <= 0` → `int`，否则恰好那么多位小数），于是同一列不再同时出 `"0 个"` 与 `"160.0 个"`；这正是 `edu-essay-scoring` 的 `final_band` 在 PR2a/PR2b 之后仍然塌缩的那条根因（三个分量钉在 `normal [1, 9]` 的下界，`>= 7` 几乎不可达） |
 | 缺陷 9 | 三个数值几何函数从 `ops.py` 整体迁进 `values.py`，`ops.py` 只留 `realize_tier` 与算子表，`from common import …` 在引擎侧归零（只剩六个 legacy `gen_*.py`，D9 里 PR5 删它们）；`engine.py` 也不再往 `sys.path` 里插 generators 目录，全部相对导入——「把 `kev` 当库 import 就 `ModuleNotFoundError`」那条路从此不存在 |
 | G4 零 Python | `law-appeal-window`、`edu-late-work-escalation` 两份只交 JSON：n=120 满 N、`check_record` 全清，且因为自己声明了 `floor`，它们是在 strict 口径下过的 G1；shape 都是 `bands`、`spike_records=0`（spike 从未跑过它们，所以不可能进 20/32 的崩溃计数）。「零 Python」的可机检形态：每个字段名与每个 `qid` 都不得出现在 `kev/console/generators/*.py` 的拼接文本里；`edu-late-work-escalation` 另钉住记录形状由 spec 声明（`selectors == [{min: 4, max: 4}]`、4 个字段、6 个 `by_label` 格且每格含 `" & "`、每格覆盖两个问句，采样恒得 4 个键） |
-| 路由（§3 出口行） | `generator/validate` 分两半返回：`errors` 只说「这份 spec 生成不了」，闸门缺口在 `gate_gaps` 字段。同一个 `fin-covenant-text`：不加 floor → `errors: []` 并报告 `remedy:repricing` 与 `remedy:waiver` 「is never labelled」；加 `floor: 0.05` → `errors: [{rule_id: "<gate>"}]`。阈值只有一份来源（`engine.quality_gaps`），路由不自己重算份额（`tests/test_console_api.py` 32 passed） |
+| 路由（§3 出口行） | `generator/validate` 分两半返回：`errors` 只说「这份 spec 生成不了」，闸门缺口在 `gate_gaps` 字段。同一个 `fin-covenant-text`：不加 floor → `errors: []` 并报告 `remedy:repricing` 与 `remedy:waiver` 「is never labelled」；加 `floor: 0.05` → `errors: [{rule_id: "<gate>"}]`。阈值只有一份来源（`engine.quality_gaps`），路由不自己重算份额（本提交单独跑：`tests/test_console_api.py` 27 passed，其中新增的就是这两条） |
 
 **合取 `by_label` 是 G2 的前提，这一条是量出来的而不是推出来的**（`.tmp-pr3-spread.py`，同一份 `edu-essay-scoring`、200 个种子读 n=30，参照同一计划的 n=3000 读数）：
 
@@ -569,7 +569,12 @@ PR 3 与 PR 4 之间是 **hunk 级**分离（`git apply --cached` 只打我们�
 2. **`by_label` 是拒绝采样而不是定向 steer**：引擎不知道「哪个字段必须越界」才会让规则给出 `final_band:3`，只能重抽。定向化需要 spec 自己写下「这个答案由哪个字段的哪条界产生」，那是 schema 扩张，不在 D5 里。代价可接受：规则能到达的格子平均 1/p 次抽取，到不了的格子一个 600 次探针就定性上报。
 3. **G5（六份 fixture 收编）与 PR4 的对照报告未动**：本 PR 的判据是 T5/G1/G2/G4，legacy 仍在线（D9）。
 
-**回归取证的边界**：三件套（`test_engine_matrix.py` + `test_medical_generators.py` + `test_conventions.py`）+ `test_console_api.py` + `test_generators.py` = **219 passed / 3 failed**，三条红全部是 §6 缺陷 10（`kev/contrastive.py:28` 的 `%-d` 在 Windows 上 `ValueError: Invalid format string`）；已核 `git status` 对 `kev/contrastive.py` 与 `tests/test_generators.py` 为空 ⇒ 两份都在 HEAD，与 PR3 无关，Linux CI 不跑这一条。本 PR 只改 `kev/console/generators/` 与测试；`app.py` 的路由未动（出口在 PR2b 已接），只新增了 §5.7 那两条路由测试。
+**回归取证的边界**（两次运行，分别是「改动的文件」与「提交出来的那一棵树」）：
+
+- **工作区（本仓库，含并行会话的文件）**：三件套（`test_engine_matrix.py` + `test_medical_generators.py` + `test_conventions.py`）+ `test_console_api.py` = **206 passed / 49.5s**；再加 `test_generators.py` = **219 passed / 3 failed**。三条红全部是 §6 缺陷 10（`kev/contrastive.py:28` 的 `%-d` 在 Windows 上 `ValueError: Invalid format string`）；已核 `git status` 对 `kev/contrastive.py` 与 `tests/test_generators.py` 为空 ⇒ 两份都在 HEAD，与 PR3 无关，Linux CI 不跑这一条。
+- **提交出来的树单独跑**（`engine/5-plan-pairs-gate` 的 worktree，用主 checkout 的 venv：`python -m pytest` 时 `import kev` 落在 worktree 自己那份源码上）：同一组五个文件 = **212 passed / 4 failed**。多出的那一条是 `test_conventions.py` 的 UTF-8 规则扫 `tests/test_console_{services_publish,distill_routes,goldset_distill}.py`，因为扫描器按 `line.split("#", 1)[0]` 去注释，撞上字符串字面量里的 `"# model card"` 与写在下一行的 `encoding=`。这三份文件与扫描器本身在 `main`、在 base 分支、在本提交里逐字节相同（`git diff main HEAD -- <那四份>` 为空），所以它是 base 上就有的假阳性，不是本 PR 的回归；工作区那次不红是因为并行会话正在改那三份测试。
+
+本 PR 改的引擎面之外只有两处路由：`app.py` 的 validate 从「只有 `errors`/`records`」变成「`errors` 仍只说这份 spec 生成不了，闸门的数字走 `gate_gaps`，声明了 `floor` 才把缺口翻成 `rule_id: <gate>`」，并新增 `<plan>` 静态报错一支；dry-run 里那行 `from common import label_table` 改成包名，因为 PR3 删掉了 `engine.py` 往 `sys.path` 插 generators 目录的补丁——那六行正是它唯一的用户。§5.7 的两条路由测试断言的就是这个分界。
 
 ---
 
