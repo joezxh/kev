@@ -265,6 +265,30 @@ def test_append_events_with_no_rows_reports_no_new_cursor(store):
 
 
 def test_schema_version_is_stamped(store):
-    # v5 added jobs.daemon_id for the distill_daemon Wave D refactor
-    # (kev/console/data_daemon.py + the corresponding app.py endpoints).
-    assert store.schema_version() == 5
+    # v7 upgrades projects to the pipeline root: jobs.project_id + project
+    # status/scenario/goal/archived_at/freeze_* (§4.1).
+    assert store.schema_version() == 7
+
+
+def test_schema_v7_adds_project_columns(store):
+    assert store._column_exists("jobs", "project_id")
+    for col in ("status", "scenario", "goal", "archived_at",
+                "freeze_min_records", "freeze_min_review_ratio"):
+        assert store._column_exists("projects", col)
+
+
+def test_new_job_defaults_to_legacy_sentinel(store):
+    # create_job still takes no project_id until Task 2; §4.1 DEFAULT '' fills it.
+    job_id = store.create_job(
+        kind="train", stage="train", scenario="triage", title="t", request={},
+        argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+        artifacts_in=[], artifacts_out=[])
+    assert store.get_job(job_id)["project_id"] == ""
+
+
+def test_store_reopens_idempotently(tmp_path):
+    path = tmp_path / "kev-console.db"
+    first = Store(path)
+    version = first.schema_version()
+    second = Store(path)
+    assert second.schema_version() == version == 7

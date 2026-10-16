@@ -24,7 +24,7 @@ from sqlalchemy import text
 
 from . import paths
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 
 # 运行时共享的编排库单例：create_app 启动时写入，stage 模块（data.py 等）借此解析
 # 场景 spec_path。未初始化时返回 None，调用方应回退到 docs/medical/specs 目录。
@@ -126,6 +126,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   parent_id     TEXT REFERENCES jobs(id),
   attempt       INTEGER NOT NULL DEFAULT 1,
   daemon_id     TEXT,
+  template_id   TEXT,
+  project_id    TEXT NOT NULL DEFAULT '',
   exit_code     INTEGER,
   error         TEXT,
   created_at    TEXT NOT NULL,
@@ -134,6 +136,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS jobs_status_idx   ON jobs(status);
 CREATE INDEX IF NOT EXISTS jobs_scenario_idx ON jobs(scenario, created_at DESC);
+CREATE INDEX IF NOT EXISTS jobs_project_idx  ON jobs(project_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS artifacts (
   id         TEXT PRIMARY KEY,
@@ -250,12 +253,48 @@ CREATE TABLE IF NOT EXISTS scenario_spec_history (
 );
 CREATE INDEX IF NOT EXISTS spec_history_scenario_idx ON scenario_spec_history(scenario_id, created_at DESC);
 
+-- 作业类型「提交表单」参数 schema：单一真相源，落库后可经 API 改（版本化）。
+-- 结构与前端 JobStagePage 的 FieldSpec 对齐；default 与各 StageSpec.build() 默认值一致。
+CREATE TABLE IF NOT EXISTS stage_param_specs (
+  kind        TEXT PRIMARY KEY,
+  schema_json TEXT NOT NULL,
+  version     INTEGER NOT NULL DEFAULT 1,
+  updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS stage_param_spec_history (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,
+  schema_json TEXT NOT NULL,
+  version     INTEGER NOT NULL,
+  created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS stage_param_history_kind_idx ON stage_param_spec_history(kind, created_at DESC);
+
+-- 命名作业模板：跨会话复用/编辑某类任务的参数预设。
+CREATE TABLE IF NOT EXISTS job_templates (
+  id         TEXT PRIMARY KEY,
+  kind       TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  scenario   TEXT NOT NULL DEFAULT '',
+  params     TEXT NOT NULL DEFAULT '{{}}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS job_templates_kind_idx ON job_templates(kind, updated_at DESC);
+
 -- ch6 管理面：projects / members / quota / webhooks / invoices
 CREATE TABLE IF NOT EXISTS projects (
   id          TEXT PRIMARY KEY,
   slug        TEXT NOT NULL UNIQUE,
   name        TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL DEFAULT 'active',
+  scenario    TEXT NOT NULL DEFAULT '',
+  goal        TEXT NOT NULL DEFAULT '',
+  archived_at TEXT,
+  freeze_min_records      INTEGER NOT NULL DEFAULT 300,
+  freeze_min_review_ratio {real}    NOT NULL DEFAULT 0.10,
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
@@ -316,7 +355,8 @@ _JSON_COLUMNS = frozenset({"request", "env_overlay", "artifacts_in", "artifacts_
 _ROW_COLUMNS = (
     "id", "kind", "stage", "scenario", "title", "status", "request", "argv",
     "env_overlay", "cwd", "log_path", "artifacts_in", "artifacts_out",
-    "parent_id", "attempt", "exit_code", "error", "created_at", "started_at", "finished_at",
+    "parent_id", "attempt", "daemon_id", "template_id", "project_id",
+    "exit_code", "error", "created_at", "started_at", "finished_at",
 )
 
 
@@ -430,6 +470,9 @@ class Store:
         # 幂等播种：把 run_matrix 已知的医疗场景落库（INSERT OR IGNORE 按 slug 去重，
         # 不覆盖用户后续编辑）。建库即播种，保证 fresh DB 也能开箱即用。
         self.seed_scenarios()
+        # 幂等播种：作业类型「提交表单」参数 schema（来自 kev/console/stage_params.py）。
+        # 只在缺失时写入，用户经 API 改过的 schema 不会被覆盖；建库即播种，开箱即用。
+        self.seed_stage_params()
 
     # ---- connection / transaction ---------------------------------------
 
@@ -482,6 +525,19 @@ class Store:
         return text(
             f"INSERT INTO {table} ({cols}) VALUES ({ph}) "
             f"ON CONFLICT ({', '.join(conflict_cols)}) DO NOTHING"
+        )
+
+    def _upsert_sql(self, table: str, columns: list[str], conflict_cols: list[str]) -> "sa.TextClause":
+        """按后端产出「冲突则更新」的 INSERT（upsert）：sqlite 用 INSERT OR REPLACE；
+        postgres 用 ON CONFLICT DO UPDATE SET（排除冲突键）。"""
+        cols = ", ".join(columns)
+        ph = ", ".join(f":{c}" for c in columns)
+        if self.backend == "sqlite":
+            return text(f"INSERT OR REPLACE INTO {table} ({cols}) VALUES ({ph})")
+        updates = ", ".join(f"{c}=excluded.{c}" for c in columns if c not in conflict_cols)
+        return text(
+            f"INSERT INTO {table} ({cols}) VALUES ({ph}) "
+            f"ON CONFLICT ({', '.join(conflict_cols)}) DO UPDATE SET {updates}"
         )
 
     # ---- schema version (console_meta，两端通用) ------------------------
@@ -540,6 +596,32 @@ class Store:
             if not self._column_exists("jobs", "daemon_id"):
                 with self.engine.begin() as conn:
                     conn.execute(text("ALTER TABLE jobs ADD COLUMN daemon_id TEXT"))
+        # v6: jobs.template_id 追溯作业来自哪个模板（新增列）。
+        if version < 6:
+            if not self._column_exists("jobs", "template_id"):
+                with self.engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE jobs ADD COLUMN template_id TEXT"))
+        # v7: §4.1 —— jobs.project_id + projects 升级为流水线根（status/scenario/goal/
+        # archived_at/freeze_*）。旧库逐列幂等 ALTER；新库由 _ddl 自带。'' 是 legacy 哨兵（D14）。
+        if version < 7:
+            real = "DOUBLE PRECISION" if self.backend.startswith("postgres") else "REAL"
+            if not self._column_exists("jobs", "project_id"):
+                with self.engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE jobs ADD COLUMN project_id TEXT NOT NULL DEFAULT ''"))
+            with self.engine.begin() as conn:
+                conn.execute(text("CREATE INDEX IF NOT EXISTS jobs_project_idx ON jobs(project_id, created_at DESC)"))
+            project_columns = {
+                "status": "TEXT NOT NULL DEFAULT 'active'",
+                "scenario": "TEXT NOT NULL DEFAULT ''",
+                "goal": "TEXT NOT NULL DEFAULT ''",
+                "archived_at": "TEXT",
+                "freeze_min_records": "INTEGER NOT NULL DEFAULT 300",
+                "freeze_min_review_ratio": f"{real} NOT NULL DEFAULT 0.10",
+            }
+            for column, ddl_type in project_columns.items():
+                if not self._column_exists("projects", column):
+                    with self.engine.begin() as conn:
+                        conn.execute(text(f"ALTER TABLE projects ADD COLUMN {column} {ddl_type}"))
         if version < SCHEMA_VERSION:
             with self.engine.begin() as conn:
                 conn.execute(
@@ -551,25 +633,27 @@ class Store:
 
     def create_job(self, *, kind, stage, scenario, title, request, argv, env_overlay,
                    cwd, log_path, artifacts_in, artifacts_out, parent_id=None,
-                   attempt=1, daemon_id=None) -> str:
+                   attempt=1, daemon_id=None, template_id=None) -> str:
         """attempt 是「第几次尝试」：重试（换名续跑）时由调用方递增，jobs 表据此区分
         首次执行与重试。parent_id 指向被重试的那个作业。
 
         daemon_id：仅 distill_daemon 阶段填，由 stages/data.py::_distill_daemon
         生成（uuid4().hex，32 字符），写库后 cancel_job 端点据此去设 loopback
         取消标志；其他阶段留 None。
+
+        template_id：作业若由某个命名模板发起，记录其 id 以便追溯（可空）。
         """
         job_id = uuid.uuid4().hex
         self._conn().execute(
             text("INSERT INTO jobs (id, kind, stage, scenario, title, status, request, argv, env_overlay, cwd,"
-                 " log_path, artifacts_in, artifacts_out, parent_id, attempt, daemon_id, created_at)"
+                 " log_path, artifacts_in, artifacts_out, parent_id, attempt, daemon_id, template_id, created_at)"
                  " VALUES (:id,:kind,:stage,:scenario,:title,'pending',:request,:argv,:env_overlay,:cwd,"
-                 " :log_path,:artifacts_in,:artifacts_out,:parent_id,:attempt,:daemon_id,:created_at)"),
+                 " :log_path,:artifacts_in,:artifacts_out,:parent_id,:attempt,:daemon_id,:template_id,:created_at)"),
             dict(id=job_id, kind=kind, stage=stage, scenario=scenario, title=title,
                  request=_dumps(request), argv=_dumps(argv), env_overlay=_dumps(env_overlay),
                  cwd=str(cwd), log_path=str(log_path), artifacts_in=_dumps(artifacts_in),
                  artifacts_out=_dumps(artifacts_out), parent_id=parent_id, attempt=int(attempt),
-                 daemon_id=daemon_id, created_at=_now()),
+                 daemon_id=daemon_id, template_id=template_id, created_at=_now()),
         )
         return job_id
 
@@ -1063,6 +1147,138 @@ class Store:
                          category="medical", sort=idx, created_at=now, updated_at=now),
                 )
         self._backfill_specs()
+
+    # ---- stage param specs ------------------------------------------------
+
+    def seed_stage_params(self) -> None:
+        """幂等播种：把 stage_params.DEFAULT_SCHEMAS 落库为各 kind 的初始 schema。
+
+        只在 kind 不存在时写入（INSERT OR IGNORE），用户经 API 改过的 schema 不会被覆盖；
+        建库即播种，保证 fresh DB 也能开箱即用，且前端无需硬编码任何字段。
+        """
+        from . import stage_params
+        now = _now()
+        for kind, fields in stage_params.DEFAULT_SCHEMAS.items():
+            with self.tx() as conn:
+                conn.execute(
+                    self._upsert_ignore_sql(
+                        "stage_param_specs",
+                        ["kind", "schema_json", "version", "updated_at"],
+                        ["kind"]),
+                    dict(kind=kind, schema_json=_dumps(fields), version=1, updated_at=now),
+                )
+
+    def get_stage_params(self, kind: str):
+        """读取某 kind 的提交表单 schema；库里没有则回退到代码默认（DEFAULT_SCHEMAS）。"""
+        from . import stage_params
+        row = self._conn().execute(
+            text("SELECT schema_json, version FROM stage_param_specs WHERE kind=:k"),
+            {"k": kind}).mappings().fetchone()
+        if row is None:
+            return stage_params.DEFAULT_SCHEMAS.get(kind, []), 0, "default"
+        return _loads(row["schema_json"]), int(row["version"]), "db"
+
+    def save_stage_params(self, kind: str, fields: list[dict]) -> dict:
+        """改某 kind 的 schema：版本 +1，旧版本写入 stage_param_spec_history，再 upsert 新版本。"""
+        from . import stage_params
+        now = _now()
+        with self.tx() as conn:
+            row = conn.execute(
+                text("SELECT version, schema_json FROM stage_param_specs WHERE kind=:k"),
+                {"k": kind}).mappings().fetchone()
+            prev_version = int(row["version"]) if row else 0
+            prev_schema = row["schema_json"] if row else _dumps(stage_params.DEFAULT_SCHEMAS.get(kind, []))
+            new_version = prev_version + 1
+            if row is not None:
+                conn.execute(
+                    text("INSERT INTO stage_param_spec_history (id, kind, schema_json, version, created_at)"
+                         " VALUES (:id,:k,:s,:v,:ts)"),
+                    dict(id=uuid.uuid4().hex, k=kind, s=prev_schema, v=prev_version, ts=now))
+            conn.execute(
+                self._upsert_sql(
+                    "stage_param_specs",
+                    ["kind", "schema_json", "version", "updated_at"],
+                    ["kind"]),
+                dict(kind=kind, schema_json=_dumps(fields), version=new_version, updated_at=now))
+        return {"fields": fields, "version": new_version}
+
+    def list_stage_param_versions(self, kind: str) -> list[dict]:
+        rows = self._conn().execute(
+            text("SELECT id, kind, schema_json, version, created_at FROM stage_param_spec_history"
+                 " WHERE kind=:k ORDER BY created_at DESC"),
+            {"k": kind}).mappings().fetchall()
+        return [{"id": r["id"], "kind": r["kind"], "version": int(r["version"]),
+                 "created_at": r["created_at"], "fields": _loads(r["schema_json"])} for r in rows]
+
+    def rollback_stage_params(self, kind: str, version: int) -> "dict | None":
+        """回滚到某一历史版本：把该版本 schema 作为新版本写回（版本+1，当前版本先归档到历史）。
+
+        找不到该历史版本时返回 None（由路由转 404）。回滚同样是「写入」动作，
+        会留下版本轨迹，便于审计，而非偷偷覆盖。
+        """
+        row = self._conn().execute(
+            text("SELECT schema_json FROM stage_param_spec_history WHERE kind=:k AND version=:v"),
+            {"k": kind, "v": version}).mappings().fetchone()
+        if row is None:
+            return None
+        historical_fields = _loads(row["schema_json"])
+        # save_stage_params 会把「当前」归档成新的一条历史，再把历史版 schema 写成新当前版本。
+        return self.save_stage_params(kind, historical_fields)
+
+    # ---- job templates ----------------------------------------------------
+
+    @staticmethod
+    def _template_row(row) -> dict:
+        out = dict(row)
+        out["params"] = _loads(out.get("params") or "{}")
+        return out
+
+    def list_job_templates(self, kind: "str | None" = None) -> list[dict]:
+        if kind:
+            rows = self._conn().execute(
+                text("SELECT * FROM job_templates WHERE kind=:k ORDER BY updated_at DESC"),
+                {"k": kind}).mappings().fetchall()
+        else:
+            rows = self._conn().execute(
+                text("SELECT * FROM job_templates ORDER BY updated_at DESC")).mappings().fetchall()
+        return [self._template_row(r) for r in rows]
+
+    def get_job_template(self, template_id: str) -> "dict | None":
+        row = self._conn().execute(
+            text("SELECT * FROM job_templates WHERE id=:id"),
+            {"id": template_id}).mappings().fetchone()
+        return self._template_row(row) if row else None
+
+    def create_job_template(self, *, kind: str, name: str, scenario: str = "", params: "dict | None" = None) -> str:
+        template_id = uuid.uuid4().hex
+        now = _now()
+        self._conn().execute(
+            text("INSERT INTO job_templates (id, kind, name, scenario, params, created_at, updated_at)"
+                 " VALUES (:id,:kind,:name,:scenario,:params,:created,:updated)"),
+            dict(id=template_id, kind=kind, name=name, scenario=scenario or "",
+                 params=_dumps(params or {}), created=now, updated=now))
+        return template_id
+
+    def update_job_template(self, template_id: str, *, name: "str | None" = None,
+                            scenario: "str | None" = None, params: "dict | None" = None) -> "dict | None":
+        updates, params_bind = [], {"id": template_id}
+        if name is not None:
+            updates.append("name=:name"); params_bind["name"] = name
+        if scenario is not None:
+            updates.append("scenario=:scenario"); params_bind["scenario"] = scenario
+        if params is not None:
+            updates.append("params=:params"); params_bind["params"] = _dumps(params)
+        if not updates:
+            return self.get_job_template(template_id)
+        updates.append("updated_at=:ts"); params_bind["ts"] = _now()
+        self._conn().execute(
+            text(f"UPDATE job_templates SET {', '.join(updates)} WHERE id=:id"), params_bind)
+        return self.get_job_template(template_id)
+
+    def delete_job_template(self, template_id: str) -> bool:
+        cur = self._conn().execute(
+            text("DELETE FROM job_templates WHERE id=:id"), {"id": template_id})
+        return cur.rowcount == 1
 
     def _backfill_specs(self) -> None:
         """把 docs/medical/specs/*.json 的本地内容回填进 scenarios.spec_json（仅填空行）。
