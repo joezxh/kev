@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: docs_and_skills
-title: Kev 文档与技能包聚合层
-scope:
-    - docs/
-    - skills/
-source_files: []
-depends_on: []
-related_to: []

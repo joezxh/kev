@@ -63,6 +63,7 @@ export default function StudioDeployPage() {
           gateStage="deploy"
           title={t("studio.nav.deploy")}
           initial={{ temperature }}
+          jobHref={(id) => `/studio/deploy/${id}`}
           fields={[
             { key: "temperature", label: "TEMPERATURE", hint: lang === "zh" ? `必填，来自 calibration.json${temperature ? `（已自动填入：${calRun} → ${temperature}）` : "；先跑 calibrate"}` : "Required, from calibration.json (pre-filled when available)" },
             { key: "run", label: "--run", hint: "留空则用 runs/<run_name>" },
@@ -77,6 +78,7 @@ export default function StudioDeployPage() {
           fields={[{ key: "base_url", label: "--base-url" }]}
           initial={{ base_url: "http://127.0.0.1:8008" }}
           submitLabel={t("console.deploy.smoke")}
+          jobHref={(id) => `/studio/deploy/${id}`}
         >
           <p className="text-sm text-muted-foreground">
             {lang === "zh"

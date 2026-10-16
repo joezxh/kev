@@ -13,6 +13,7 @@ export default function StudioPublishPage() {
         title={t("studio.nav.publish")}
         hideScenario
         initial={{ run: "runs/cv-8b-lora-v1/checkpoint", repo: "jaredpalmer/kev-0.8b", card: "docs/model-cards/kev-0.8b.md", private: "0", replace: "0" }}
+        jobHref={(id) => `/studio/jobs/${id}`}
         fields={[
           { key: "run", label: "--run", hint: "checkpoint 目录，默认 runs/<name>/checkpoint" },
           { key: "repo", label: "--repo" },

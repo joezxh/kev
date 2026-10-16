@@ -1,6 +1,12 @@
 """服务端密钥库：蒸馏第三方模型凭据的唯一落盘处（spec §4.3 / §7）。
 
 明文 key 只在这里，SQLite 只存非敏感元数据。文件 gitignore、权限 0600。
+
+**别改回 `secrets.py`**：kev/console 的脚本是以 `python kev/console/<stage>.py` 跑的（编排层就是这么拼 argv），
+那时 sys.path[0] 就是本目录，模块名 `secrets` 会**遮蔽标准库 secrets**。numpy 2.5 的
+`numpy/random/bit_generator` 要 `secrets.randbits`，于是 pandas → datasets → kev.data 整条导入链
+当场炸成 `ImportError: cannot import name randbits`，与本文件毫无关系却极难定位。
+tests/test_conventions.py 的 stdlib-shadowing 规则钉住了这件事。
 """
 from __future__ import annotations
 

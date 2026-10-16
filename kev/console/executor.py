@@ -27,9 +27,13 @@ from .events import DEFAULT_BUFFER, MetricBuffer, parse_step
 
 # 允许持久化到 jobs.env_overlay 的非敏感键。其余一律不落库。
 # KEV_SERVE_RUN 只是运行名（不是凭据），deploy 阶段要靠它告诉容器加载哪个 checkpoint。
+# TEMPERATURE 是服务切点（从 calibration.json 的 workload_temperature 取），也不是凭据；
+# 它在 image 阶段走进程内服务路径（不过 build_env），所以必须在这里声明，否则
+# jobs.env_overlay 的白名单会因执行路径不同而不一致。
 ALLOWED_ENV = frozenset({
     "HF_ENDPOINT", "KEV_GEN_BASE_URL", "KEV_GEN_MODEL", "KEV_SERVE_RUN",
     "KEV_SERVE_GPU", "KEV_APP_NAME", "KEV_REF", "OMP_NUM_THREADS", "PYTHONIOENCODING",
+    "TEMPERATURE",
 })
 
 # 敏感键：只从本进程环境变量读，spawn 时注入子进程，只在 UI 显示布尔态。
@@ -173,7 +177,15 @@ class LocalExecutor:
 
     # ---- env --------------------------------------------------------------
 
-    def build_env(self, overlay: dict | None = None) -> dict:
+    def build_env(self, overlay: dict | None = None, secrets: dict | None = None) -> dict:
+        """装配子进程环境。两个通道，各守各的名单：
+
+        - `overlay`：非敏感运行配置，必须全在 ALLOWED_ENV 内（这一份会落库审计）。
+        - `secrets`：本作业专用凭据，键名必须已在 SECRET_ENV（即 self.secret_env）里声明过；
+          只注入子进程，**永不**落库、**永不**下发浏览器（spec §12）。
+
+        凭据优先级：进程环境（缺省）< 本作业的 secrets（密钥库条目）。
+        """
         env = dict(os.environ)
         for key, value in (overlay or {}).items():
             if key not in ALLOWED_ENV:
@@ -185,13 +197,23 @@ class LocalExecutor:
             value = os.environ.get(key)
             if value:
                 env[key] = value
+        for key, value in (secrets or {}).items():
+            if key not in self.secret_env:
+                raise ValueError(
+                    f"secrets may only carry declared credentials {sorted(self.secret_env)};"
+                    f" got {key!r}（非敏感配置请走 env_overlay）"
+                )
+            env[key] = str(value)
         env.setdefault("PYTHONIOENCODING", "utf-8")
         return env
 
     # ---- lifecycle --------------------------------------------------------
 
-    def spawn(self, job_id, argv, *, cwd, log_path, env_overlay=None) -> ProcessHandle:
-        env = self.build_env(env_overlay)
+    def spawn(self, job_id, argv, *, cwd, log_path, env_overlay=None,
+              secrets=None) -> ProcessHandle:
+        # secrets 只进子进程环境：_record_overlay 写的是 env_overlay，两者不同通道，
+        # 所以 jobs.env_overlay 里不会出现凭据（spec §12）。
+        env = self.build_env(env_overlay, secrets)
         self._record_overlay(job_id, env_overlay)
         Path(log_path).parent.mkdir(parents=True, exist_ok=True)
         popen = subprocess.Popen(
@@ -272,10 +294,17 @@ class LocalExecutor:
 
     def _record_overlay(self, job_id, overlay) -> None:
         """把这次真正跑的非敏感键写回 jobs.env_overlay —— 审计问的是「跑的时候是什么」，
-        不是「建作业时填了什么」。build_env 已经按 ALLOWED_ENV 拒过一遍，凭据进不来这里，
-        所以这一列永远不会出现 SECRET_ENV（spec §12）。"""
+        不是「建作业时填了什么」。凭据进不来这里：进程外路径由 build_env 按 ALLOWED_ENV
+        拦下，进程内（spawn_callable）路径不过 build_env，所以这里再拦一道 SECRET_ENV。
+        本列永不出现凭据（spec §12）。"""
         if not overlay:
             return
+        leaked = sorted(set(overlay) & set(self.secret_env))
+        if leaked:
+            raise ValueError(
+                f"env_overlay may not carry credentials {leaked};"
+                " 凭据走 BuiltCommand.secrets（只注入子进程，不落库）"
+            )
         payload = json.dumps({key: str(value) for key, value in overlay.items()},
                              ensure_ascii=False, allow_nan=False)
         with self.store.tx() as connection:
@@ -428,3 +457,36 @@ class LocalExecutor:
     def live(self) -> set[str]:
         with self._lock:
             return set(self._handles)
+
+
+# ---------------------------------------------------------------------------
+# 存量数据修复
+# ---------------------------------------------------------------------------
+
+def scrub_secret_overlays(store: Store, *, secret_names=SECRET_ENV) -> int:
+    """把历史 jobs.env_overlay 里混进来的凭据键删掉（spec §12：这一列永远不许出现凭据）。
+
+    只删键、不删作业行，幂等，所以每次装配时跑一次的代价只是一趟小表扫描。
+    背景：distill 曾把密钥库的 KEV_GEN_API_KEYS 当作非敏感 overlay 写库（现已改走
+    BuiltCommand.secrets），旧库里留下的行必须在作业列表对外可读之前清掉。
+    返回改过的行数。
+    """
+    banned = set(secret_names)
+    removed = 0
+    with store.tx() as connection:
+        rows = connection.execute(text("SELECT id, env_overlay FROM jobs")).mappings().fetchall()
+        for row in rows:
+            try:
+                payload = json.loads(row["env_overlay"])
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(payload, dict) or not (set(payload) & banned):
+                continue
+            cleaned = {key: value for key, value in payload.items() if key not in banned}
+            connection.execute(
+                text("UPDATE jobs SET env_overlay = :overlay WHERE id = :jid"),
+                {"overlay": json.dumps(cleaned, ensure_ascii=False, allow_nan=False),
+                 "jid": row["id"]},
+            )
+            removed += 1
+    return removed

@@ -18,6 +18,7 @@ const NAV = [
   { href: "/console/usage", key: "console.nav.usage" },
   { href: "/console/distill-providers", key: "console.nav.distill" },
   { href: "/console/scenarios", key: "console.nav.scenarios" },
+  { href: "/console/stage-schemas", key: "console.nav.stageschemas" },
 ];
 
 /**

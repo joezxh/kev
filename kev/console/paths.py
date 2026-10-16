@@ -29,6 +29,11 @@ DB_PATH = ROOT / CONSOLE_REL / "kev-console.db"
 # 冻结脚本按路径读取；不再是仓库内 docs/medical/specs 的真相源，仅是 DB 的投影）。
 CONSOLE_SPECS = ROOT / CONSOLE_REL / "specs"
 
+# tokenizer 的本地镜像根目录（kev.console.tokenizer_mirror）：Hub 直连不通时，precheck 从可达的
+# 镜像（ModelScope / HF 镜像）把 tokenizer 文件拉到这儿，随后 --init-from 只读本地。
+# 与 secrets、DB 同在 data/console 之下，已经被 .gitignore 排除。
+TOKENIZER_MIRROR = ROOT / CONSOLE_REL / "tokenizers"
+
 # 蒸馏用量状态目录的缺省落点（generate_data.py 写 <dir>/usage_<date>.json，控制台
 # _ingest_distill_usage 读同一目录）。作业未显式传 --state-dir 时统一落这里，保证用量
 # 采集端到端可通（spec §9）；与 secrets（data/console/secrets）同归 data/console 之下。

@@ -7,8 +7,9 @@
 所以一律以本脚本用真实 tokenizer 的实测为准。
 
 只 import kev 的既有能力，不重写任何逻辑：
-  kev.data.load_records/materialize · kev.model.load_tokenizer/training_context/fits
+  kev.data.load_records/materialize· kev.model.load_tokenizer/training_context/fits
   kev.suite.write_json
+  kev.console.tokenizer_mirror.ensure_source（Hub 不通时的 tokenizer 本地镜像，见该模块 docstring）
 退出码非 0 表示有超限记录，编排层据此判 G1 失败。
 
 Run: python kev/console/precheck.py --data data/cv --init-from jaredpalmer/kev-0.8b
@@ -20,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from kev.console import tokenizer_mirror                # noqa: E402
 from kev.data import load_records, materialize              # noqa: E402
 from kev.model import fits, load_tokenizer, training_context  # noqa: E402
 from kev.suite import write_json                            # noqa: E402
@@ -45,12 +47,16 @@ def run(argv=None) -> int:
     if not partition.exists():
         print(f"no such partition: {partition}", file=sys.stderr)
         return 2
-    tokenizer = load_tokenizer(args.init_from)
+    # tokenizer 源先过一遍本地镜像：Hub 直连不通（或 HF_HUB_OFFLINE=1 且缓存是空的）时，
+    # ensure_source 会从 ModelScope / HF 镜像拉到 data/console/tokenizers 再返回那个目录。
+    source = tokenizer_mirror.ensure_source(args.init_from)
+    tokenizer = load_tokenizer(source)
     records = load_records(str(partition))
     # 预算从 kev.model 提升，不在此处硬编码（tests/test_conventions.py 的 single_home 规则）
     context = training_context()
     over = [record for record in records if not fits(materialize(record), tokenizer, **context)]
     report = {"split": args.split, "partition": str(partition), "init_from": args.init_from,
+              "tokenizer_source": source,
               "records": len(records), "over_limit": len(over),
               "context": context,
               "examples": [str(materialize(record))[:200] for record in over[:5]]}

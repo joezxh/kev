@@ -178,16 +178,20 @@ def _distill_build(request: JobRequest, *, require_schedule: bool = False) -> Bu
     params = request.params
     provider_id = params.get("provider_id")
     env = {}
+    secrets = {}
     daily_limit = None
     if provider_id:
-        from kev.console import secrets as distill_secrets
+        from kev.console import secret_store as distill_secrets
         entry = distill_secrets.load().get(provider_id)
         if entry is None:
             raise Invalid(f"未知蒸馏配置 {provider_id}", field="provider_id",
                           hint="先到控制台「蒸馏配置」创建并选择")
         env["KEV_GEN_BASE_URL"] = entry["base_url"]
         env["KEV_GEN_MODEL"] = entry["model"]
-        env["KEV_GEN_API_KEYS"] = ",".join(entry["keys"])
+        # key 走 BuiltCommand.secrets：env 是非敏感 overlay（要落库审计、要进 preview 响应），
+        # 而凭据永不落库、永不下发浏览器（spec §12）。把它放进 env 会被 executor.build_env
+        # 按 ALLOWED_ENV 拒掉（提交即 500，作业行已写入却从未跑过），也会泄进 jobs 表。
+        secrets["KEV_GEN_API_KEYS"] = ",".join(entry["keys"])
         daily_limit = entry.get("daily_limit", 500000)
     else:
         keys = params.get("api_keys") or []
@@ -240,8 +244,9 @@ def _distill_build(request: JobRequest, *, require_schedule: bool = False) -> Bu
             env["KEV_GEN_BASE_URL"] = params["base_url"]
         if params.get("model"):
             env["KEV_GEN_MODEL"] = params["model"]
-    # 凭据（KEV_GEN_API_KEYS）：带 provider_id 时由密钥库注入；否则沿用编排服务进程环境
-    return BuiltCommand(argv=argv, env=env, cwd=str(paths.ROOT),
+    # 凭据（KEV_GEN_API_KEYS）：带 provider_id 时走 secrets 通道由密钥库注入；
+    # 否则沿用编排服务进程环境（executor 从 SECRET_ENV 声明的名字里读）
+    return BuiltCommand(argv=argv, env=env, secrets=secrets, cwd=str(paths.ROOT),
                         artifacts_out=[f"dataset:{_dataset_id(data_dir)}/{category}"])
 
 
@@ -275,7 +280,8 @@ def _distill_daemon(request: JobRequest) -> BuiltCommand:
                     "--cwd", built.cwd or str(paths.ROOT),
                     "--",
                     *built.argv]
-    return BuiltCommand(argv=wrapped_argv, env=built.env, cwd=built.cwd or str(paths.ROOT),
+    return BuiltCommand(argv=wrapped_argv, env=built.env, secrets=built.secrets,
+                        cwd=built.cwd or str(paths.ROOT),
                         artifacts_in=built.artifacts_in, artifacts_out=[],
                         daemon_id=daemon_id)
 

@@ -275,3 +275,56 @@ export function Field({
     </div>
   );
 }
+
+/** 分页器：上一页/下一页 + 页码 + 可调节每页行数。 */
+export function Pager({
+  page,
+  totalPages,
+  pageSize,
+  pageSizeOptions,
+  onPage,
+  onPageSize,
+  labels,
+}: {
+  page: number;
+  totalPages: number;
+  pageSize: number;
+  pageSizeOptions: number[];
+  onPage: (page: number) => void;
+  onPageSize: (size: number) => void;
+  labels: { prev: string; next: string; pageOf: (p: number, t: number) => string; rowsPerPage: string };
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-3 pt-1 text-xs text-muted-foreground">
+      <label className="flex items-center gap-1.5">
+        {labels.rowsPerPage}
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSize(Number(e.target.value))}
+          className="rounded border border-border bg-[#111111] px-1.5 py-1 outline-none focus:border-primary"
+        >
+          {pageSizeOptions.map((size) => (
+            <option key={size} value={size}>{size}</option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        onClick={() => onPage(Math.max(1, page - 1))}
+        disabled={page <= 1}
+        className="rounded-md border border-border px-2.5 py-1 transition-colors hover:bg-[#161616] disabled:opacity-40"
+      >
+        {labels.prev}
+      </button>
+      <span>{labels.pageOf(page, totalPages)}</span>
+      <button
+        type="button"
+        onClick={() => onPage(Math.min(totalPages, page + 1))}
+        disabled={page >= totalPages}
+        className="rounded-md border border-border px-2.5 py-1 transition-colors hover:bg-[#161616] disabled:opacity-40"
+      >
+        {labels.next}
+      </button>
+    </div>
+  );
+}

@@ -46,6 +46,7 @@ export default function StudioTrainPage() {
         gateStage="train"
         title={t("studio.nav.train")}
         initial={{ method: "a1" }}
+        jobHref={(id) => `/studio/train/${id}`}
         fields={[
           { key: "data", label: "--data", hint: lang === "zh" ? "训练分区 JSONL；默认 data/<scenario>/train.jsonl" : "train partition JSONL; defaults to data/<scenario>/train.jsonl" },
           { key: "method", kind: "select", label: "method", options: [

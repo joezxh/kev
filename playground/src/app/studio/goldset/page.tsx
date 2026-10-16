@@ -27,6 +27,7 @@ export default function StudioGoldsetPage() {
         title={t("studio.nav.goldset")}
         hideScenario
         initial={{ a: "data/cv.a.jsonl", b: "data/cv.b.jsonl", out: "", threshold: "0.05" }}
+        jobHref={(id) => `/studio/jobs/${id}`}
         fields={[
           { key: "a", label: "A", hint: lang === "zh" ? "第一份标注（如厂商甲）" : "first labelling (e.g. vendor A)" },
           { key: "b", label: "B", hint: lang === "zh" ? "第二份标注（如厂商乙）" : "second labelling (e.g. vendor B)" },

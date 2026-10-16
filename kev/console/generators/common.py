@@ -119,6 +119,20 @@ def label_table(records):
     return counts
 
 
+def label_of(record, qid):
+    """The key one record's answer to `qid` is reported under, through split_data's own normaliser.
+
+    One home for the normalisation, so the engine's `by_label` target check, its exit gate and `label_table` cannot
+    disagree about whether `True`, `"true"` and `3` are the same answer as each other.
+    """
+    return split_data.label_key(record["questions"][qid])
+
+
+def label_key_of(spec, qid, label):
+    """`label_of` for a raw label value: the type comes from the spec's question rather than a built record."""
+    return split_data.label_key({"type": spec["questions"][qid]["type"], "label": label})
+
+
 def boundary_value(rng, threshold, low, high, side=None, near=NEAR_BOUNDARY, decimals=1):
     """Sample a measurement whose hard cases sit on `threshold`.
 
@@ -174,8 +188,13 @@ def changed_fields(a, b):
     return sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
 
 
-def write_records(records, out, seed, spec_name):
-    """Write labelled JSONL and print the same shape of summary split_data.py prints, so the two agree on sight."""
+def write_records(records, out, seed, spec_name, warn=True):
+    """Write labelled JSONL and print the same shape of summary split_data.py prints, so the two agree on sight.
+
+    `warn=False` keeps the stdout summary and drops the two stderr warnings: the spec-driven engine judges the same
+    numbers at its exit, with the gap spelled out as a count to move (§3's exit row), and a caller that turns those
+    numbers into a non-zero code must not read them twice (§6 defect 1's second home).
+    """
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8", newline="\n") as f:
@@ -192,11 +211,14 @@ def write_records(records, out, seed, spec_name):
         rare = [k for k, v in table.items() if v / total < 0.05]
         if rare:
             warned = True
-            print(f"  warning: {qid}: {rare} under 5% of {total} records", file=sys.stderr)
+            if warn:
+                print(f"  warning: {qid}: {rare} under 5% of {total} records", file=sys.stderr)
         missing = sorted(set(label_keys(spec, qid)) - set(table))
         if missing:
             warned = True
-            print(f"  warning: {qid}: no record is ever labelled {missing}; the model cannot learn them", file=sys.stderr)
+            if warn:
+                print(f"  warning: {qid}: no record is ever labelled {missing}; the model cannot learn them",
+                      file=sys.stderr)
     print("next: python3 skills/kev-finetune/scripts/split_data.py "
           f"{out} --out {out.with_suffix('')} [--holdout <gold.jsonl>]")
     return warned

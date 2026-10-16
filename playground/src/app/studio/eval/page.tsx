@@ -101,6 +101,7 @@ export default function StudioEvalPage() {
         gateStage="image"
         title={t("studio.nav.eval")}
         fields={active.fields}
+        jobHref={(id) => `/studio/eval/${id}`}
       />
 
       <section className="space-y-3">

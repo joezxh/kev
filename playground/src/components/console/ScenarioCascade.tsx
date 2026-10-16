@@ -38,6 +38,9 @@ export function ScenarioCascade({
   }, [value, tree]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const domainScenarios = tree.find((domain) => domain.slug === domainSlug)?.scenarios ?? [];
+  // 场景名中英并列（label_zh【label_en】），与域下拉一致：场景标签多为英文术语，
+  // 只给单语时中文界面里常认不出是哪一条。触发器宽度有限，title 兜住被截断的全文。
+  const currentLabel = current ? `${current.label_zh}【${current.label_en}】` : "";
 
   return (
     <div className="flex gap-2">
@@ -63,7 +66,7 @@ export function ScenarioCascade({
       </Select>
 
       <Select value={value} onValueChange={(next) => { if (next) onChange(next); }}>
-        <SelectTrigger className="w-56">
+        <SelectTrigger className="w-56" title={currentLabel}>
           <SelectValue placeholder={t("console.cascade.scenario")} />
         </SelectTrigger>
         <SelectContent>
@@ -73,7 +76,9 @@ export function ScenarioCascade({
             </SelectItem>
           ) : (
             domainScenarios.map((scenario) => (
-              <SelectItem key={scenario.slug} value={scenario.slug}>{scenario.label}</SelectItem>
+              <SelectItem key={scenario.slug} value={scenario.slug}>
+                {scenario.label_zh}【{scenario.label_en}】
+              </SelectItem>
             ))
           )}
         </SelectContent>

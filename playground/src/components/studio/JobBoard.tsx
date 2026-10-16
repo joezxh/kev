@@ -1,11 +1,15 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, Fragment, useState } from "react";
 import Link from "next/link";
 import { useLang } from "@/lib/i18n";
 import { api, type Job } from "@/lib/console";
 import { usePoll } from "@/components/console/usePoll";
-import { EmptyState, FilterChip, Kpi, SearchInput, StatusBadge, Toolbar } from "./primitives";
+import { EmptyState, FilterChip, Kpi, Pager, SearchInput, StatusBadge, Toolbar } from "./primitives";
+import { FileViewerDialog, JobFilesStrip, type ViewerSpec } from "./JobFiles";
+
+const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 function durationOf(job: Job): string {
   if (!job.started_at) return "—";
@@ -18,21 +22,51 @@ function durationOf(job: Job): string {
 
 const STATUS_FILTERS = ["all", "running", "succeeded", "failed", "pending", "canceled"];
 
+/** 由数据集列表下钻时传入的外部筛选（按 场景 / 领域 / 数据集 过滤 jobs）。 */
+export type JobFilter = {
+  key: string;
+  label: string;
+  test: (job: Job) => boolean;
+};
+
 export function JobBoard({
   stage,
   kinds,
   hrefFor,
+  jobsProp,
+  defaultPageSize = DEFAULT_PAGE_SIZE,
+  pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+  externalFilter,
+  onClearExternal,
+  showFiles,
 }: {
   stage?: string;
   kinds?: string[];
   hrefFor: (id: string) => string;
+  /** 直接传入作业列表（避免重复拉取）；省略则内部自行拉取。 */
+  jobsProp?: Job[];
+  /** 每页默认行数。 */
+  defaultPageSize?: number;
+  /** 每页行数可选项。 */
+  pageSizeOptions?: number[];
+  /** 外部下钻筛选条件；存在时在列表上方显示「按 X 筛选」与「全部」清除按钮。 */
+  externalFilter?: JobFilter | null;
+  /** 点击「全部」清除外部筛选。 */
+  onClearExternal?: () => void;
+  /** 每个作业行下方展开详情条：输出产物 / 输入 / 执行脚本，点击弹窗查看文件内容（不跳转）。 */
+  showFiles?: boolean;
 }) {
-  const { t, lang } = useLang();
+  const { t } = useLang();
   const load = useCallback(() => api.jobs(stage ? { stage } : undefined), [stage]);
-  const { value: jobs, error } = usePoll<Job[]>(load, []);
+  const { value: fetched, error } = usePoll<Job[]>(load, []);
+  const jobs = jobsProp ?? fetched;
 
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
+  // 文件查看弹窗的目标；null 即关闭。整张表共享一个弹窗实例。
+  const [viewer, setViewer] = useState<ViewerSpec | null>(null);
 
   const filtered = jobs.filter((job) => {
     if (kinds && !kinds.includes(job.kind)) return false;
@@ -41,8 +75,22 @@ export function JobBoard({
       const hay = `${job.id} ${job.kind} ${job.scenario} ${job.title}`.toLowerCase();
       if (!hay.includes(q.toLowerCase())) return false;
     }
+    if (externalFilter && !externalFilter.test(job)) return false;
     return true;
   });
+
+  // 过滤 / 每页行数变化时回到第一页。用 React 官方的「渲染期调整状态」模式：
+  // 效果等价于旧的 effect 写法，但少一次级联渲染，也不再触发 set-state-in-effect 报错。
+  const filterKey = `${q}|${statusFilter}|${pageSize}|${externalFilter?.key ?? ""}`;
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  if (filterKey !== lastFilterKey) {
+    setLastFilterKey(filterKey);
+    setPage(1);
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const count = (s: string) => jobs.filter((j) => j.status === s).length;
 
@@ -71,9 +119,23 @@ export function JobBoard({
             {s === "all" ? t("studio.board.all") : s}
           </FilterChip>
         ))}
+        {externalFilter && (
+          <span className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">
+              {t("studio.datasets.filterActive", { label: externalFilter.label })}
+            </span>
+            <button
+              type="button"
+              onClick={onClearExternal}
+              className="rounded border border-border px-2 py-1 transition-colors hover:bg-[#161616]"
+            >
+              {t("studio.datasets.clearFilter")}
+            </button>
+          </span>
+        )}
       </Toolbar>
 
-      {error && <p className="text-xs text-[#ef4444]">{error}</p>}
+      {!jobsProp && error && <p className="text-xs text-[#ef4444]">{error}</p>}
 
       {filtered.length === 0 ? (
         <EmptyState title={t("studio.board.empty")} />
@@ -92,25 +154,51 @@ export function JobBoard({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((job) => (
-                <tr key={job.id} className="border-b border-border/60 transition-colors hover:bg-[#161616]">
-                  <td className="px-3 py-2">
-                    <Link href={hrefFor(job.id)}>
-                      <StatusBadge status={job.status} />
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs">{job.id}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{job.kind}</td>
-                  <td className="px-3 py-2">{job.scenario}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{job.title}</td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">{job.created_at.slice(0, 19)}</td>
-                  <td className="px-3 py-2 text-right text-xs text-muted-foreground">{durationOf(job)}</td>
-                </tr>
+              {paged.map((job) => (
+                <Fragment key={job.id}>
+                  <tr className="border-b border-border/60 transition-colors hover:bg-[#161616]">
+                    <td className="px-3 py-2">
+                      <Link href={hrefFor(job.id)}>
+                        <StatusBadge status={job.status} />
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs">{job.id}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{job.kind}</td>
+                    <td className="px-3 py-2">{job.scenario}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{job.title}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{job.created_at.slice(0, 19)}</td>
+                    <td className="px-3 py-2 text-right text-xs text-muted-foreground">{durationOf(job)}</td>
+                  </tr>
+                  {showFiles && (
+                    <tr className="border-b border-border/60 bg-[#0d0d0d]">
+                      <td colSpan={7} className="px-3 py-2">
+                        <JobFilesStrip job={job} onOpen={setViewer} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <Pager
+        page={safePage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={pageSizeOptions}
+        onPage={setPage}
+        onPageSize={setPageSize}
+        labels={{
+          prev: t("studio.board.prev"),
+          next: t("studio.board.next"),
+          pageOf: (p, tot) => t("studio.board.pageOf", { page: p, total: tot }),
+          rowsPerPage: t("studio.datasets.rowsPerPage"),
+        }}
+      />
+
+      {showFiles && <FileViewerDialog spec={viewer} onClose={() => setViewer(null)} />}
     </div>
   );
 }

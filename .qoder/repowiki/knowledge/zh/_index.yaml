@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-10-11T04:22:57Z"
+exported_at: "2026-10-12T02:57:20Z"
 modules:
     "":
-        dir_name: Kev 决策模型仓库根（训练_评测_部署_文档聚合）
-        title: Kev 决策模型仓库根（训练/评测/部署/文档聚合）
+        dir_name: Kev 决策模型仓库（推理_训练_评测_部署聚合根）
+        title: Kev 决策模型仓库（推理/训练/评测/部署聚合根）
         scope:
             - README.md
             - PLAN.md
@@ -3105,8 +3105,8 @@ modules:
         related_to:
             - path: evals_and_scripts
     kev_library:
-        dir_name: Kev 多模态推理与编排平台
-        title: Kev 多模态推理与编排平台
+        dir_name: Kev 推理与训练聚合层
+        title: Kev 推理与训练聚合层
         scope:
             - kev/
         source_files: []
@@ -3118,8 +3118,8 @@ modules:
             - path: docs_and_skills/skills_bundle
             - path: playground
     kev_library/console:
-        dir_name: Kev 编排控制台前端与 API 集成测试
-        title: Kev 编排控制台前端与 API 集成测试
+        dir_name: Kev 控制台前端与 API 集成测试
+        title: Kev 控制台前端与 API 集成测试
         scope:
             - kev/console/
             - playground/src/app/api/console/

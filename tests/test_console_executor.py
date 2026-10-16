@@ -187,6 +187,84 @@ def test_secret_values_never_reach_the_database(store, monkeypatch):
     assert b"sk-do-not-persist" not in store.path.read_bytes()
 
 
+# ---- 作业级凭据通道（蒸馏配置的 key）------------------------------------
+
+
+def test_job_secrets_override_the_process_environment(store, monkeypatch):
+    """密钥库里的 key 必须赢过编排服务自己的环境。
+
+    一台机器上可能同时配了几个供应商，服务进程环境只能带一套。
+    """
+    monkeypatch.setenv("KEV_GEN_API_KEYS", "sk-from-process-env")
+    executor = LocalExecutor(store)
+    env = executor.build_env({}, {"KEV_GEN_API_KEYS": "sk-from-vault"})
+    assert env["KEV_GEN_API_KEYS"] == "sk-from-vault"
+
+
+def test_spawn_reaches_the_child_with_the_job_secret(store, monkeypatch):
+    """secrets 不仅要过闸门，还要真能递到子进程（否则作业只会静默失败）。"""
+    monkeypatch.setenv("KEV_GEN_API_KEYS", "sk-from-process-env")
+    executor = LocalExecutor(store)
+    job_id = make_job(store)
+    log = store.path.parent / "job.log"
+    # 不断言 key 本身、只断言相等 —— 把凭据写进日志又开一个泄露面
+    executor.spawn(job_id, [sys.executable, "-c",
+                            "import os; print(os.environ.get('KEV_GEN_API_KEYS') == 'sk-from-vault')"],
+                   cwd=os.getcwd(), log_path=str(log),
+                   env_overlay={"KEV_GEN_MODEL": "m"}, secrets={"KEV_GEN_API_KEYS": "sk-from-vault"})
+    drain(store, executor, job_id)
+    assert log.read_text(encoding="utf-8").strip() == "True"
+
+
+def test_secrets_channel_refuses_non_credential_keys(store):
+    executor = LocalExecutor(store)
+    with pytest.raises(ValueError, match="secrets may only carry"):
+        executor.build_env({}, {"KEV_GEN_MODEL": "m"})
+
+
+def test_per_job_credential_stays_out_of_the_overlay_and_the_db(store):
+    executor = LocalExecutor(store)
+    job_id = make_job(store)
+    executor.spawn(job_id, [sys.executable, "-c", "print('ok')"], cwd=os.getcwd(),
+                   log_path=str(store.path.parent / "job.log"),
+                   env_overlay={"KEV_GEN_MODEL": "m"},
+                   secrets={"KEV_GEN_API_KEYS": "sk-vault-only"})
+    drain(store, executor, job_id)
+    assert store.get_job(job_id)["env_overlay"] == {"KEV_GEN_MODEL": "m"}
+    assert b"sk-vault-only" not in store.path.read_bytes()
+
+
+def test_in_process_overlay_still_rejects_credentials(store):
+    """spawn_callable 不过 build_env，所以白名单不能只在子进程路径上生效。"""
+    executor = LocalExecutor(store)
+    job_id = make_job(store)
+    with pytest.raises(ValueError, match="may not carry credentials"):
+        executor.spawn_callable(job_id, lambda: 0, label="service:x",
+                                log_path=str(store.path.parent / "job.log"),
+                                env_overlay={"KEV_GEN_API_KEYS": "sk-vault-only"})
+
+
+def test_scrub_secret_overlays_strips_legacy_leaks(store):
+    """旧版 distill 把密钥库的 key 当非敏感 overlay 落了库，启动时必须洗掉。
+
+    只删键不删行（作业历史是审计资料），且幂等 —— wire_console_state 每次装配都跑。
+    这里不去翻库文件的字节：UPDATE 之后旧页内容可能还留在文件里，而对外可读的只有列的值。
+    """
+    from kev.console.executor import scrub_secret_overlays
+
+    dirty = store.create_job(
+        kind="distill", stage="data", scenario="triage", title="legacy",
+        request={}, argv=["x"], cwd=os.getcwd(), log_path="l.log",
+        env_overlay={"KEV_GEN_MODEL": "m", "KEV_GEN_API_KEYS": "sk-leaked"},
+        artifacts_in=[], artifacts_out=[],
+    )
+    clean = make_job(store)
+    assert scrub_secret_overlays(store) == 1
+    assert store.get_job(dirty)["env_overlay"] == {"KEV_GEN_MODEL": "m"}
+    assert store.get_job(clean)["env_overlay"] == {}
+    assert scrub_secret_overlays(store) == 0      # 幂等：第二次无事可做
+
+
 # ---- 评审新增（Task 3）----------------------------------------------------
 
 

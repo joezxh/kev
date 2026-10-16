@@ -81,7 +81,7 @@ export default function DatasetsPage() {
             <Button key={name} size="sm"
                     variant={name === dataKind ? "secondary" : "ghost"}
                     onClick={() => setDataKind(name)}>
-              <span className="font-mono text-xs">{name}</span>
+              <span className="text-xs">{t(`console.data.kind.${name}`)}</span>
             </Button>
           ))}
         </div>

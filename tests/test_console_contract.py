@@ -144,6 +144,28 @@ def test_no_credential_values_are_persisted_or_served():
     db = (ROOT / "kev/console/app.py").read_text(encoding="utf-8")
     assert "credentials" in db and "bool(os.environ.get" in db, \
         "/config 必须只回凭据的布尔态"
+    # 凭据名单只能有一份（executor.SECRET_ENV）：两处各自维护就会出现
+    # 「一处加了新凭据、另一处仍当它非敏感」，而这正是本次事故的字面原因
+    assert "SECRET_NAMES = SECRET_ENV" in db, "app.py 不该再自己维护一份凭据名单"
+
+
+def test_no_stage_builds_a_command_with_a_credential_in_the_env_channel():
+    """白名单与执行路径无关：每个阶段组装出的 env 都不许出现凭据名。
+
+    作业可以走子进程（过 build_env）也可以走进程内服务（不过），所以不能只在
+    build_env 上拦；preview 是纯函数，这一道闸把「写错通道」钉在提交之前而不是运行之后。
+    """
+    from kev.console.executor import SECRET_ENV
+    from kev.console.stages import REGISTRY
+    from kev.console.stages.base import JobRequest
+
+    banned = set(SECRET_ENV)
+    for kind, spec in REGISTRY.items():
+        built = spec.preview(JobRequest(scenario="critical-value",
+                                        run_name="cv-8b-lora-v1",
+                                        params=_minimal_params(kind)))
+        assert not (set(built.env) & banned), f"{kind} 把凭据写进了非敏感 env 通道"
+        assert set(built.secrets) <= banned, f"{kind} 的 secrets 带了未声明的键"
 
 
 def test_console_does_not_depend_on_the_removed_legacy_memory_tools():

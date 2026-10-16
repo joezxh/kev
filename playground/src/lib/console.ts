@@ -24,6 +24,56 @@ export type Job = {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  template_id: string | null;
+};
+
+/** 作业类型「提交表单」的参数 schema（与后端 stage_param_specs + JobStagePage 对齐）。 */
+export type StageParamField = {
+  key: string;
+  label?: string;
+  kind?: "text" | "number" | "select" | "checkbox" | "textarea";
+  required?: boolean;
+  default?: string;
+  placeholder?: string;
+  hint?: string;
+  options?: { value: string; label: string }[];
+  optionsUrl?: string;
+  /** 可一键从某来源回填本字段（如 generate 的 --n 从 plan_size 产物读 total_records）。 */
+  fillFrom?: string;
+};
+
+export type StageParams = {
+  kind: string;
+  fields: StageParamField[];
+  version: number;
+  source: "db" | "default";
+};
+
+/** 命名作业模板：跨会话复用某类任务的参数预设。 */
+export type JobTemplate = {
+  id: string;
+  kind: string;
+  name: string;
+  scenario: string;
+  params: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+};
+
+/** plan_size 产物的回填结果。 */
+export type PlanResult = {
+  scenario: string;
+  total_records: number;
+  artifact_id: string;
+};
+
+/** stage_param_spec_history 中的一条历史版本（每次保存都会归档旧版本）。 */
+export type StageParamVersion = {
+  id: string;
+  kind: string;
+  version: number;
+  created_at: string;
+  fields: StageParamField[];
 };
 
 export type Metric = {
@@ -32,6 +82,12 @@ export type Metric = {
 };
 
 export type Gate = { id: string; ok: boolean; detail: string; actual: string; need: string };
+
+/** GET /stages 的响应：后端的只读阶段元数据（StageSpec 字段 + gates.STAGE_GATES 归属）。
+ *  真相源在 kev/console/stages/*（REGISTRY）与 kev/console/gates.py，前端不许复制。 */
+export type StageMeta = {
+  kind: string; stage: string; title: string; outcome: string; gates: string[];
+};
 
 export type Artifact = {
   id: string; kind: string; name: string; path: string;
@@ -53,6 +109,13 @@ export type JobLog = {
 /** GET /artifacts/{id}/content 的响应：产物文件的文本内容（结果页展示用）。 */
 export type ArtifactContent = {
   id: string; kind: string; path: string; bytes: number | null;
+  content: string; truncated: boolean;
+};
+
+/** GET /files/content 的响应：仓库相对文件（data/ 与 runs/ 下）的文本内容，
+ *  用于查看那些不是注册产物、而是直接写路径的作业入参。 */
+export type FileContent = {
+  path: string; bytes: number | null;
   content: string; truncated: boolean;
 };
 
@@ -154,14 +217,45 @@ export const api = {
       method: "POST", body: JSON.stringify(payload),
     }),
   submit: (payload: { kind: string; scenario: string; run_name: string;
-                      params: Record<string, unknown> }) =>
+                      params: Record<string, unknown>; template_id?: string }) =>
     call<Job>("jobs", { method: "POST", body: JSON.stringify(payload) }),
+
+  // ---- stage param specs + plan 回填 + 作业模板 -------------------
+  stageParams: (kind: string) =>
+    call<StageParams>(`stage/${encodeURIComponent(kind)}/params`),
+  saveStageParams: (kind: string, fields: StageParamField[]) =>
+    call<StageParams>(`stage/${encodeURIComponent(kind)}/params`, {
+      method: "PUT", body: JSON.stringify({ fields }),
+    }),
+  stageParamVersions: (kind: string) =>
+    call<StageParamVersion[]>(`stage/${encodeURIComponent(kind)}/params/versions`),
+  rollbackStageParams: (kind: string, version: number) =>
+    call<StageParams>(`stage/${encodeURIComponent(kind)}/params/rollback`, {
+      method: "POST", body: JSON.stringify({ version }),
+    }),
+  plan: (scenario: string) =>
+    call<PlanResult>(`plan/${encodeURIComponent(scenario)}`),
+
+  /** 全量阶段元数据（静态注册表）：供提交页的「操作解析」卡取 outcome 与闸门归属。 */
+  stages: () => call<Record<string, StageMeta>>("stages"),
+
+  jobTemplates: (kind?: string) =>
+    call<JobTemplate[]>(`job-templates${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`),
+  createJobTemplate: (p: { kind: string; name: string; scenario?: string; params: Record<string, string> }) =>
+    call<JobTemplate>("job-templates", { method: "POST", body: JSON.stringify(p) }),
+  updateJobTemplate: (id: string, p: { name?: string; scenario?: string; params?: Record<string, string> }) =>
+    call<JobTemplate>(`job-templates/${id}`, { method: "PUT", body: JSON.stringify(p) }),
+  deleteJobTemplate: (id: string) =>
+    call<{ deleted: boolean }>(`job-templates/${id}`, { method: "DELETE" }),
   cancel: (id: string) => call<{ canceled: boolean }>(`jobs/${id}/cancel`, { method: "POST" }),
   retry: (id: string) => call<Job>(`jobs/${id}/retry`, { method: "POST" }),
 
   artifacts: (kind?: string) => call<Artifact[]>(`artifacts${kind ? `?kind=${kind}` : ""}`),
   artifactContent: (id: string) =>
     call<ArtifactContent>(`artifacts/${encodeURIComponent(id)}/content`),
+  /** 只读白名单文件内容（data/ 与 runs/ 下的仓库相对路径）。 */
+  fileContent: (path: string) =>
+    call<FileContent>(`files/content?path=${encodeURIComponent(path)}`),
   gates: (stage: string, scenario: string, runName = "") =>
     call<Gate[]>(`gates/${stage}?scenario=${encodeURIComponent(scenario)}` +
                  (runName ? `&run_name=${encodeURIComponent(runName)}` : "")),

@@ -69,6 +69,30 @@ def sources():
         yield from (p for p in ([path] if path.is_file() else sorted(path.rglob("*.py"))) if "__pycache__" not in p.parts and p != Path(__file__))
 
 
+# 以脚本方式运行的目录：编排层用 `python <dir>/<stage>.py` 拼 argv，sys.path[0] 就是它，
+# 于是同目录的模块会遮蔽同名标准库。kev/console/secrets.py 曾遮蔽 secrets，numpy 2.5 的
+# bit_generator 要 secrets.randbits，于是 pandas/datasets 的导入链炸在一个毫不相关的模块上。
+SCRIPT_DIRS = ("kev", "kev/console", "kev/console/generators", "kev/console/stages",
+               "kev/console/services", "scripts")
+
+
+def test_no_module_shadows_the_stdlib():
+    """A module in a directory that gets run as a script must not take a stdlib module's name."""
+    import sys
+
+    stdlib = set(sys.stdlib_module_names) | set(sys.builtin_module_names)
+    offenders = []
+    for entry in SCRIPT_DIRS:
+        directory = ROOT / entry
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.rglob("*.py")):
+            stem = path.stem
+            if stem != "__init__" and stem in stdlib:
+                offenders.append(f"{path.relative_to(ROOT).as_posix()} shadows the stdlib module {stem!r}")
+    assert not offenders, "a stdlib shadowing module breaks every script run from that directory\n" + "\n".join(offenders)
+
+
 def test_private_suites_keep_their_partitions_out_of_git():
     """A manifest that names its own mirror (kev.suite: a held-out suite) publishes hashes only: no partition in git."""
     import json, subprocess

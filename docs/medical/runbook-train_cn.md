@@ -314,6 +314,20 @@ print('over_limit', len(over))"
 
 **控制台执行**：Data → 「token 超限预检」(`precheck`)，填**场景** + **init_from**(默认 `jaredpalmer/kev-0.8b`) + **split**(默认 `train`)，走专用 `kev/console/precheck.py --data data/<scenario> --init-from <init> --split <split> --out <按产物 id 解析>`；回显 `over_limit` 须为 0 才能训练（闸门 G1）。✅
 
+**排障 · `LocalEntryNotFoundError: Cannot find the requested files in the disk cache and outgoing traffic has been disabled`**：
+这是 tokenizer 拿不到，不是数据问题。`HF_HUB_OFFLINE=1`（`.idea/workspace.xml` 的 `kev.serve` 运行配置、`deploy/.env` 都设了）时
+huggingface_hub 只读磁盘缓存，而 `jaredpalmer/kev-0.8b` 的缓存目录里只有 `refs/main`、没有 blob。
+预检会自动走本地镜像（ModelScope 国内站优先，HF 镜像回落），把 tokenizer 落到
+`data/console/tokenizers/<owner>__<name>/` 后只用本地文件；报告里的 `tokenizer_source` 记下真正用的那个源。
+想提前拉好或强制换源：
+
+```bash
+uv run python -m kev.console.tokenizer_mirror --model jaredpalmer/kev-0.8b            # 默认 modelscope -> hub
+uv run python -m kev.console.tokenizer_mirror --model Qwen/Qwen3.5-0.8B-Base --source hub
+```
+
+也可以把 `--init-from` 直接填那个目录，或填本机已有的任意 tokenizer 目录。镜像按 ModelScope 清单的 Size + Sha256 校验，幂等，重复点预检不会重下。
+
 ---
 
 ### 步骤 6 · 模型加载与训练配置

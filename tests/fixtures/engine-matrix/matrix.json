@@ -290,5 +290,23 @@
     "spike_records": 0,
     "spike_error": "",
     "added": "PR1b"
+  },
+  {
+    "slug": "law-appeal-window",
+    "shape": "bands",
+    "name": "上诉期处置",
+    "domain": "law",
+    "spike_records": 0,
+    "spike_error": "",
+    "added": "PR3"
+  },
+  {
+    "slug": "edu-late-work-escalation",
+    "shape": "bands",
+    "name": "欠交作业升级",
+    "domain": "edu",
+    "spike_records": 0,
+    "spike_error": "",
+    "added": "PR3"
   }
 ]

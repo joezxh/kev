@@ -32,11 +32,11 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Respons
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import artifacts, paths
-from . import secrets as distill_secrets
+from . import secret_store as distill_secrets
 from .db import Store, set_store
 from .events import parse_note, parse_step, sse_frame
-from .executor import LocalExecutor
-from .gates import evaluate
+from .executor import ALLOWED_ENV, LocalExecutor, SECRET_ENV, scrub_secret_overlays
+from .gates import STAGE_GATES, evaluate
 from .stages import REGISTRY, Conflict, Invalid, JobRequest
 from .stages import data as data_stages
 from .stages import eval as eval_stages
@@ -45,9 +45,9 @@ from .stages import train as train_stages
 DB_ENV = "KEV_CONSOLE_DB"
 POLL_SECONDS = 0.5
 STREAM_BATCH = 200
-# 只回布尔态：凭据值永远不下发到浏览器（spec §12）
-SECRET_NAMES = ("KEV_API_KEY", "KEV_GEN_API_KEYS", "KEV_HF_SECRET",
-                 "KEV_SERVE_SECRET", "HF_TOKEN")
+# 只回布尔态：凭据值永远不下发到浏览器（spec §12）。名单单一归属 executor.SECRET_ENV：
+# 两处各自维护就会出现「一处加了新凭据、另一处仍当它非敏感」的泄露。
+SECRET_NAMES = SECRET_ENV
 
 # 代理目标：默认指回本进程（kev.console 被挂进 kev.serve 时，它即自己）。可改成远端端点。
 KEV_SERVE_URL = os.environ.get("KEV_SERVE_URL", "http://127.0.0.1:8008")
@@ -225,7 +225,7 @@ def _resolve_service_callable(stage, request: JobRequest, store, cancel,
 
 
 def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, built,
-          *, attempt=1, parent_id=None, gpu_lock=None) -> str:
+          *, attempt=1, parent_id=None, gpu_lock=None, template_id=None) -> str:
     log_path = paths.JOB_LOGS / f"{uuid.uuid4().hex}.log"
     service_binding = _resolve_service_callable(stage, request, store, executor.cancel,
                                                 gpu_lock=gpu_lock, executor=executor)
@@ -237,7 +237,7 @@ def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, bu
             argv=[label], env_overlay=built.env,
             cwd=str(paths.ROOT), log_path=str(log_path),
             artifacts_in=built.artifacts_in, artifacts_out=built.artifacts_out,
-            attempt=attempt, parent_id=parent_id)
+            attempt=attempt, parent_id=parent_id, template_id=template_id)
         executor.spawn_callable(job_id, fn, label=label, log_path=str(log_path),
                                 env_overlay=built.env)
         if stage.persist == "start":
@@ -255,7 +255,8 @@ def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, bu
             argv=argv, env_overlay=built.env,
             cwd=built.cwd or str(paths.ROOT), log_path=str(log_path),
             artifacts_in=built.artifacts_in, artifacts_out=built.artifacts_out,
-            attempt=attempt, parent_id=parent_id, daemon_id=built.daemon_id)
+            attempt=attempt, parent_id=parent_id, daemon_id=built.daemon_id,
+            template_id=template_id)
         # Backfill placeholder argv values that _distill_daemon left as __placeholder__.
         for i, part in enumerate(argv):
             if part == "__placeholder__":
@@ -272,9 +273,9 @@ def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, bu
             argv=argv, env_overlay=built.env,
             cwd=built.cwd or str(paths.ROOT), log_path=str(log_path),
             artifacts_in=built.artifacts_in, artifacts_out=built.artifacts_out,
-            attempt=attempt, parent_id=parent_id)
+            attempt=attempt, parent_id=parent_id, template_id=template_id)
     executor.spawn(job_id, argv, cwd=built.cwd or str(paths.ROOT),
-                   log_path=str(log_path), env_overlay=built.env)
+                   log_path=str(log_path), env_overlay=built.env, secrets=built.secrets)
     if stage.persist == "start":
         # 长驻作业（kev.serve）永远不「完成」，产物必须在 spawn 之后立刻注册，
         # 否则端点列表永远是空的。在线状态由部署页实际探 /v1/models 决定。
@@ -294,6 +295,16 @@ def _prepare(store: Store, payload: dict):
         built = stage.preview(request)
     except (Invalid, Conflict, SystemExit) as error:
         return _job_error(error)
+    # 环境通道必须在落库之前校验：_spawn 里 create_job 先于 executor.spawn，等到
+    # build_env 才拒就留下一条带着（可能是凭据）overlay、且永不运行的作业行 + 一个 500。
+    misplaced = sorted(key for key in built.env if key not in ALLOWED_ENV)
+    if misplaced:
+        return _error("validation", f"env 只能带非敏感白名单键，收到 {misplaced}", status=400,
+                      field="env", hint=f"允许：{sorted(ALLOWED_ENV)}；凭据请走 secrets 通道")
+    leaked = sorted(key for key in built.secrets if key not in SECRET_NAMES)
+    if leaked:
+        return _error("validation", f"secrets 只能带已声明的凭据键，收到 {leaked}", status=400,
+                      field="env", hint=f"允许：{sorted(SECRET_NAMES)}")
     return stage, request, built
 
 
@@ -513,7 +524,7 @@ def generator_dry_run(slug: str, body: dict, store: Store = Depends(get_store)) 
     n = body.get("n", 100)
     seed = body.get("seed", 0)
     from kev.console.generators.engine import run as engine_run
-    from common import label_table as _lt
+    from kev.console.generators.common import label_table as _lt
     import tempfile
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
         tmp_path = Path(tmp.name)
@@ -539,7 +550,8 @@ def generator_validate(slug: str, body: dict, store: Store = Depends(get_store))
     """
     from kev.console.generators import rules
     from kev.console.generators.common import resolve_spec
-    from kev.console.generators.engine import run as engine_run
+    from kev.console.generators.engine import gate_gaps, run as engine_run
+    from kev.console.generators.plan import PlanAllocator, PlanError
     import tempfile
     try:
         spec = resolve_spec(slug)
@@ -548,13 +560,18 @@ def generator_validate(slug: str, body: dict, store: Store = Depends(get_store))
     problems = rules.static_problems(spec)
     if problems:
         return {"errors": [{"rule_id": where, "message": message} for where, message in problems]}
+    plan_errors = PlanAllocator((spec.get("generator") or {}).get("plan_targets") or {}).static_errors()
+    if plan_errors:
+        return {"errors": [{"rule_id": "<plan>", "message": message} for message in plan_errors]}
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:
         try:
-            engine_run(["--scenario", slug, "--n", "8", "--out", str(tmp_path), "--seed", "0", "--pairs", "0"])
+            code = engine_run(["--scenario", slug, "--n", "8", "--out", str(tmp_path), "--seed", "0", "--pairs", "0"])
         except rules.RuleError as error:
             return {"errors": [{"rule_id": error.rule_id or "<run>", "message": str(error)}]}
+        except PlanError as error:
+            return {"errors": [{"rule_id": "<plan>", "message": str(error)}]}
         except Exception as error:  # a spec the engine refuses for another reason is still an error, not a pass
             return {"errors": [{"rule_id": "<run>", "message": f"{type(error).__name__}: {error}"}]}
         rows = tmp_path.read_text(encoding="utf-8").splitlines() if tmp_path.exists() else []
@@ -562,7 +579,13 @@ def generator_validate(slug: str, body: dict, store: Store = Depends(get_store))
             return {"errors": [{"rule_id": "<run>",
                                 "message": "the spec produced no records: no rule gave any record a complete set of "
                                            "labels"}]}
-        return {"errors": [], "records": len(rows)}
+        # The exit gate's numbers, as a field of their own (design doc §3's exit row): `errors` keeps meaning "this spec
+        # cannot generate", and a label under the floor at n=8 is a warning about the *shipped* run's size, not about a
+        # preview of eight records. `code` is the engine's own verdict — strict only when the spec declared a floor.
+        gaps = gate_gaps(spec, [json.loads(line) for line in rows])
+        if gaps and code:
+            return {"errors": [{"rule_id": "<gate>", "message": gap} for gap in gaps]}
+        return {"errors": [], "records": len(rows), "gate_gaps": gaps}
     finally:
         try:
             tmp_path.unlink()
@@ -647,6 +670,103 @@ def export_dataset(artifact_id: str, store: Store = Depends(get_store)):
                                       f'attachment; filename="{artifact["name"].replace("/", "_")}.jsonl"'})
 
 
+# ---- stage param specs + plan + job templates -------------------------
+
+@console_router.get("/console/api/plan/{scenario}")
+def get_plan(scenario: str, store: Store = Depends(get_store)):
+    """plan_size 产物的 total_records，用于回填 generate --n。
+
+    找不到计划、或计划里缺 total_records（作业未完成/产物已清理），都按 field="n"
+    回 404，前端据此在 --n 输入框下提示「先跑 plan_size」，而不是静默失败。
+    """
+    artifact = store.get_artifact(f"plan:{scenario}")
+    if artifact is None:
+        return _error("validation", f"尚未生成计划：{scenario}（先跑 plan_size）",
+                      status=404, field="n",
+                      hint="运行 plan_size 后这里会给出 total_records")
+    total = (artifact.get("meta") or {}).get("total_records")
+    if total is None:
+        return _error("validation", f"计划缺少 total_records：{scenario}",
+                      status=404, field="n",
+                      hint="plan_size 作业可能尚未完成或产物被清理")
+    return {"scenario": scenario, "total_records": int(total), "artifact_id": artifact["id"]}
+
+
+@console_router.get("/console/api/stage/{kind}/params")
+def get_stage_params(kind: str, store: Store = Depends(get_store)):
+    """读取某作业类型的提交表单 schema（字段/默认/必填），前端据此动态渲染。"""
+    fields, version, source = store.get_stage_params(kind)
+    return {"kind": kind, "fields": fields, "version": version, "source": source}
+
+
+@console_router.put("/console/api/stage/{kind}/params")
+def put_stage_params(kind: str, payload: dict, store: Store = Depends(get_store)):
+    """改某作业类型的提交表单 schema：版本 +1，旧版本进 stage_param_spec_history。"""
+    fields = payload.get("fields")
+    if not isinstance(fields, list):
+        return _error("validation", "fields 必须是数组", status=400, field="fields")
+    saved = store.save_stage_params(kind, fields)
+    return {"kind": kind, "fields": saved["fields"], "version": saved["version"], "source": "db"}
+
+
+@console_router.get("/console/api/stage/{kind}/params/versions")
+def get_stage_param_versions(kind: str, store: Store = Depends(get_store)):
+    """列出某 kind 的历史版本（每次保存都会归档旧版本）。"""
+    return store.list_stage_param_versions(kind)
+
+
+@console_router.post("/console/api/stage/{kind}/params/rollback")
+def post_stage_params_rollback(kind: str, payload: dict, store: Store = Depends(get_store)):
+    """回滚到某一历史版本：把该版本 schema 作为新版本写回（版本+1，当前版本先归档）。"""
+    version = payload.get("version")
+    if not isinstance(version, int) or isinstance(version, bool):
+        return _error("validation", "version 必填且为整数", status=400, field="version")
+    saved = store.rollback_stage_params(kind, version)
+    if saved is None:
+        return _error("validation", f"找不到历史版本 {version}", status=404, field="version")
+    return {"kind": kind, "fields": saved["fields"], "version": saved["version"], "source": "db"}
+
+
+@console_router.get("/console/api/job-templates")
+def list_job_templates(kind: str | None = None, store: Store = Depends(get_store)):
+    """列出命名作业模板；可选按 kind 过滤（如只列 dataset 阶段的模板）。"""
+    return store.list_job_templates(kind)
+
+
+@console_router.post("/console/api/job-templates")
+def create_job_template(payload: dict, store: Store = Depends(get_store)):
+    kind = (payload.get("kind") or "").strip()
+    name = (payload.get("name") or "").strip()
+    if not kind:
+        return _error("validation", "kind 必填", status=400, field="kind")
+    if not name:
+        return _error("validation", "模板名必填", status=400, field="name")
+    params = payload.get("params")
+    if not isinstance(params, dict):
+        return _error("validation", "params 必须是对象", status=400, field="params")
+    scenario = (payload.get("scenario") or "").strip()
+    template_id = store.create_job_template(kind=kind, name=name, scenario=scenario, params=params)
+    return store.get_job_template(template_id)
+
+
+@console_router.put("/console/api/job-templates/{template_id}")
+def update_job_template(template_id: str, payload: dict, store: Store = Depends(get_store)):
+    if store.get_job_template(template_id) is None:
+        return _error("validation", f"未知模板 {template_id}", status=404)
+    return store.update_job_template(
+        template_id,
+        name=(payload.get("name") or "").strip() or None,
+        scenario=payload.get("scenario"),
+        params=payload.get("params"))
+
+
+@console_router.delete("/console/api/job-templates/{template_id}")
+def delete_job_template(template_id: str, store: Store = Depends(get_store)):
+    if not store.delete_job_template(template_id):
+        return _error("validation", f"未知模板 {template_id}", status=404)
+    return {"deleted": True}
+
+
 # ---- jobs -------------------------------------------------------------
 
 @console_router.post("/console/api/jobs/preview")
@@ -696,8 +816,8 @@ def submit_job(payload: dict, request_: Request, store: Store = Depends(get_stor
 
     return JSONResponse(status_code=201, content=store.get_job(
         _spawn(store, executor, stage, request, built,
-               gpu_lock=request_.app.state.gpu_lock)))
-    return JSONResponse(status_code=201, content=store.get_job(_spawn(store, executor, stage, request, built)))
+               gpu_lock=request_.app.state.gpu_lock,
+               template_id=payload.get("template_id") or None)))
 
 
 @console_router.get("/console/api/jobs")
@@ -759,7 +879,8 @@ def retry_job(job_id: str, request_: Request, store: Store = Depends(get_store),
     return JSONResponse(status_code=201, content=store.get_job(
         _spawn(store, executor, stage, request, built,
                attempt=attempt, parent_id=job_id,
-               gpu_lock=request_.app.state.gpu_lock)))
+               gpu_lock=request_.app.state.gpu_lock,
+               template_id=job.get("template_id"))))
 
 
 @console_router.get("/console/api/jobs/{job_id}/events")
@@ -851,6 +972,57 @@ def get_artifact_content(artifact_id: str, tail: int = 200_000,
     return {"id": artifact["id"], "kind": artifact["kind"], "path": artifact["path"],
             "bytes": artifact.get("bytes"), "content": text[-tail:] if truncated else text,
             "truncated": truncated}
+
+
+# 入参路径查看的文本类型白名单：与产物内容一样只回文本，二进制/权重文件拒读。
+FILE_TEXT_SUFFIXES = frozenset({".json", ".jsonl", ".md", ".txt", ".csv", ".yaml", ".yml"})
+
+
+@console_router.get("/console/api/files/content")
+def get_file_content(path: str, tail: int = 200_000) -> dict:
+    """读取仓库相对文件（data/ 与 runs/ 之下）的文本内容。
+
+    作业的入参里有一批不是注册产物、而是直接写路径的字段（如 make_examples 的
+    --data data/critical-value.jsonl、goldset 的 --out）。产物接口按 id 查、覆盖不到
+    它们，所以这里给一条只读白名单：仅限 data/ 与 runs/ 顶层、拒绝绝对路径与 ..、
+    解析后必须仍在 ROOT 内、只允许文本后缀 —— 这是本地控制台的查看面，不是通用文件服务。
+    """
+    norm = path.replace("\\", "/")
+    parts = [p for p in norm.split("/") if p not in ("", ".")]
+    if norm.startswith("/") or not parts or ".." in parts:
+        return _error("validation", f"非法路径：{path}", status=400, field="path")
+    if parts[0] not in (paths.DATA_REL, paths.RUNS_REL):
+        return _error("validation", f"只允许读取 {paths.DATA_REL}/ 与 {paths.RUNS_REL}/ 下的文件",
+                      status=400, field="path")
+    if Path(parts[-1]).suffix.lower() not in FILE_TEXT_SUFFIXES:
+        return _error("validation", f"不是可读文本文件类型：{path}", status=415, field="path")
+    root = Path(paths.ROOT)
+    target = root.joinpath(*parts).resolve()
+    if not target.is_relative_to(root):   # 符号链接等逃逸的最后防线
+        return _error("validation", f"非法路径：{path}", status=400, field="path")
+    if not target.is_file():
+        return _error("validation", f"文件不存在：{path}", status=404, field="path")
+    try:
+        text = target.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return _error("validation", f"无法读取文件：{path}", status=415, field="path")
+    truncated = len(text) > tail
+    return {"path": path, "bytes": target.stat().st_size,
+            "content": text[-tail:] if truncated else text, "truncated": truncated}
+
+
+@console_router.get("/console/api/stages")
+def get_stages() -> dict:
+    """只读阶段元数据：kind -> {kind, stage, title, outcome, gates}。
+
+    供前端「提交作业」页顶部的操作解析卡使用。全部取自既有结构化真相源
+    （stages.REGISTRY 的 StageSpec 与 gates.STAGE_GATES），这里不写任何描述性
+    文案 —— 前端不许复制一份闸门归属或 outcome，否则后端一改就会漂移。
+    """
+    return {spec.kind: {"kind": spec.kind, "stage": spec.stage, "title": spec.title,
+                        "outcome": spec.outcome,
+                        "gates": list(STAGE_GATES.get(spec.stage, []))}
+            for spec in REGISTRY.values()}
 
 
 @console_router.get("/console/api/gates/{stage}")
@@ -1359,6 +1531,10 @@ def wire_console_state(app: FastAPI, *, store: Store | None = None,
     # 崩溃恢复：WSL2 会自动回收内存，服务重启是常态。必须在**装配时**调用，而不是放进
     # Store.__init__ —— 后者会让任何只读工具 new 一个 Store 就误杀在途作业。
     app.state.store.interrupt_stale_jobs()
+    # 作业表对浏览器可读之前先把历史脏数据洗一遍：旧版 distill 曾把密钥库的
+    # KEV_GEN_API_KEYS 当作非敏感 overlay 写进 jobs.env_overlay（现已改走
+    # BuiltCommand.secrets）。幂等，没脏数据时零写入。
+    scrub_secret_overlays(app.state.store)
 
     def _on_finished(job_id: str, exit_code: int) -> None:
         # 产物注册失败不吞：register_finished 内部会记 system 事件并（必要时）重抛。

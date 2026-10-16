@@ -58,12 +58,16 @@ class JobRequest(BaseModel):
 class BuiltCommand:
     """一次「组装好但还没跑」的命令。
 
-    `env` 只放**非敏感**键（白名单见 executor.ALLOWED_ENV）；敏感键由执行器在 spawn
-    时从自己的进程环境注入，永不落库（spec §12）。
+    `env` 只放**非敏感**键（白名单见 executor.ALLOWED_ENV）：这一份会落库审计、也会出现在
+    preview 响应里。凭据走 `secrets` 专用通道：键名必须在 executor.SECRET_ENV 里声明过，
+    spawn 时注入子进程，永不落库、永不下发浏览器（spec §12）。
+    凭据有两个来源：编排服务自己的进程环境（缺省），以及本作业显式带的 `secrets`
+    （蒸馏配置的 key 就来自服务端密钥库，后者覆盖前者）。
     """
 
     argv: list
     env: dict = field(default_factory=dict)
+    secrets: dict = field(default_factory=dict)
     cwd: str = ""
     artifacts_in: list = field(default_factory=list)
     artifacts_out: list = field(default_factory=list)
