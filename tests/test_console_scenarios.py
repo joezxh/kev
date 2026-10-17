@@ -5,6 +5,7 @@ Run: uv run python -m pytest tests/test_console_scenarios.py -q
 import pytest
 
 from fastapi.testclient import TestClient
+from kev.console import scenario_specs
 from kev.console.app import create_app
 from kev.console.db import Store
 
@@ -17,6 +18,15 @@ def client(tmp_path):
 
 def _tree(client):
     return client.get("/console/api/scenario-domains").json()
+
+
+def _expected(domain_slug):
+    """docs/domains/<domain>/specs 里应有的场景（清单来自 scenario_specs，测试不写死数字）。"""
+    return [e for e in scenario_specs.entries() if e.domain.slug == domain_slug]
+
+
+# write_spec_file 只收合法 spec（name/domain/state/questions 四件必非空）
+STALE_SPEC = '{"name": "stale", "domain": "d", "state": "s", "questions": {"q": {"type": "noul"}}}'
 
 
 def flag(argv, name):
@@ -33,13 +43,38 @@ def test_seed_is_idempotent_and_bilingual(client):
     medical = domains["medical"]
     assert medical["label_zh"] == "医疗" and medical["label_en"] == "Medical"
     slugs = {s["slug"] for s in medical["scenarios"]}
-    # run_matrix 已知的医疗场景全部落库（含 icd-coding）
+    # 医疗场景全部落库（含 icd-coding）
     assert {"critical-value", "icd-coding", "triage"} <= slugs
-    # 7 个基础医疗场景 + 3 个蒸馏轨补回（inquiry / medication / knowledge-qa）
-    assert len(medical["scenarios"]) == 10
+    # 与 docs/domains/medical/specs 的文件清单一字不差
+    assert len(medical["scenarios"]) == len(_expected("medical"))
     cv = next(s for s in medical["scenarios"] if s["slug"] == "critical-value")
     assert cv["label_zh"] == "危急值" and cv["label_en"] == "Critical Value"
-    assert cv["spec_path"] == "docs/medical/specs/critical-value.json"
+    assert cv["spec_path"] == "docs/domains/medical/specs/critical-value.json"
+
+
+def test_seed_registers_all_five_domains(client):
+    """docs/domains 的五个领域全部登记，每个领域的场景数与 spec 文件数一致。"""
+    tree = {d["slug"]: d for d in _tree(client)}
+    assert {d.slug for d in scenario_specs.domains()} <= set(tree)
+    for domain in scenario_specs.domains():
+        row = tree[domain.slug]
+        assert row["spec_dir"] == domain.spec_dir
+        assert {s["slug"] for s in row["scenarios"]} == {e.slug for e in _expected(domain.slug)}
+
+
+def test_seed_tracks_match_readme(client):
+    """库里的 track 与 docs/domains/README.md §1 的「轨制」列一致（派生事实不靠注释）。"""
+    listed = scenario_specs.readme_scenarios()
+    rows = {s["slug"]: s for d in _tree(client) for s in d["scenarios"]}
+    assert set(listed) <= set(rows)
+    for slug, (domain, _label, track_text) in listed.items():
+        assert rows[slug]["track"] == scenario_specs.README_TRACK[track_text], slug
+    # 规则轨带生成器形态，蒸馏轨带 EasyDistill 配置路径
+    for slug, row in rows.items():
+        if row["track"] in ("rule", "both"):
+            assert row["generator_kind"] in ("engine", "script"), slug
+        if row["track"] in ("distill", "both"):
+            assert row["distill_yaml"].endswith(".yaml"), slug
 
 
 def test_seed_does_not_duplicate_on_reinit(client):
@@ -47,58 +82,143 @@ def test_seed_does_not_duplicate_on_reinit(client):
     store = client.app.state.store
     store.seed_scenarios()
     medical = next(d for d in store.list_scenario_tree() if d["slug"] == "medical")
-    assert len(medical["scenarios"]) == 10
+    assert len(medical["scenarios"]) == len(_expected("medical"))
+
+
+def test_seed_force_overwrites_spec_and_keeps_history(client):
+    """seed_scenarios(force=True) 以文件为准覆盖 spec_json，覆写前的库内内容进历史表。"""
+    store = client.app.state.store
+    entry = _expected("medical")[0]
+    store.write_spec_file(entry.slug, STALE_SPEC)
+    before = len(store.list_spec_history(entry.slug))
+    stats = store.seed_scenarios(force=True)
+    assert stats["specs_written"] >= 1
+    assert store.get_scenario_by_slug(entry.slug)["spec_json"] == entry.content
+    assert len(store.list_spec_history(entry.slug)) == before + 1
+
+
+def test_seed_preserves_user_edits_without_force(client):
+    """不带 force 时不覆盖用户改过的库内内容（seed 只刷派生列）。"""
+    store = client.app.state.store
+    slug = _expected("medical")[0].slug
+    store.write_spec_file(slug, STALE_SPEC)
+    store.seed_scenarios()
+    assert store.get_scenario_by_slug(slug)["spec_json"] == STALE_SPEC
+
+
+def test_migrate_v8_from_legacy_shape(tmp_path):
+    """旧库（v7 结构 + 手工建的 research 域）重开即迁移：补五列、按别名认领、不插重复域。
+
+    复现的是真实情形：旧库里科研域是用户手工建的，slug 叫 research（目录叫 science），
+    域行与场景行都没有 v8 的 spec_dir/track/generator_kind/distill_yaml/origin。
+    """
+    import sqlalchemy as sa
+    path = tmp_path / "legacy.sqlite"
+    store = Store(path)
+    store._conn().execute(sa.text(
+        "UPDATE scenario_domains SET slug='research', label_zh='科研', spec_dir=''"
+        " WHERE slug='science'"))
+    for table, column in (("scenario_domains", "spec_dir"), ("scenarios", "track"),
+                          ("scenarios", "generator_kind"), ("scenarios", "distill_yaml"),
+                          ("scenarios", "origin")):
+        store._conn().execute(sa.text(f"ALTER TABLE {table} DROP COLUMN {column}"))
+    store._conn().execute(
+        sa.text("UPDATE console_meta SET value='7' WHERE key='schema_version'"))
+    store.engine.dispose()
+
+    migrated = Store(path)          # 建表跳过（已存在），_migrate 补列 + 重新播种
+    try:
+        assert migrated.schema_version() == 9  # 迁移收敛到当前 SCHEMA_VERSION（v9 起含策展新表）
+        tree = {d["slug"]: d for d in migrated.list_scenario_tree()}
+        # 认领旧行而不是新建一条同义域（不插重复域也不重命名用户的 slug）
+        assert "research" in tree and "science" not in tree
+        assert tree["research"]["spec_dir"] == "science"
+        assert {s["slug"] for s in tree["research"]["scenarios"]} == {e.slug for e in _expected("science")}
+        assert len(migrated.list_scenario_slugs()) == len(scenario_specs.entries())
+        # 补回来的列全部重新填好（ALTER 只能给默认值，靠种子重算）
+        assert all(s["track"] for d in tree.values() for s in d["scenarios"])
+    finally:
+        migrated.engine.dispose()
 
 
 # ---- 域 / 场景 CRUD ------------------------------------------------------
 
 def test_domain_and_scenario_crud(client):
+    # 用未登记的领域 slug：finance 已由 docs/domains 种子建好（重复建会 409）
     resp = client.post("/console/api/scenario-domains", json={
-        "slug": "finance", "label_zh": "金融", "label_en": "Finance"})
+        "slug": "retail", "label_zh": "零售", "label_en": "Retail"})
     assert resp.status_code == 201, resp.text
     domain_id = resp.json()["id"]
 
     resp = client.post("/console/api/scenarios", json={
         "domain_id": domain_id, "slug": "risk", "label_zh": "风控",
-        "label_en": "Risk", "spec_path": "docs/medical/specs/diagnosis.json"})
+        "label_en": "Risk", "spec_path": "docs/domains/medical/specs/diagnosis.json"})
     assert resp.status_code == 201, resp.text
     scenario = resp.json()
     assert scenario["category"] == "medical"
 
     # 树含新域与新场景
     tree = _tree(client)
-    finance = next(d for d in tree if d["slug"] == "finance")
-    assert any(s["slug"] == "risk" for s in finance["scenarios"])
+    retail = next(d for d in tree if d["slug"] == "retail")
+    assert any(s["slug"] == "risk" for s in retail["scenarios"])
 
     # 更新标签
     resp = client.put(f"/console/api/scenarios/{scenario['id']}", json={
-        "label_zh": "风险控制", "category": "finance"})
+        "label_zh": "风险控制", "category": "retail"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["label_zh"] == "风险控制"
-    assert resp.json()["category"] == "finance"
+    assert resp.json()["category"] == "retail"
 
     # 删除场景后删域（级联）
     assert client.delete(f"/console/api/scenarios/{scenario['id']}").json()["deleted"]
     assert client.delete(f"/console/api/scenario-domains/{domain_id}").json()["deleted"]
-    assert not any(d["slug"] == "finance" for d in _tree(client))
+    assert not any(d["slug"] == "retail" for d in _tree(client))
+
+
+def test_domain_spec_dir_and_scenario_track(client):
+    """建域可带 spec_dir，建/改场景可带轨制；track 只认四个值（留空 = 未判定）。"""
+    resp = client.post("/console/api/scenario-domains", json={
+        "slug": "retail2", "label_zh": "零售二", "label_en": "Retail2", "spec_dir": "retail2"})
+    assert resp.status_code == 201, resp.text
+    domain_id = resp.json()["id"]
+    assert next(d for d in _tree(client) if d["slug"] == "retail2")["spec_dir"] == "retail2"
+
+    payload = {"domain_id": domain_id, "slug": "tracked", "label_zh": "定轨",
+               "label_en": "Tracked", "spec_path": "docs/domains/medical/specs/diagnosis.json"}
+    assert client.post("/console/api/scenarios", json={**payload, "track": "nonsense"}).status_code == 400
+    resp = client.post("/console/api/scenarios", json={**payload, "track": "distill",
+                                                       "distill_yaml": "x/y.yaml"})
+    assert resp.status_code == 201, resp.text
+    scenario = resp.json()
+    assert (scenario["track"], scenario["distill_yaml"]) == ("distill", "x/y.yaml")
+
+    resp = client.put(f"/console/api/scenarios/{scenario['id']}", json={"track": "both"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["track"] == "both"
+    # 空串是「清空未判定」，合法
+    assert client.put(f"/console/api/scenarios/{scenario['id']}",
+                      json={"track": ""}).json()["track"] == ""
+
+    client.delete(f"/console/api/scenarios/{scenario['id']}")
+    client.delete(f"/console/api/scenario-domains/{domain_id}")
 
 
 def test_scenario_slug_must_be_unique(client):
     domain_id = client.post("/console/api/scenario-domains", json={
         "slug": "edu", "label_zh": "教育", "label_en": "Education"}).json()["id"]
     payload = {"domain_id": domain_id, "slug": "dup", "label_zh": "重复",
-               "label_en": "Dup", "spec_path": "docs/medical/specs/diagnosis.json"}
+               "label_en": "Dup", "spec_path": "docs/domains/medical/specs/diagnosis.json"}
     assert client.post("/console/api/scenarios", json=payload).status_code == 201
     assert client.post("/console/api/scenarios", json=payload).status_code == 409
 
 
 def test_validation_requires_labels_and_spec(client):
     domain_id = client.post("/console/api/scenario-domains", json={
-        "slug": "law", "label_zh": "法律", "label_en": "Law"}).json()["id"]
+        "slug": "legal", "label_zh": "法条", "label_en": "Legal"}).json()["id"]
     # 缺英文标签
     assert client.post("/console/api/scenarios", json={
         "domain_id": domain_id, "slug": "x", "label_zh": "X",
-        "label_en": "", "spec_path": "docs/medical/specs/diagnosis.json"}).status_code == 400
+        "label_en": "", "spec_path": "docs/domains/medical/specs/diagnosis.json"}).status_code == 400
     # 非 .json
     assert client.post("/console/api/scenarios", json={
         "domain_id": domain_id, "slug": "y", "label_zh": "Y", "label_en": "Y",
@@ -168,7 +288,7 @@ def test_distill_build_passes_spec_path_for_custom_scenario(client):
     # 自定义 slug 不在 generate_data.py 的 CATEGORY_SPECS 里
     client.post("/console/api/scenarios", json={
         "domain_id": domain_id, "slug": "my-custom", "label_zh": "我的场景",
-        "label_en": "My Custom", "spec_path": "docs/medical/specs/diagnosis.json"})
+        "label_en": "My Custom", "spec_path": "docs/domains/medical/specs/diagnosis.json"})
 
     built = d.distill.preview(JobRequest(
         scenario="my-custom", run_name="mc-v1",

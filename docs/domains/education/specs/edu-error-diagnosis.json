@@ -1,0 +1,149 @@
+{
+  "_meta": {
+    "purpose": "作业错因诊断 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/edu-error-diagnosis.yaml"
+  },
+  "name": "edu-error-diagnosis",
+  "label_zh": "错因诊断",
+  "label_en": "Error Diagnosis",
+  "domain": "中小学数学与理科作业的错因诊断。教师或家长把学生的错题提交给助手，助手判断错误类型（概念误解、程序性错误、粗心、前置知识缺口、审题错误、空白未作答），指出错误发生的具体步骤，并给出是否需要回补前置知识的建议。错因分类设计参照数学教育研究中广泛使用的错误类型学（conceptual vs procedural error 的经典两分及其细分），类别定义与阈值为示例口径。",
+  "state": "一道错题的结构化记录：学段与科目（数学/物理/化学）、题目原文（含条件与设问）、学生的完整作答过程（逐步骤）、正确答案、学生答案、订正记录（是否已订正、订正后是否仍错）、相同知识点近两周的累计错误次数。",
+  "state_example": {
+    "student": "female 13, 初一",
+    "subject": "数学",
+    "problem": "计算：(-2)^2 - 3 x (-1) = ?",
+    "student_work": "第一步 (-2)^2 = -4；第二步 3 x (-1) = 3；第三步 -4 + 3 = -1",
+    "correct_answer": "7",
+    "student_answer": "-1",
+    "corrected": false,
+    "recent_errors_same_topic": 3
+  },
+  "questions": {
+    "error_type": {
+      "type": "choice",
+      "instructions": "这道题的主要错因属于哪一类？",
+      "criteria": {
+        "concept_misunderstanding": "概念误解：对定义/法则本身理解错误（如认为 (-2)^2 = -4）",
+        "procedure_mistake": "程序性错误：概念理解正确但运算步骤/顺序错误",
+        "careless": "粗心：抄错数字、符号看错，方法与步骤均正确",
+        "prerequisite_gap": "前置知识缺口：错误源于更早的知识点未掌握",
+        "misread": "审题错误：漏看或看错题目条件与设问",
+        "blank": "空白未作答或只写了答案无过程"
+      }
+    },
+    "error_step": {
+      "type": "score",
+      "instructions": "错误最早发生在作答的第几步？",
+      "criteria": [
+        "0：第一步即错（读题或首个运算）",
+        "1：第二步出错",
+        "2：第三步及以后出错",
+        "3：过程无法定位（空白或只有答案）"
+      ]
+    },
+    "needs_prerequisite_reteach": {
+      "type": "noul",
+      "instructions": "是否需要回补前置知识（而不是仅订正本题）？",
+      "criteria": {
+        "true": "error_type 为 concept_misunderstanding 或 prerequisite_gap，或近两周同知识点累计错误 ≥3 次",
+        "false": "单次粗心或程序性失误，订正讲解即可"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "作答过程是否完整，足以可靠定位错因？",
+      "criteria": {
+        "true": "逐步骤过程清晰，可对照判定错误发生点",
+        "false": "只有答案无过程、字迹无法辨认或过程被涂改"
+      }
+    }
+  },
+  "guidance": "错因诊断只输出错误类型、出错步骤、是否需回补前置知识与证据充分性，不输出对学生能力的评价。error_type 的判定优先级：先查概念（定义/法则是否理解错，如 (-2)^2 误算为 -4 是符号法则的概念误解而非粗心）；概念正确再查程序（运算顺序、去括号、移项变号）；再查前置缺口（错误实际发生在更早的知识点，如分式方程错在通分而通分属于前置）；概念与程序都对但结果错才判 careless；题目条件被用错（漏看负号、单位换算错）判 misread；无过程判 blank。error_step 从 0 计（第一步即错），只有答案无过程时必为 3。needs_prerequisite_reteach 为 true 的判据：error_type ∈ {concept_misunderstanding, prerequisite_gap}，或 recent_errors_same_topic ≥3——单次 careless 即使频发也不自动触发回补，但订正后仍错（corrected=true 且仍错）升为 procedure_misunderstanding 待定并建议精讲。evidence_sufficient=false 时（只有答案、字迹不可辨、过程涂改），error_type 不得给出确定标签，必须用软标签 target {\"concept_misunderstanding\":0.2,\"procedure_mistake\":0.2,\"careless\":0.2,\"prerequisite_gap\":0.2,\"misread\":0.2} 或由人工补录过程后再判——证据不足不下结论是本场景的硬规则。",
+  "variety": [
+    "科目与学段：小学高年级算术、初中代数与几何、初中物理（单位换算与受力分析）、初中化学（方程式配平）、高中函数初步",
+    "错因类型（error_type 六选项逐一覆盖，每类至少有三种不同知识点的实例）：概念误解（平方符号法则、绝对值意义、概率定义）、程序性（去括号漏乘、移项未变号、运算顺序）、粗心（抄错数、看错符号、答案抄错）、前置缺口（分式方程错在通分、二次函数错在配方而配方属前置）、审题（漏看「至多」、单位 cm/m 混用、多问只答一问）、空白",
+    "出错步骤（error_step 四档覆盖）：第一步概念即错、第二步程序错、第三步以后粗心、无法定位（空白/只有答案）",
+    "回补判断（needs_prerequisite_reteach 双判据逐一覆盖）：概念误解单次即触发、前置缺口触发、同知识点 ≥3 次触发、单次粗心不触发、订正后仍错的处理",
+    "证据完整度（evidence_sufficient）：逐步骤完整、只有答案无过程、过程涂改、字迹潦草可辨、字迹不可辨；sufficient=false 时的软标签与拒判路径必须出现",
+    "订正状态：未订正、订正后正确、订正后仍错（同错误重复出现）、换方法订正正确",
+    "作答风格：工整逐步骤、跳步作答、口算直接写答案、含涂改痕迹的照片转写",
+    "易错陷阱：(-2)^2=-4 是概念误解不是粗心、单位看错是 misread 不是 careless、订正后仍错不自动升级回补、只有答案时 error_step 必为 3 且 error_type 不下确定标签"
+  ],
+  "routing": {
+    "risk": "low",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "错因诊断是教学参考，讲解与回补决策由教师作出；evidence_sufficient=false 的记录必须退回补录过程，不得自动判定。不输出对学生智力或态度的评价。"
+  },
+  "smoke_probe": {
+    "state": {
+      "student": "male 14, 初二",
+      "subject": "数学",
+      "problem": "解方程：2(x-3) = 4x + 2",
+      "student_work": "第一步 2x - 3 = 4x + 2；第二步 -2x = 5；第三步 x = -5/2",
+      "correct_answer": "-4",
+      "student_answer": "-5/2",
+      "corrected": true,
+      "recent_errors_same_topic": 4
+    },
+    "questions": [
+      {
+        "qid": "error_type",
+        "type": "choice",
+        "instructions": "这道题的主要错因属于哪一类？"
+      }
+    ],
+    "expected_label": {
+      "error_type": "procedure_mistake"
+    }
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "蒸馏轨样本分布建议：error_type 六类均衡（每类 ≥12%，blank 类可略低至 8%）；needs_prerequisite_reteach=true 占比 35%；evidence_sufficient=false 占比 15%（软标签与拒判路径必须有足量样本）；订正后仍错样本单独 8%。同一知识点连续多题的样本串（同学生 3-5 题成组）单独 10%，用于训练跨题的 prerequiste 判断。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 error_type 六类中至少五类与 evidence_sufficient 两态）作为 --examples 输入；few-shot 范例必须保留完整作答过程字段——只有答案无过程的范例会教出「证据不足也硬判」的漂移；范例的错因结论必须指明出错的步骤与违反的法则，避免只给类型不给定位。",
+  "compliance": [
+    "错题与作答属学生个人信息，训练数据须去标识：剔除姓名、班级与可识别个人经历，仅保留题目与作答文本",
+    "不得输出对学生的学习能力、智力或态度的定性评价，只输出错因分类与教学建议",
+    "错误类型标签用于教学改进，不得作为学生分层或排名的依据（需专家复核使用边界）",
+    "订正记录涉及师生互动细节，去标识时保留订正状态布尔值、剔除对话原文"
+  ],
+  "acceptance": [
+    "error_type 六类 macro-F1 ≥0.85，concept_misunderstanding 与 careless 的混淆率 ≤8%（两者教学处理完全不同）",
+    "error_step 四档准确率 ≥0.90",
+    "needs_prerequisite_reteach 召回 ≥0.95（漏回补导致错误固化，代价高于过回补）",
+    "evidence_sufficient=false 子集上确定性标签率 =0（硬规则验收：证据不足必须拒判或软标签）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "careless 与 concept_misunderstanding 大量混淆 → guidance 的判定优先级（先概念后程序后粗心）在 few-shot 中未体现，补足「符号法则错但方法对」的对照范例",
+    "evidence_sufficient=false 仍出确定标签 → 软标签注入路径失效，检查 sidecar 是否保留了不确定样本的分布标签而非 argmax",
+    "prerequisite_gap 全被误判为 procedure_mistake → 前置定位需要跨知识点标注，检查 sidecar 是否只标了表层步骤",
+    "同知识点样本串的标签不一致 → 同学生连续错题的 needs_prerequisite_reteach 必须按累计次数口径一致，检查 sidecar 分组逻辑"
+  ],
+  "expert_review": [
+    "error_type 六分类与数学教育文献中的错误类型学（conceptual/procedural 两分及细分）的对应与本地教研口径（需教研员复核）",
+    "concept_misunderstanding 与 prerequisite_gap 的边界（何时把错误归因于更早知识点）",
+    "needs_prerequisite_reteach 的累计次数阈值（≥3 次）与订正后仍错的升级口径",
+    "证据不足时软标签分布（等权 0.2 五类）是否符合教学实际"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；错因分类无法用数值区间规则表达，标签由教师标注 sidecar 提供。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是一位细致的错因诊断助手。你的回答要体现诊断逻辑：先核对概念与法则，再查运算步骤，再考虑前置知识缺口，最后才考虑粗心与审题；\n  指出错误最早发生的步骤并说明违反的法则；给出是否需要回补前置知识的建议。作答过程不完整时必须显式说明证据不足，不得硬性判定。\n  不评价学生能力与态度。",
+      "en": "You are a meticulous error-diagnosis assistant. Your reply must reflect diagnostic logic: check concepts and rules first, then computation steps, then prerequisite gaps, and only then consider slips and misreading;\n  pinpoint the earliest step where the error occurs and the rule it violates; suggest whether prerequisite reteaching is needed. When the shown work is incomplete you must state that evidence is insufficient rather than force a verdict.\n  Never comment on the student's ability or attitude."
+    },
+    "ask_template": "请基于以下错题记录给出错因诊断：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "中小学数学与理科错题的错因分类（概念误解/程序性错误/粗心/前置缺口/审题/空白）",
+      "出错步骤定位与所违反法则的说明",
+      "前置知识回补建议与证据不足时的拒判"
+    ],
+    "kev_track": false
+  }
+}

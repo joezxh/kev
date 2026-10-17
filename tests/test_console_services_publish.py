@@ -29,21 +29,6 @@ def _req(params=None) -> JobRequest:
                       params=params or {})
 
 
-MODEL_CARD = "# model card"  # markdown, so the text starts with a hash sign
-
-
-def _card(tmp_path) -> Path:
-    """A model card on disk, the one way all three tests below ask for one.
-
-    The literal lives in MODEL_CARD rather than inside the write call: tests/test_conventions.py reads a file line by
-    line and treats a `#` as the start of a comment, so `write_text("# ...", encoding="utf-8")` loses its encoding=
-    argument to that scanner and gets reported as a locale-dependent write.
-    """
-    card = tmp_path / "card.md"
-    card.write_text(MODEL_CARD, encoding="utf-8")
-    return card
-
-
 def test_publish_dispatches_to_kev_publish_run(monkeypatch, svc, tmp_path):
     """PublishService.publish() builds a Namespace and calls kev.publish.run."""
     captured: dict = {}
@@ -53,7 +38,8 @@ def test_publish_dispatches_to_kev_publish_run(monkeypatch, svc, tmp_path):
         return 0
 
     monkeypatch.setattr("kev.console.services.publish.kev_publish_run", fake_run)
-    card = _card(tmp_path)
+    card = tmp_path / "card.md"
+    card.write_text("# model card", encoding="utf-8")
     rc = svc.publish(_req({"repo": "jaredpalmer/kev-0.8b", "card": str(card)}),
                      on_log=lambda s: None, on_metric=lambda p: None)
     assert rc == {"returncode": 0}
@@ -73,7 +59,8 @@ def test_publish_forwards_optional_flags(monkeypatch, svc, tmp_path):
         return 0
 
     monkeypatch.setattr("kev.console.services.publish.kev_publish_run", fake_run)
-    card = _card(tmp_path)
+    card = tmp_path / "card.md"
+    card.write_text("# model card", encoding="utf-8")
     rc = svc.publish(_req({"repo": "jaredpalmer/kev-0.8b", "card": str(card),
                            "private": "1", "replace": "1",
                            "tag": "v1", "revision": "main",
@@ -91,7 +78,8 @@ def test_publish_forwards_optional_flags(monkeypatch, svc, tmp_path):
 def test_publish_requires_repo(svc, tmp_path):
     """Missing repo raises Invalid (matches the stage's gate)."""
     from kev.console.stages.base import Invalid
-    card = _card(tmp_path)
+    card = tmp_path / "card.md"
+    card.write_text("# model card", encoding="utf-8")
     with pytest.raises(Invalid) as excinfo:
         svc.publish(_req({"card": str(card)}),
                     on_log=lambda s: None, on_metric=lambda p: None)

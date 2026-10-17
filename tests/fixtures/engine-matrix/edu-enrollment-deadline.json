@@ -114,7 +114,7 @@
     ],
     "rules": [
       {
-        "when": "(state['截止日期'] - state['今日']).days <= 5 and state['缴费完成日'] > state['今日']",
+        "when": "(state['截止日期'] - state['今日']).days <= 5 and state['缴费完成日'] == '尚未'",
         "then": [
           {
             "label": "at_risk",

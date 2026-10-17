@@ -1,0 +1,92 @@
+{
+  "name": "nursing-quality",
+  "domain": "医院护理质量管控。质控维度覆盖护理评估、给药执行、护理记录、管路与设备、皮肤与压疮、跌倒与导管预防、医患沟通。对象为住院患者与门诊输液患者。质控依据为护理核心制度、检查表条目与医院质控标准。",
+  "state": "一次护理质量检查的结构化摘要：患者年龄性别与护理级别、所在病区、检查时间点、涉及的具体护理环节（如静脉输液、皮下注射、留置导尿管、压疮风险评估、跌倒风险评估、护理记录书写）、检查中发现的实际情况（做了什么、记录了什么、是否规范）、患者依赖程度（是否卧床、是否留置多路管路）。",
+  "state_example": {
+    "patient": "male 71, bedridden",
+    "ward": "神经内科 3 病区",
+    "nursing_level": "一级护理",
+    "check_point": "静脉输液过程",
+    "observed": "输液前未核对腕带姓名，巡视记录本上 14:00 一栏空白",
+    "dependencies": "留置尿管 1 条，桡动脉测压管 1 条",
+    "risk_scores": "Braden 12 分（中等风险），Morse 评分 45 分（高风险）"
+  },
+  "questions": {
+    "issue_type": {
+      "type": "choice",
+      "instructions": "本次检查发现的问题属于哪一类？",
+      "criteria": {
+        "none": "未发现问题",
+        "assessment": "护理评估：入院评估、风险评估（压疮/跌倒/导管）未做或做得不完整",
+        "execution": "给药与操作执行：核对、给药、输血、导管维护等操作未按规范执行",
+        "record": "护理记录：记录缺失、漏项、事后补记、字迹或时间逻辑不自洽",
+        "communication": "沟通与健康教育：告知不到位、知情同意缺失、宣教未落实",
+        "device": "设备与管路：管路固定、标识、刻度、引流装置管理不规范"
+      }
+    },
+    "reportable": {
+      "type": "noul",
+      "instructions": "该问题是否需要上报护理部（形成质量缺陷事件）？",
+      "criteria": {
+        "true": "构成护理不良事件或需质量改进追踪（给药错误、管路脱落、压疮发生、跌倒、非计划拔管、记录严重失真）",
+        "false": "一般缺陷，可在科室质控会内整改"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "该问题的严重程度如何？",
+      "criteria": [
+        "0 = 符合规范，无需处理",
+        "1 = 轻度缺陷：流程执行不到位但未造成实际后果",
+        "2 = 中度缺陷：已造成患者可观察的不适或潜在风险，需科室整改",
+        "3 = 重度缺陷：构成护理不良事件，需立即上报并组织讨论"
+      ]
+    },
+    "preventable": {
+      "type": "choice",
+      "instructions": "该问题的可预防性如何？",
+      "criteria": {
+        "preventable": "可通过规范执行与培训预防（多数护理缺陷属于此类）",
+        "partially": "部分可预防，还需设备、药品或人力条件配合",
+        "not_preventable": "不可预防（患者病情突变、不可避免的并发症等）"
+      }
+    }
+  },
+  "guidance": "issue_type 按检查点与 observed 的直接对应关系判定，不要外推：核对/给药/输血/操作步骤相关的问题归 execution；评估表未做或要素缺失归 assessment；记录本缺项、漏签名、时间逻辑矛盾归 record；宣教告知/解释不到位归 communication；管路固定松脱、无标识、刻度不准、引流装置更换超时归 device。reportable 为 true 的触发条件是问题造成了实际不良事件或需要跨科室质量追踪：给药错误（含给错药、漏给、剂量错误）、管路脱落与非计划拔管、压疮发生、跌倒致伤、非计划拔管、护理记录严重失真（事后补记伪造）、给药后不良反应未及时处置。severity 严格对应：issue_type=none 时 severity 必须为 0；一般执行或记录缺陷未造成后果为 1（对应 reportable=false）；已造成患者可观察不适或存在潜在风险为 2；构成不良事件为 3（reportable=true）。因此 issue_type=none 与 severity=0、reportable=false 必须同时成立。preventable 取值规则：只要缺陷源于执行动作或记录行为未按规范做，即为 preventable；仅当还牵涉设备缺陷、药品短缺、人手不足等系统因素时才是 partially；仅当问题源于患者病情本身突变（如突发动脉瘤破裂、术后并发症）时才是 not_preventable。patient 为 bedridden、dependencies 含多路管路、risk_scores 提示中高风险时，同等缺陷的 severity 应上浮一级，但前提是 observed 中确有该环节的执行或记录问题。",
+  "variety": [
+    "检查环节（覆盖 domain 的七个质控维度）：入院评估、压疮风险评估、跌倒风险评估、静脉输液、皮下注射、肌肉注射、口服药给药、输血核对、留置导尿管维护、留置胃管、静脉留置针管路维护、压疮护理、护理记录书写、交接班、医患沟通、健康教育宣教",
+    "缺陷类型（issue_type 六选项逐一覆盖）：none 未发现问题、assessment 评估未做或要素缺失、execution 核对/给药/输血/无菌操作未按规范、record 漏项/漏签名/时间逻辑矛盾/事后补记、communication 告知不到位/知情同意缺失/宣教未落实、device 管路固定松脱/无标识/刻度不准/引流更换超时",
+    "严重度档（severity 四档全覆盖，且须与 issue_type 联动）：0 符合规范（issue_type=none 时必须为 0）、1 轻度流程缺陷未造成后果、2 中度已造成可观察不适或潜在风险、3 重度构成护理不良事件",
+    "不良事件类型（reportable=true 的触发，须逐项覆盖）：给药错误（给错药/漏给/剂量错误）、管路脱落、非计划拔管、压疮发生、跌倒致伤、护理记录严重失真（事后补记伪造）、给药后不良反应未及时处置",
+    "可预防性（preventable 三选项全覆盖）：preventable 源于执行或记录未按规范、partially 牵涉设备缺陷/药品短缺/人手不足、not_preventable 源于患者病情突变（突发动脉瘤破裂、术后并发症）",
+    "患者依赖度：自理、部分自理、卧床 bedridden、多路管路、意识障碍、术后早期活动受限",
+    "护理级别：特级、一级、二级、三级",
+    "病区：内科、外科、ICU、肿瘤科、老年科、产科、儿科、康复科",
+    "风险评分：Braden 低/中/高风险、Morse 跌倒评分低/中/高风险并给出具体分值、评分缺失未评估",
+    "时间点：交接班高峰、午间、夜间、查房时、抢救后、术前准备期",
+    "检查主体与场景：护士长巡查、责任护士自查、质控科抽查、实习生带教、跨科室会诊",
+    "严重度上浮规则（须按 guidance 处理）：patient 为 bedridden、dependencies 含多路管路或 risk_scores 提示中高风险时，同等缺陷的 severity 上浮一级，但前提是 observed 中确有该环节的执行或记录问题"
+  ],
+  "routing": {
+    "risk": "low",
+    "human_review": true,
+    "evidence_question": "",
+    "note": "护理质控检查表逐项可判，0.8B 主力。"
+  },
+  "smoke_probe": {
+    "state": {
+      "patient": "male 71, bed 12",
+      "ward": "cardiology",
+      "nursing_level": "level 2",
+      "check_point": "pressure ulcer prevention, repositioning",
+      "observed": "no repositioning documented for 6 hours",
+      "dependencies": "none",
+      "risk_scores": "Braden 12"
+    },
+    "questions": [
+      {"qid": "reportable", "type": "noul",
+       "instructions": "该护理缺陷是否应上报？（质量问题而非个人疏忽）"}
+    ],
+    "expected_label": {"reportable": "true"}
+  }
+}

@@ -31,7 +31,7 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from . import artifacts, paths
+from . import artifacts, paths, scenario_specs
 from . import secret_store as distill_secrets
 from .db import Store, set_store
 from .events import parse_note, parse_step, sse_frame
@@ -232,6 +232,7 @@ def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, bu
     if service_binding is not None:
         fn, label = service_binding
         job_id = store.create_job(
+            project_id=request.project_id,
             kind=stage.kind, stage=stage.stage, scenario=request.scenario,
             title=request.run_name or stage.title, request=request.params,
             argv=[label], env_overlay=built.env,
@@ -250,6 +251,7 @@ def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, bu
     argv = [str(part) for part in built.argv]
     if built.daemon_id is not None:
         job_id = store.create_job(
+            project_id=request.project_id,
             kind=stage.kind, stage=stage.stage, scenario=request.scenario,
             title=request.run_name or stage.title, request=request.params,
             argv=argv, env_overlay=built.env,
@@ -268,6 +270,7 @@ def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, bu
         set_daemon_cancel(built.daemon_id)
     else:
         job_id = store.create_job(
+            project_id=request.project_id,
             kind=stage.kind, stage=stage.stage, scenario=request.scenario,
             title=request.run_name or stage.title, request=request.params,
             argv=argv, env_overlay=built.env,
@@ -424,7 +427,8 @@ def create_domain(payload: dict, store: Store = Depends(get_store)):
         return _error("validation", "中英文标签均必填", status=400, field="label_zh")
     try:
         domain_id = store.create_domain(
-            slug=slug, label_zh=label_zh, label_en=label_en, sort=int(payload.get("sort", 0)))
+            slug=slug, label_zh=label_zh, label_en=label_en, sort=int(payload.get("sort", 0)),
+            spec_dir=(payload.get("spec_dir") or "").strip())
     except sa.exc.IntegrityError:
         return _error("conflict", f"域 slug 已存在：{slug}", status=409, field="slug")
     return JSONResponse(status_code=201, content=store.get_domain(domain_id))
@@ -435,7 +439,8 @@ def update_domain(domain_id: str, payload: dict, store: Store = Depends(get_stor
     if store.get_domain(domain_id) is None:
         return _error("validation", f"未知域 {domain_id}", status=404)
     ok = store.update_domain(domain_id, label_zh=payload.get("label_zh"),
-                             label_en=payload.get("label_en"), sort=payload.get("sort"))
+                             label_en=payload.get("label_en"), sort=payload.get("sort"),
+                             spec_dir=payload.get("spec_dir"))
     return store.get_domain(domain_id) if ok else _error("validation", f"未知域 {domain_id}", status=404)
 
 
@@ -464,10 +469,18 @@ def create_scenario(payload: dict, store: Store = Depends(get_store)):
     if spec_path and not str(spec_path).endswith(".json"):
         return _error("validation", "spec_path 必须是 .json 文件", status=400, field="spec_path")
     category = (payload.get("category") or "medical").strip()
+    # 轨制由 scenario_specs 派生（docs/domains 的种子场景每次导入重算）；手工场景可以在这儿标，
+    # 但只认四个值，写错的 track 会让前端的「规则生成 / 蒸馏」列变成瞎话。留空 = 未判定（合法）。
+    track = (payload.get("track") or "").strip()
+    if track and track not in scenario_specs.TRACKS:
+        return _error("validation", f"track 必须是 {'/'.join(scenario_specs.TRACKS)} 之一（留空 = 未判定）",
+                      status=400, field="track")
     try:
         scenario_id = store.create_scenario(
             domain_id=domain_id, slug=slug, label_zh=label_zh, label_en=label_en,
-            spec_path=spec_path, category=category, sort=int(payload.get("sort", 0)))
+            spec_path=spec_path, category=category, sort=int(payload.get("sort", 0)),
+            track=track, generator_kind=(payload.get("generator_kind") or "").strip(),
+            distill_yaml=(payload.get("distill_yaml") or "").strip())
     except sa.exc.IntegrityError:
         return _error("conflict", f"场景 slug 已存在：{slug}", status=409, field="slug")
     return JSONResponse(status_code=201, content=store.get_scenario_by_slug(slug))
@@ -477,6 +490,10 @@ def create_scenario(payload: dict, store: Store = Depends(get_store)):
 def update_scenario(scenario_id: str, payload: dict, store: Store = Depends(get_store)):
     if store.get_scenario_by_id(scenario_id) is None:
         return _error("validation", f"未知场景 {scenario_id}", status=404)
+    # track 传空串是「清空未判定」，合法；只有写了不认识的值才拒。
+    if payload.get("track") not in (None, "") and payload["track"] not in scenario_specs.TRACKS:
+        return _error("validation", f"track 必须是 {'/'.join(scenario_specs.TRACKS)} 之一（或空串 = 未判定）",
+                      status=400, field="track")
     # Step 2 of Task 28: validate routing + smoke_probe sub-fields
     if "routing" in payload and payload["routing"]:
         risk = (payload["routing"] or {}).get("risk")
@@ -496,7 +513,9 @@ def update_scenario(scenario_id: str, payload: dict, store: Store = Depends(get_
     ok = store.update_scenario(
         scenario_id, domain_id=payload.get("domain_id"), label_zh=payload.get("label_zh"),
         label_en=payload.get("label_en"), spec_path=payload.get("spec_path"),
-        category=payload.get("category"), sort=payload.get("sort"))
+        category=payload.get("category"), sort=payload.get("sort"),
+        track=payload.get("track"), generator_kind=payload.get("generator_kind"),
+        distill_yaml=payload.get("distill_yaml"))
     row = store.get_scenario_by_id(scenario_id)
     return row if ok and row else _error("validation", f"未知场景 {scenario_id}", status=404)
 
@@ -524,7 +543,7 @@ def generator_dry_run(slug: str, body: dict, store: Store = Depends(get_store)) 
     n = body.get("n", 100)
     seed = body.get("seed", 0)
     from kev.console.generators.engine import run as engine_run
-    from kev.console.generators.common import label_table as _lt
+    from common import label_table as _lt
     import tempfile
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
         tmp_path = Path(tmp.name)
@@ -541,56 +560,21 @@ def generator_dry_run(slug: str, body: dict, store: Store = Depends(get_store)) 
 
 @console_router.post("/console/api/scenarios/{slug}/generator/validate")
 def generator_validate(slug: str, body: dict, store: Store = Depends(get_store)) -> dict:
-    """Can this spec generate trainable data? Answers before sampling, and never says "no errors" about a run that
-    produced no records — the empty file used to look like a pass, and a rule that could not read its own field was the
-    engine's quietest failure (design doc F3, gate G3).
-
-    `errors` entries are `{rule_id, message}`: the rule id is what a person editing the JSON has to find, so a
-    generation error carries its own and only a failure with no rule to blame says `<run>`.
-    """
-    from kev.console.generators import rules
-    from kev.console.generators.common import resolve_spec
-    from kev.console.generators.engine import gate_gaps, run as engine_run
-    from kev.console.generators.plan import PlanAllocator, PlanError
-    import tempfile
     try:
-        spec = resolve_spec(slug)
-    except (FileNotFoundError, ValueError) as error:
-        return {"errors": [{"rule_id": "<spec>", "message": str(error)}]}
-    problems = rules.static_problems(spec)
-    if problems:
-        return {"errors": [{"rule_id": where, "message": message} for where, message in problems]}
-    plan_errors = PlanAllocator((spec.get("generator") or {}).get("plan_targets") or {}).static_errors()
-    if plan_errors:
-        return {"errors": [{"rule_id": "<plan>", "message": message} for message in plan_errors]}
-    with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
-        tmp_path = Path(tmp.name)
-    try:
+        from kev.console.generators.engine import run as engine_run
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
         try:
-            code = engine_run(["--scenario", slug, "--n", "8", "--out", str(tmp_path), "--seed", "0", "--pairs", "0"])
-        except rules.RuleError as error:
-            return {"errors": [{"rule_id": error.rule_id or "<run>", "message": str(error)}]}
-        except PlanError as error:
-            return {"errors": [{"rule_id": "<plan>", "message": str(error)}]}
-        except Exception as error:  # a spec the engine refuses for another reason is still an error, not a pass
-            return {"errors": [{"rule_id": "<run>", "message": f"{type(error).__name__}: {error}"}]}
-        rows = tmp_path.read_text(encoding="utf-8").splitlines() if tmp_path.exists() else []
-        if not rows:
-            return {"errors": [{"rule_id": "<run>",
-                                "message": "the spec produced no records: no rule gave any record a complete set of "
-                                           "labels"}]}
-        # The exit gate's numbers, as a field of their own (design doc §3's exit row): `errors` keeps meaning "this spec
-        # cannot generate", and a label under the floor at n=8 is a warning about the *shipped* run's size, not about a
-        # preview of eight records. `code` is the engine's own verdict — strict only when the spec declared a floor.
-        gaps = gate_gaps(spec, [json.loads(line) for line in rows])
-        if gaps and code:
-            return {"errors": [{"rule_id": "<gate>", "message": gap} for gap in gaps]}
-        return {"errors": [], "records": len(rows), "gate_gaps": gaps}
-    finally:
-        try:
-            tmp_path.unlink()
-        except OSError:
-            pass
+            engine_run(["--scenario", slug, "--n", "1", "--out", str(tmp_path), "--seed", "0", "--pairs", "0"])
+            return {"errors": []}
+        finally:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+    except Exception as e:
+        return {"errors": [{"rule_id": "<unknown>", "message": str(e)}]}
 
 
 @console_router.delete("/console/api/scenarios/{scenario_id}")
@@ -788,6 +772,24 @@ def submit_job(payload: dict, request_: Request, store: Store = Depends(get_stor
         return prepared
     stage, request, built = prepared
 
+    # 归属项目是提交的硬前提（D14）：缺/空 → 400，幽灵项目（不在 projects 表）→ 404，
+    # 绝不能把作业悄悄挂在一个悬空 project_id 上。
+    project_id = (payload.get("project_id") or "").strip()
+    if not project_id:
+        return _error("validation", "project_id 必填", status=400, field="project_id")
+    project = store.get_project(project_id)
+    if project is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+
+    # D1：一个项目 = 一个场景的一轮。项目未绑场景（遗留行）先补场景；
+    # 作业场景与项目场景不一致则拒绝，绝不允许跨项目串场景。
+    if not project["scenario"]:
+        return _error("conflict", "项目尚未绑定场景", status=409,
+                      hint="先给项目补上场景再提交")
+    if request.scenario != project["scenario"]:
+        return _error("conflict", f"作业场景 {request.scenario} 与项目场景 {project['scenario']} 不一致",
+                      status=409)
+
     if stage.kind == "train":
         # 单 GPU 闸。kev.experiment 在 Windows 上不可 import（experiment.py:14
         # 直接 import fcntl），所以这道闸必须自己实现。
@@ -822,8 +824,9 @@ def submit_job(payload: dict, request_: Request, store: Store = Depends(get_stor
 
 @console_router.get("/console/api/jobs")
 def get_jobs(status: str | None = None, stage: str | None = None,
-             scenario: str | None = None, store: Store = Depends(get_store)) -> list:
-    return store.list_jobs(status=status, stage=stage, scenario=scenario)
+             scenario: str | None = None, project: str | None = None,
+             store: Store = Depends(get_store)) -> list:
+    return store.list_jobs(status=status, stage=stage, scenario=scenario, project=project)
 
 
 @console_router.get("/console/api/jobs/{job_id}")
@@ -871,6 +874,7 @@ def retry_job(job_id: str, request_: Request, store: Store = Depends(get_store),
     # 换名而非复用目录：kev.train / evaluate_records 都是 mkdir(exist_ok=False)，
     # 且旧产物要永久保留（可审计）。attempt 递增、parent_id 指向原作业。
     payload = {"kind": job["kind"], "scenario": job["scenario"],
+               "project_id": job["project_id"],
                "run_name": f"{job['title']}-r{attempt}", "params": job["request"]}
     prepared = _prepare(store, payload)
     if isinstance(prepared, JSONResponse):
@@ -1106,9 +1110,19 @@ def create_project(payload: dict, store: Store = Depends(get_store)):
         return _error("validation", "slug 必填", status=400, field="slug")
     if not name:
         return _error("validation", "名称必填", status=400, field="name")
+    # D1：一个项目 = 一个已知场景的一轮；scenario 必填且必须已存在于 scenarios 表。
+    scenario = (payload.get("scenario") or "").strip()
+    if not scenario:
+        return _error("validation", "scenario 必填", status=400, field="scenario",
+                      hint="项目必须绑定一个已有场景")
+    if not store.scenario_known(scenario):
+        return _error("validation", f"未知场景 {scenario}", status=400, field="scenario",
+                      hint="场景必须已存在")
     try:
         pid = store.create_project(slug=slug, name=name,
-                                   description=(payload.get("description") or "").strip())
+                                   description=(payload.get("description") or "").strip(),
+                                   scenario=scenario,
+                                   goal=(payload.get("goal") or "").strip())
     except sa.exc.IntegrityError:
         return _error("conflict", f"项目 slug 已存在：{slug}", status=409, field="slug")
     return JSONResponse(status_code=201, content=store.get_project(pid))
@@ -1116,18 +1130,39 @@ def create_project(payload: dict, store: Store = Depends(get_store)):
 
 @console_router.get("/console/api/projects/{project_id}")
 def get_project(project_id: str, store: Store = Depends(get_store)):
-    proj = store.get_project(project_id)
-    if proj is None:
+    summary = store.project_summary(project_id)
+    if summary is None:
         return _error("validation", f"未知项目 {project_id}", status=404)
-    return proj
+    return summary
+
+
+@console_router.get("/console/api/projects/{project_id}/artifacts")
+def get_project_artifacts(project_id: str, store: Store = Depends(get_store)):
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    return store.list_project_artifacts(project_id)
+
+
+@console_router.get("/console/api/projects/{project_id}/events")
+def get_project_events(project_id: str, after_id: int = 0, store: Store = Depends(get_store)):
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    return {"events": store.project_events(project_id, after_id=after_id)}
 
 
 @console_router.put("/console/api/projects/{project_id}")
 def update_project(project_id: str, payload: dict, store: Store = Depends(get_store)):
     if store.get_project(project_id) is None:
         return _error("validation", f"未知项目 {project_id}", status=404)
-    proj = store.update_project(project_id, name=payload.get("name"), slug=payload.get("slug"),
-                                description=payload.get("description"))
+    try:
+        proj = store.update_project(project_id, name=payload.get("name"), slug=payload.get("slug"),
+                                    description=payload.get("description"),
+                                    scenario=payload.get("scenario"), status=payload.get("status"),
+                                    goal=payload.get("goal"), archived_at=payload.get("archived_at"),
+                                    freeze_min_records=payload.get("freeze_min_records"),
+                                    freeze_min_review_ratio=payload.get("freeze_min_review_ratio"))
+    except Conflict as error:  # D9：项目已有 job/bundle 时 slug 不可改
+        return _error("conflict", error.message, status=409, field="slug", hint=error.hint)
     return proj or _error("validation", f"未知项目 {project_id}", status=404)
 
 

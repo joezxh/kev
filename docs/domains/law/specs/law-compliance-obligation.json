@@ -1,0 +1,244 @@
+{
+  "name": "law-compliance-obligation",
+  "domain": "企业合规部门的合规义务到期监测与整改分派。合规官把一份合规台账条目交给助手：距义务履行到期天数、逾期未整改事项数、高风险业务变更未评估次数、培训逾期人数占比、制度更新滞后天数、监管问询未回复数。阈值为示例口径（以企业合规管理体系通行的分级响应逻辑为基线），实际以本企业合规制度与监管要求为准。",
+  "state": "一份合规台账条目的监测摘要：合规领域（数据合规/广告宣传/劳动用工/反商业贿赂/环保安全/税务）、距义务履行到期天数（天）、逾期未整改事项数（项）、高风险业务变更未评估次数（次）、培训逾期人数占比（%）、制度更新滞后天数（天，对照新法规生效日）、监管问询未回复数（件）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "ledger": "female 合规专员 A, 数据合规",
+    "context": "新法规生效后首次台账复核",
+    "area": "数据合规",
+    "indicators": {
+      "距义务履行到期天数": "10.0 天",
+      "逾期未整改事项数": "1.0 项",
+      "高风险业务变更未评估次数": "0.0 次",
+      "培训逾期人数占比": "35.0 %",
+      "制度更新滞后天数": "95.0 天",
+      "监管问询未回复数": "0.0 件"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "compliance_act": {
+      "type": "noul",
+      "instructions": "该台账条目是否需要触发合规行动（而不是维持常规监测）？",
+      "criteria": {
+        "true": "至少一项监测项超出行动阈值",
+        "false": "全部监测项在阈值内，维持常规监测"
+      }
+    },
+    "act_tier": {
+      "type": "score",
+      "instructions": "合规行动应在多长时间内启动？",
+      "criteria": [
+        "立即处置并通报管理层（重大合规风险）",
+        "三个工作日内完成整改分派",
+        "纳入季度合规计划，轻度越界",
+        "无需行动，维持常规监测"
+      ]
+    },
+    "breach_category": {
+      "type": "choice",
+      "instructions": "触发行动的主要缺口属于哪一类？",
+      "criteria": {
+        "none": "无（维持常规监测）",
+        "deadline": "时效类：义务履行临期或已逾期",
+        "remediation": "整改类：历史整改事项逾期未闭环",
+        "change": "变更类：高风险业务变更未经合规评估",
+        "training": "培训类：合规培训覆盖不足",
+        "policy": "制度类：制度未随新法规更新",
+        "inquiry": "问询类：监管问询未按期回复"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "台账条目是否提供了判定所需的全部要素（指标名、数值、统计窗口）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照行动阈值判定",
+        "false": "缺统计窗口、缺数值或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "compliance_act 的唯一判据是任一监测项超出本表阈值（示例口径，实际以本企业合规制度为准，需专家复核）：距义务履行到期 ≤14 天触发、≤3 天最高档；逾期未整改 ≥1 项触发、≥4 项最高档；高风险变更未评估 ≥1 次触发、≥3 次最高档；培训逾期占比 ≥30% 触发、≥60% 最高档；制度更新滞后 ≥90 天触发、≥180 天最高档；监管问询未回复 ≥1 件触发、≥2 件最高档。act_tier 由最快触发的缺口决定，等级从 0（立即处置）到 3（常规监测）：inquiry 类只要 1 件未回复即至少档 1——监管问询有法定回复期限，逾期回复本身构成新违规；deadline 类 ≤3 天义务且有其他任一缺口并存时升档 0——临期加缺口是失信前兆；training 单独触发通常档 2（计划性补训），但涉及高风险岗位（context 注明）升档 1。policy 类滞后以新法规生效日为基准——新法规尚未生效的预更新不算滞后。breach_category 取最快档中的缺口类别，deadline 与 inquiry 并存按 inquiry 取——对外部监管的响应义务优先于内部时限。compliance_act=false 时 act_tier 必须为 3 且 breach_category 为 none。evidence_sufficient 为 false 时（缺统计窗口、缺单位、缺指标名），compliance_act 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 breach_category 不得凭猜测填写。",
+  "variety": [
+    "合规领域：数据合规（个保法）、广告宣传（广告法禁用语）、劳动用工（社保与工时）、反商业贿赂（礼品与招待登记）、环保安全（排污许可）、税务（申报期限）",
+    "缺口类别（breach_category 七选项逐一覆盖）：deadline（距到期 3/12 天）、remediation（逾期 1/5 项）、change（未评估 1/4 次）、training（占比 35/65%）、policy（滞后 100/200 天）、inquiry（未回复 1/2 件）、none（全部达标）",
+    "行动档（act_tier 四档全覆盖）：0 立即处置（问询 ≥2 件、临期 ≤3 天 + 并存缺口、逾期整改 ≥4 项）、1 三个工作日、2 季度计划、3 常规监测（compliance_act=false 时必须为 3）",
+    "组合形态：单缺口、双缺口同档、多缺口跨档、缺口互相掩盖（培训 65% 但制度新鲜——按最快档判不因优点抵扣）",
+    "高风险岗位对照（专门生成）：培训缺口涉及反贿赂关键岗位 → 升档 1；新法规预更新不算滞后的对照样本",
+    "贴边未触发对照（compliance_act=false 须专门生成）：距到期 16-20 天、培训占比 25-28%、制度滞后 80-88 天",
+    "要素完整度（evidence_sufficient）：齐全、缺统计窗口、缺合规领域、缺指标名、多项缺失",
+    "呈现风格：合规台账导出体、合规官批注体、内审报告体、监管函件摘要体",
+    "易错陷阱：监管问询至少档 1、临期 + 并存缺口升档 0、问询优先于内部时限、新法规预更新不算滞后、培训缺口看岗位风险"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为合规监测与行动时限建议，整改决定与监管沟通由合规负责人按授权作出；涉违规行为调查（商业贿赂线索、数据泄露事件）的情形一律转专项调查与法务，模型不给出违规认定；监管问询的正式回复文本由法务起草，模型不代拟。"
+  },
+  "smoke_probe": {
+    "state": {
+      "ledger": "male 合规专员 B, 反商业贿赂",
+      "context": "市场监管局就经销商举报事项发函询问，函件载明 5 个工作日回复期限",
+      "area": "反商业贿赂",
+      "indicators": "监管问询未回复数 1.0 件, 培训逾期人数占比 32.0 %, 距义务履行到期天数 12.0 天",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "act_tier", "type": "score",
+       "instructions": "合规行动应在多长时间内启动？"},
+      {"qid": "breach_category", "type": "choice",
+       "instructions": "触发行动的主要缺口属于哪一类？"}
+    ],
+    "expected_label": {"act_tier": "1", "breach_category": "inquiry"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触发行动样本（tier 0-2 约 2:2:1），其余为常规监测对照；对照中至少 15% 为贴边未触发样本（距到期 16-20 天、培训 25-28%、制度滞后 80-88 天）。deadline 与 inquiry 并存样本单独 6% 并强制按 inquiry 取类；临期+并存缺口的升档样本单独 5%；高风险岗位培训样本单独 5% 并强制档 1。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 act_tier 四档与 breach_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留合规领域与 context 的岗位说明——反贿赂关键岗位的培训范例缺岗位说明会教出漏升档；「问询 vs 时效」并存范例必须与单一触发成对出现，训练「外部监管优先」的取类规则。",
+  "compliance": [
+    "台账样本须去标识：剔除部门与人员姓名、供应商与客户名称，仅保留合规领域与监测数值",
+    "监管问询内容只保留件数与期限结构，不保留问询原文与案件细节",
+    "输出仅为合规监测建议，不构成法律意见，不生成违规认定或监管回复文本",
+    "涉内部调查线索的样本（举报内容、访谈记录）不在本场景范围，转调查通道"
+  ],
+  "acceptance": [
+    "compliance_act accuracy ≥0.96，漏报率（应行动判监测）≤2%（漏报的监管风险高于误行动打扰）",
+    "act_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "breach_category 七类 macro-F1 ≥0.88",
+    "inquiry 类样本 act_tier ≥1 比例 =1.0（硬规则验收）",
+    "临期+并存缺口子集 act_tier=0 比例 ≥0.95（升档规则验收）",
+    "贴边未触发子集 compliance_act=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: act_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "inquiry 样本被赋档 2/3 → rules 缺少问询下限分支，检查 then 顺序",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "deadline 与 inquiry 并存取类漂移 → rules 分支顺序必须问询优先",
+    "新法规预更新被误判滞后 → context 未写明法规生效状态，检查蒸馏标签与 guidance 口径一致"
+  ],
+  "expert_review": [
+    "临期 14/3 天、培训 30/60%、制度滞后 90/180 天的档位与本企业合规制度的对应",
+    "监管问询至少档 1 的口径与各监管回复期限（5/15 个工作日）的匹配",
+    "临期+并存缺口升档 0 的判据与合规事件分级响应机制的一致性",
+    "高风险岗位清单（反贿赂、数据、EHS）与培训要求的对应",
+    "新法规预更新（生效前准备）与滞后的区分口径"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "距义务履行到期天数", "unit": "天", "decimals": 0, "normal": [30.0, 365.0],
+       "critical": {"low": [[0.0, 14.0]]}, "category": "deadline"},
+      {"name": "逾期未整改事项数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "remediation"},
+      {"name": "高风险业务变更未评估次数", "unit": "次", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "change"},
+      {"name": "培训逾期人数占比", "unit": "%", "decimals": 1, "normal": [0.0, 10.0],
+       "critical": {"high": [[30.0, 100.0]]}, "category": "training"},
+      {"name": "制度更新滞后天数", "unit": "天", "decimals": 0, "normal": [0.0, 30.0],
+       "critical": {"high": [[90.0, 1000000000.0]]}, "category": "policy"},
+      {"name": "监管问询未回复数", "unit": "件", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "inquiry"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "距义务履行到期天数": [[0.0, 3.0]],
+        "逾期未整改事项数": [[4.0, 1000000000.0]],
+        "高风险业务变更未评估次数": [[3.0, 1000000000.0]],
+        "培训逾期人数占比": [[60.0, 100.0]],
+        "制度更新滞后天数": [[180.0, 1000000000.0]],
+        "监管问询未回复数": [[2.0, 1000000000.0]]
+      },
+      "1": {
+        "距义务履行到期天数": [[4.0, 7.0]],
+        "逾期未整改事项数": [[2.0, 3.0]],
+        "高风险业务变更未评估次数": [[2.0, 2.0]],
+        "培训逾期人数占比": [[45.0, 59.9]],
+        "制度更新滞后天数": [[120.0, 179.0]],
+        "监管问询未回复数": [[1.0, 1.0]]
+      },
+      "2": {
+        "距义务履行到期天数": [[8.0, 14.0]],
+        "逾期未整改事项数": [[1.0, 1.0]],
+        "高风险业务变更未评估次数": [[1.0, 1.0]],
+        "培训逾期人数占比": [[30.0, 44.9]],
+        "制度更新滞后天数": [[90.0, 119.0]],
+        "监管问询未回复数": [[1.0, 1.0]]
+      }
+    },
+    "contexts": [
+      "新法规生效后首次台账复核",
+      "市场监管局就经销商举报事项发函询问，函件载明 5 个工作日回复期限",
+      "年度合规培训周期结束后的补训窗口",
+      "新业务上线前的合规评估排期",
+      "集团内审后的整改跟踪期",
+      "常规季度监测，全部指标平稳",
+      "个保法执法检查预告期",
+      "并购整合期，制度归口部门变更",
+      "无背景说明，仅一项指标贴线",
+      "管理层合规例会前的数据准备"
+    ],
+    "patients": [
+      "female 合规专员 A, 数据合规", "male 合规专员 B, 反商业贿赂", "female 合规专员 C, 劳动用工",
+      "male 合规专员 D, 广告宣传", "female 合规专员 E, 环保安全", "male 合规专员 F, 税务",
+      "female 合规官 G, 集团合规", "male 法务合规 H, 商务合规"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "compliance_act", "value": false},
+          {"label": "act_tier", "value": 3},
+          {"label": "breach_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "compliance_act", "value": true},
+          {"label": "act_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "breach_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "compliance_act",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"deadline": 0.16, "remediation": 0.14, "change": 0.14, "training": 0.14, "policy": 0.14, "inquiry": 0.28},
+          "tier_split": {
+            "deadline": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "remediation": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "change": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "training": [[0, 0.15], [1, 0.35], [2, 0.5]],
+            "policy": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "inquiry": [[0, 0.35], [1, 0.4], [2, 0.25]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "距义务履行到期天数": "deadline",
+      "逾期未整改事项数": "remediation",
+      "高风险业务变更未评估次数": "change",
+      "培训逾期人数占比": "training",
+      "制度更新滞后天数": "policy",
+      "监管问询未回复数": "inquiry"
+    }
+  }
+}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useLang } from "@/lib/i18n";
 import { api, type Project } from "@/lib/console";
+import { writeSelectedProject } from "@/lib/project-context";
 
 /** 拉取项目列表（ch6 各页面共用）。 */
 export function useProjects() {
@@ -41,7 +42,10 @@ export function ProjectSwitcher({
     <div className="flex items-center gap-2">
       <select
         value={projectId ?? ""}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          writeSelectedProject(e.target.value); // 持久化到 /studio 与 /console 共享的单一 key（D12）
+          onChange(e.target.value);
+        }}
         className="rounded border border-border bg-[#111111] px-2 py-1.5 text-sm outline-none focus:border-primary"
       >
         <option value="" disabled>

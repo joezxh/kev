@@ -1,0 +1,244 @@
+{
+  "name": "fin-collection-tier",
+  "domain": "消费金融贷后管理部门的催收分级。催收主管把一份逾期账户要素单交给助手：逾期天数、逾期金额月收入比、历史还款履约率、承诺还款违约次数、失联天数、投诉标记数。阈值为示例口径（以贷后管理的通行分级维度为基线），实际以本机构贷后管理制度与委外管理规范为准。",
+  "state": "一份逾期账户催收要素单：产品类型（消费贷/信用卡/车贷/经营贷）、逾期天数（天）、逾期金额月收入比（%）、历史还款履约率（0-1）、承诺还款违约次数（次）、失联天数（天）、投诉标记数（项）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "case": "female 催收员 A, 消费贷贷后",
+    "context": "首逾客户，工资日临近",
+    "product": "消费贷",
+    "indicators": {
+      "逾期天数": "18.0 天",
+      "逾期金额月收入比": "65.0 %",
+      "历史还款履约率": "0.94",
+      "承诺还款违约次数": "0.0 次",
+      "失联天数": "1.0 天",
+      "投诉标记数": "0.0 项"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "escalate_action": {
+      "type": "noul",
+      "instructions": "该账户是否需要升级催收处置（而不是宽限提醒）？",
+      "criteria": {
+        "true": "至少一项要素超出分级阈值",
+        "false": "全部要素在阈值内，宽限提醒即可"
+      }
+    },
+    "action_tier": {
+      "type": "score",
+      "instructions": "催收处置应在多长时间内执行？",
+      "criteria": [
+        "立即启动司法/委外催收并冻结授信（高负担+低履约或长期失联）",
+        "高强度电催并评估上门，24 小时内",
+        "进入常规催收队列，三个工作日内",
+        "宽限提醒，暂缓催收动作"
+      ]
+    },
+    "contact_category": {
+      "type": "choice",
+      "instructions": "触发升级的主要要素属于哪一类？",
+      "criteria": {
+        "none": "无（宽限提醒）",
+        "overdue_days": "逾期类：逾期天数超限",
+        "burden_ratio": "负担类：逾期金额与收入比例超限",
+        "performance": "履约类：历史还款履约率过低",
+        "broken_promise": "违约类：承诺还款未兑现",
+        "contact_lost": "失联类：触达中断超限",
+        "complaint": "投诉类：投诉标记在途"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "要素单是否提供了判定所需的全部要素（产品类型、履约率口径、收入基准）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照阈值判定",
+        "false": "缺履约率口径、缺收入基准或缺产品类型，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "escalate_action 的唯一判据是任一要素超出本表阈值（示例口径，实际以本机构贷后制度为准，需专家复核）：逾期 ≥30 天触发、≥180 天最高档；负担比 ≥100% 触发、≥400% 最高档；履约率 <85% 触发、<50% 最高档；违约 ≥1 次触发、≥3 次最高档；失联 ≥7 天触发、≥60 天最高档；投诉 ≥1 项触发、≥3 项最高档。action_tier 由最快触发的要素决定，等级从 0（司法/委外）到 3（宽限提醒）：burden_ratio ≥400% 与履约率 <50% 并存时升档 0——高负担与低履约并现是还款能力崩塌组合；complaint 任一档 action_tier ≤1 且不得自动外呼——投诉标记要求人工介入；contact_lost 单独触发通常档 1——失联本身需要触达升级；宽限期内贴线客户（逾期 1-29 天、履约率达标）档 3。contact_category 取最快档中的类别，complaint 与其他类并存按 complaint 取——合规风险优先于回款效率。escalate_action=false 时 action_tier 必须为 3 且 contact_category 为 none。evidence_sufficient 为 false 时（缺履约率口径、缺收入基准、缺产品类型），escalate_action 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 contact_category 不得凭猜测填写。",
+  "variety": [
+    "产品与场景：消费贷（首逾/惯性逾期）、信用卡（循环/分期）、车贷（抵押处置边界）、经营贷（周转困难）——不同产品的处置路径不同",
+    "类别（contact_category 七选项逐一覆盖）：overdue_days（逾期 200/32 天）、burden_ratio（450%/110%）、performance（履约 0.42/0.78）、broken_promise（违约 3/1 次）、contact_lost（失联 65/8 天）、complaint（标记 3/1 项）、none（全部达标）",
+    "处置档（action_tier 四档全覆盖）：0 司法/委外（高负担+低履约并存、失联 ≥60 天）、1 高强度电催+上门评估、2 常规队列、3 宽限提醒（escalate_action=false 时必须为 3）",
+    "组合形态：单要素、双要素同档、多要素跨档、要素互相掩盖（逾期长但履约好——按最快档判）",
+    "投诉合规对照（专门生成）：投诉标记触发人工介入的样本与纯电催的对照——投诉在途不得自动外呼",
+    "贴边未触发对照（escalate_action=false 须专门生成）：逾期 20-28 天、负担比 80-95%、履约率 0.86-0.9",
+    "要素完整度（evidence_sufficient）：齐全、缺履约率口径、缺产品类型、缺收入基准、多项缺失",
+    "呈现风格：贷后要素单导出体、催收员批注体、委外机构交接单体、监管投诉答复体",
+    "易错陷阱：高负担+低履约升档 0、投诉标记禁自动外呼、失联单独即升级、宽限期不催、履约率是 low 侧字段"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为催收分级建议，司法催收与委外决定由贷后负责人按制度作出；催收行为本身须符合催收工作指引与个人信息保护要求，涉暴力催收投诉的样本转合规与客服通道；模型不生成对客户偿债能力的定性评价，不输出外呼话术。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "male 催收员 B, 信用卡贷后",
+      "context": "首逾账户，还款日后 45 天，月供压力偏大",
+      "product": "信用卡",
+      "indicators": "逾期天数 45.0 天, 逾期金额月收入比 120.0 %, 历史还款履约率 0.82, 承诺还款违约次数 0.0 次, 失联天数 3.0 天, 投诉标记数 0.0 项",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "action_tier", "type": "score",
+       "instructions": "催收处置应在多长时间内执行？"},
+      {"qid": "contact_category", "type": "choice",
+       "instructions": "触发升级的主要要素属于哪一类？"}
+    ],
+    "expected_label": {"action_tier": "2", "contact_category": "overdue_days"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 升级处置样本（tier 0-2 约 2:2:1），其余为宽限提醒对照；对照中至少 15% 为贴边未触发样本（逾期 20-28 天、负担比 80-95%、履约率 0.86-0.9）。burden_ratio ≥400%+履约率 <50% 并存样本单独 6% 并强制档 0；complaint 样本单独 7%（各档均有，档 1 为主）；失联单独升级样本单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 action_tier 四档与 contact_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留产品类型与履约率口径——缺口径的范例会教出跨产品套用负担比阈值；「高负担+低履约升档 0」并存范例必须与单一触发成对出现；complaint 范例需写出「人工介入、禁自动外呼」的推理。",
+  "compliance": [
+    "催收样本须去标识：剔除客户姓名、联系方式、证件号与金额绝对值，仅保留比例与天数",
+    "失联与联系方式只保留天数，不保留号码与触达记录明细",
+    "输出仅为分级建议，不构成催收指令，不生成威胁性或施压性表述",
+    "涉司法诉讼与破产程序的样本转法务通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "escalate_action accuracy ≥0.96，漏报率（应升级判宽限）≤2%（漏报的坏账损失高于过度催收成本）",
+    "action_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "contact_category 七类 macro-F1 ≥0.88",
+    "burden_ratio ≥400%+履约率 <50% 并存子集 action_tier=0 比例 ≥0.95（升档验收）",
+    "complaint 子集「不得自动外呼」标注率 =1.0（硬规则验收）",
+    "贴边未触发子集 escalate_action=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: action_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "performance 样本档位漂移 → 履约率是 low 侧字段，检查窗口方向",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "complaint 样本被赋自动外呼 → 投诉禁自动外呼口径未进标签，检查对照样本",
+    "失联与逾期混淆 → contact_lost 的触达语境缺失，检查失联天数字段保留"
+  ],
+  "expert_review": [
+    "逾期 30/180 天、负担比 100/400% 的档位与本机构贷后制度的对应",
+    "履约率的统计口径（笔数/金额、统计窗口）与阈值匹配",
+    "失联认定的触达尝试次数要求与委外管理规范的衔接",
+    "投诉标记的来源与人工介入要求的合规边界",
+    "司法/委外启动条件与诉讼成本核算的对应"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "逾期天数", "unit": "天", "decimals": 0, "normal": [0.0, 29.0],
+       "critical": {"high": [[30.0, 720.0]]}, "category": "overdue_days"},
+      {"name": "逾期金额月收入比", "unit": "%", "decimals": 0, "normal": [0.0, 99.0],
+       "critical": {"high": [[100.0, 1200.0]]}, "category": "burden_ratio"},
+      {"name": "历史还款履约率", "unit": "", "decimals": 2, "normal": [0.85, 1.0],
+       "critical": {"low": [[0.0, 0.849]]}, "category": "performance"},
+      {"name": "承诺还款违约次数", "unit": "次", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 8.0]]}, "category": "broken_promise"},
+      {"name": "失联天数", "unit": "天", "decimals": 0, "normal": [0.0, 6.0],
+       "critical": {"high": [[7.0, 365.0]]}, "category": "contact_lost"},
+      {"name": "投诉标记数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 6.0]]}, "category": "complaint"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "逾期天数": [[180.0, 720.0]],
+        "逾期金额月收入比": [[400.0, 1200.0]],
+        "历史还款履约率": [[0.0, 0.5]],
+        "承诺还款违约次数": [[3.0, 8.0]],
+        "失联天数": [[60.0, 365.0]],
+        "投诉标记数": [[3.0, 6.0]]
+      },
+      "1": {
+        "逾期天数": [[90.0, 179.0]],
+        "逾期金额月收入比": [[200.0, 399.0]],
+        "历史还款履约率": [[0.51, 0.69]],
+        "承诺还款违约次数": [[2.0, 2.0]],
+        "失联天数": [[30.0, 59.0]],
+        "投诉标记数": [[2.0, 2.0]]
+      },
+      "2": {
+        "逾期天数": [[30.0, 89.0]],
+        "逾期金额月收入比": [[100.0, 199.0]],
+        "历史还款履约率": [[0.7, 0.849]],
+        "承诺还款违约次数": [[1.0, 1.0]],
+        "失联天数": [[7.0, 29.0]],
+        "投诉标记数": [[1.0, 1.0]]
+      }
+    },
+    "contexts": [
+      "首逾客户，工资日临近",
+      "纾困展期账户，二次逾期",
+      "长期失联客户，预留号码停机",
+      "经营贷客户，资金周转临时困难",
+      "投诉在途客户，主张催收方式违规",
+      "多次承诺还款未兑现账户",
+      "常规催收队列账户，全要素平稳",
+      "宽限期内客户，提醒触达",
+      "无背景说明，仅一项要素贴线",
+      "季度催收质量抽查复盘"
+    ],
+    "patients": [
+      "male 催收员 A, 消费贷贷后", "female 催收员 B, 信用卡贷后", "male 催收员 C, 车贷贷后",
+      "female 催收员 D, 经营贷贷后", "male 催收员 E, 房抵贷贷后", "female 催收员 F, 分期贷贷后",
+      "male 催收员 G, 委外管理组", "female 催收员 H, 司法清收组"
+    ],
+    "rules": [
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "escalate_action", "value": true},
+          {"label": "action_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "contact_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "escalate_action", "value": false},
+          {"label": "action_tier", "value": 3},
+          {"label": "contact_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "escalate_action",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"overdue_days": 0.2, "burden_ratio": 0.17, "performance": 0.17, "broken_promise": 0.15, "contact_lost": 0.17, "complaint": 0.14},
+          "tier_split": {
+            "overdue_days": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "burden_ratio": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "performance": [[0, 0.25], [1, 0.4], [2, 0.35]],
+            "broken_promise": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "contact_lost": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "complaint": [[0, 0.15], [1, 0.4], [2, 0.45]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "逾期天数": "overdue_days",
+      "逾期金额月收入比": "burden_ratio",
+      "历史还款履约率": "performance",
+      "承诺还款违约次数": "broken_promise",
+      "失联天数": "contact_lost",
+      "投诉标记数": "complaint"
+    }
+  }
+}

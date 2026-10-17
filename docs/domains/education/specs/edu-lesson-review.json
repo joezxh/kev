@@ -1,0 +1,159 @@
+{
+  "_meta": {
+    "purpose": "教学督导的教案（课程设计）完成度审查与放行决策 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/edu-lesson-review.yaml"
+  },
+  "name": "edu-lesson-review",
+  "label_zh": "教案审查",
+  "label_en": "Lesson Plan Review",
+  "domain": "学校教学督导部门的教案审查。督导专员把一份教案审查要素单交给助手：课程与学段、教学目标描述、内容板块与顺序、安全事项（实验/体育/实训）、作业与考核设计、价值观与思政要素。助手判断教案是否通过（lesson_pass）、修订档（revision_tier 四档）、缺陷类别（defect_category 七选一），以及审查要素是否足以判定（review_evidence）。口径以《中小学教学常规管理》与学校课程方案为基线，阈值为示例口径，需教学督导与学科教研员复核。",
+  "state": "一份教案审查要素单：课程名称、学段（小学/初中/高中/中职/高校）、教学目标描述（知识/能力/素养）、内容板块与顺序、安全事项描述（实验防护/体育保护/实训规程）、作业与考核设计（分层/量化/反馈方式）、价值观与思政要素（融入点/时长）、既往审查记录（次）。",
+  "state_example": {
+    "desk": "female 督导专员 A, 教务处",
+    "context": "期初教案检查，化学实验课",
+    "course": "九年级化学《氧气的制取》",
+    "stage": "初中",
+    "objectives": "知识目标明确，能力目标笼统（「提高动手能力」）",
+    "content_sections": "导入-演示-分组实验-小结，顺序合理",
+    "safety_notes": "未写酒精灯使用规范与护目镜要求",
+    "assessment": "随堂练习 5 题，无分层作业",
+    "value_elements": "未体现",
+    "prior_reviews": "1.0 次"
+  },
+  "questions": {
+    "lesson_pass": {
+      "type": "noul",
+      "instructions": "该教案是否通过放行（而不是需要修订或停用）？",
+      "criteria": {
+        "true": "目标、内容、安全、考核要素齐备且无风险表述",
+        "false": "存在安全风险、目标与内容脱节或要素缺失"
+      }
+    },
+    "revision_tier": {
+      "type": "score",
+      "instructions": "修订应在多长时间内完成？",
+      "criteria": [
+        "立即停用重写（安全风险或价值观错位）",
+        "三个工作日内修订后再审（安全/目标缺失）",
+        "建议性修改，随堂改进（结构/难度问题）",
+        "通过放行"
+      ]
+    },
+    "defect_category": {
+      "type": "choice",
+      "instructions": "触发修订的主要缺陷属于哪一类？",
+      "criteria": {
+        "none": "无（通过放行）",
+        "safety_risk": "安全类：实验/体育/实训防护缺失或规程错误",
+        "value_alignment": "价值观类：思政要素错位或表述不当",
+        "objective_mismatch": "目标类：教学目标与内容/考核脱节",
+        "content_error": "内容类：知识性错误或顺序不当",
+        "pacing_difficulty": "节奏类：容量过大/过小或难度失配",
+        "assessment_gap": "考核类：作业与考核设计缺失或无反馈"
+      }
+    },
+    "review_evidence": {
+      "type": "noul",
+      "instructions": "审查要素单是否提供了判定所需的全部要素（目标、安全、考核）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照常规管理口径判定",
+        "false": "缺教学目标、缺安全事项或缺考核设计，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "lesson_pass 的唯一判据是要素完备且无风险表述（示例口径，需教学督导复核）：安全事项缺失或规程错误 → 不放行且 revision_tier=0——实验与实训安全是硬约束，宁可停用不可带险开课；价值观表述错位 → 档 0（重写该板块）；教学目标与内容/考核脱节 → 档 1（三个工作日内修订再审）；知识性错误 → 档 1（先更正再进课堂）；容量与难度失配 → 档 2 建议性修改；作业与考核缺失 → 档 1（无反馈的教学不完整）；结构微调 → 档 2。revision_tier=3 时 lesson_pass 必须为 true 且 defect_category 为 none。defect_category 按「最先阻断课堂安全的缺陷」取类，优先级：safety_risk > value_alignment > objective_mismatch > content_error > assessment_gap > pacing_difficulty——安全优先于教学设计。安全与内容双缺陷时档位取更急者（安全档 0 覆盖内容档 1）。review_evidence=false 时（缺目标、缺安全、缺考核），lesson_pass 与 revision_tier 不得凭猜测填写，标记待补并按档 2 暂存。",
+  "variety": [
+    "课程与学段谱系：小学科学、初中理化生实验、高中体育、中职实训、高校专业课——不同学段的安全与考核重心不同",
+    "缺陷类别（defect_category 七选项逐一覆盖）：safety_risk（实验无防护规程）、value_alignment（案例表述不当）、objective_mismatch（目标写素养考核考记忆）、content_error（公式/史实错误）、pacing_difficulty（一课时塞三个实验）、assessment_gap（无作业无反馈）、none",
+    "修订档（revision_tier 四档全覆盖）：0 停用重写（安全/价值观）、1 三个工作日（目标/内容/考核缺失）、2 建议性修改（节奏/结构）、3 通过（lesson_pass=true 必须为 3）",
+    "安全事项对照（专门生成）：实验防护齐备与缺失的成对样本——防护规程是有无问题不是多少问题",
+    "目标-考核一致性对照（专门生成）：目标与考核对齐的样本与脱节的对照——「教-学-评」一致性判据",
+    "要素完整度（review_evidence）：齐全、缺目标、缺安全、缺考核、多项缺失",
+    "呈现风格：教案原文摘录体、督导批注体、教研组互评体、期初检查通报体",
+    "易错陷阱：安全缺失一律档 0、价值观错位档 0、目标脱节档 1、节奏问题档 2、双缺陷取更急者"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "review_evidence",
+    "note": "模型输出仅为教案审查建议，停用与放行由教学督导会同教研组作出；课堂安全事故的应急处理与学生伤害责任不属本场景，转安全与法务通道；模型不生成对教师教学水平的定性评价。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 督导专员 B, 教务处",
+      "context": "期初教案检查，体育课垫上运动",
+      "course": "高二体育《技巧：前滚翻》",
+      "objectives": "目标与活动基本对应",
+      "content_sections": "热身-示范-分组练习-放松，顺序合理",
+      "safety_notes": "未写保护与帮助的站位要求，垫子数量未核对",
+      "assessment": "课堂观察记录，无量化考核",
+      "value_elements": "融入规则意识教育",
+      "prior_reviews": "0.0 次"
+    },
+    "questions": [
+      {"qid": "lesson_pass", "type": "noul",
+       "instructions": "该教案是否通过放行？"},
+      {"qid": "revision_tier", "type": "score",
+       "instructions": "修订应在多长时间内完成？"}
+    ],
+    "expected_label": {"lesson_pass": "false", "revision_tier": "0"}
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：defect_category 七类中 none 26%、safety_risk 14%、value_alignment 10%、objective_mismatch 16%、content_error 12%、pacing_difficulty 10%、assessment_gap 12%；revision_tier 四档 12/30/26/32；lesson_pass=false 68%、true 32%；review_evidence=false 占比 15%。安全防护齐备/缺失对照对单独 6%；「目标-考核一致性」对照对单独 6%；双缺陷取更急者样本单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 defect_category 七类中至少五类与 revision_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 safety_notes 字段——缺安全事项的范例会教出凭课程类型猜测风险；「安全档 0 vs 节奏档 2」对照范例必须成对出现并标注阻断逻辑；目标脱节范例需写出「目标-考核一致性」的推理。",
+  "compliance": [
+    "教案样本须去标识：剔除教师姓名、班级与学生信息，仅保留课程与要素结构",
+    "学生案例只保留脱敏结构，不保留可识别的个人表现描述",
+    "输出仅为审查建议，不构成对教师业务能力的评价结论",
+    "涉教学事故与申诉的样本转督导与人事通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "lesson_pass accuracy ≥0.96，误放行率（应停用判通过）≤1.5%（带险开课的风险高于误停用打扰）",
+    "revision_tier 四档 QWK ≥0.75",
+    "defect_category 七类 macro-F1 ≥0.85，safety_risk 漏检率 ≤2%（安全零容忍）",
+    "safety_risk 子集 revision_tier=0 比例 =1.0（硬规则验收）",
+    "目标-考核脱节子集 objective_mismatch 取类比例 ≥0.9",
+    "review_evidence=false 子集上不强行判定率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "safety_risk 被归 pacing_difficulty → 「防护有无」判据在 sidecar 缺失，检查安全事项描述完整性",
+    "value_alignment 未档 0 → 价值观错位口径未进蒸馏标签，检查对照样本",
+    "objective_mismatch 被归 none → 目标与考核脱节的对照缺失，检查一致性标注",
+    "双缺陷样本取了次要类 → 「最先阻断」优先级未进标签，检查取类推理",
+    "review_evidence=false 仍判定 → 违反软标签纪律，检查待补标注"
+  ],
+  "expert_review": [
+    "各学段安全事项清单（实验/体育/实训）与教育部安全规程的对应",
+    "「教-学-评」一致性的判定标准与学校课程方案的匹配",
+    "价值观与思政要素融入点的评价口径（学科渗透 vs 硬性指标）",
+    "修订时限（停用/3 个工作日/随堂）与教学常规管理制度的衔接",
+    " pacing_difficulty 与 content_error 的边界（容量问题 vs 知识错误）"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；教案审查依赖目标-考核一致性与安全规程的语义判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是学校教学督导的教案审查助手。基于教案审查要素单输出：教案是否通过放行、修订档（0-3 档：停用重写/三个工作日修订/建议性修改/通过）、缺陷类别（none/safety_risk/value_alignment/objective_mismatch/content_error/pacing_difficulty/assessment_gap 七选一）、审查要素是否足以判定。安全事项缺失或规程错误一律档 0——实验与实训安全是硬约束；价值观表述错位档 0；教学目标与考核脱节、知识性错误、考核缺失档 1；容量与难度失配、结构微调档 2。缺陷按最先阻断课堂安全者取类，安全优先于教学设计。信息不足时标记待补并按档 2 暂存，不得凭部分信息放行。输出为审查建议，停用与放行由督导会同教研组决定。",
+      "en": "You are a teaching-supervision lesson plan reviewer. From a lesson plan review sheet, output: whether the plan passes, the revision tier (0-3: rewrite / revise within 3 working days / suggested edits / pass), the defect category (none/safety_risk/value_alignment/objective_mismatch/content_error/pacing_difficulty/assessment_gap), and whether the review evidence suffices. Missing or wrong safety procedures are always tier 0 - lab and workshop safety is a hard constraint; misaligned value statements are tier 0; goal-assessment mismatch, factual errors, and missing assessment are tier 1; pacing and structure issues are tier 2. Classify by the first defect that endangers the classroom; mark missing elements and hold rather than guessing. Output is review advice; hold/release decisions rest with supervisors and the teaching-research group."
+    },
+    "ask_template": "请根据以下教案审查要素单完成审查：\n\n审查要素单：\n{{ state }}\n\n请逐项输出：\n1. lesson_pass：该教案是否通过放行（true/false）。\n2. revision_tier：修订档（0-3），列明缺陷依据与阻断逻辑。\n3. defect_category：主要缺陷类别（七选一），说明取类优先级推理（安全 > 价值观 > 目标 > 内容 > 考核 > 节奏）。\n4. review_evidence：审查要素是否足以判定（true/false），false 时列出缺失要素与暂存处置。",
+    "topics": [
+      "实验与实训课的安全规程审查",
+      "体育课保护与帮助的站位要求",
+      "价值观与思政要素的融入评价",
+      "教学目标与考核的「教-学-评」一致性",
+      "知识性错误与内容顺序",
+      "课时容量与难度失配的判断",
+      "作业分层与反馈设计",
+      "双缺陷并存时的档位取舍"
+    ],
+    "kev_track": false
+  }
+}

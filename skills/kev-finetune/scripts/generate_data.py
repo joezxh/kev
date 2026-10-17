@@ -14,7 +14,7 @@ Endpoints: KEV_GEN_BASE_URL (default https://api.openai.com/v1). Vercel AI Gatew
 model ids like openai/gpt-4.1-mini or anthropic/claude-sonnet-4.5. Ollama: http://localhost:11434/v1. Standard library only.
 
 Extensions for the medical pipeline:
-  * --category <key>  select one of the 6 workload categories (maps to docs/medical/specs/<name>.json).
+  * --category <key>  select one of the 6 workload categories (maps to docs/domains/medical/specs/<name>.json).
   * --api-keys / --keys-file / KEV_GEN_API_KEYS  use several keys; each key is capped at --daily-limit tokens/day
     (default 500000); the run rotates to the next key with budget and pauses (or, in --schedule mode, waits for
     the next day) when every key is exhausted.

@@ -1,0 +1,238 @@
+{
+  "name": "fin-transaction-anomaly",
+  "domain": "银行与支付机构的线上交易实时风控。风控人员复核监测系统产出的异常交易工单：交易金额相对客户历史基线的倍数、夜间交易占比、短时交易频率、新增收款方数、设备/IP 异地变更次数、快进快出率。监测维度依据《金融机构反洗钱和反恐怖融资监督管理办法》（人民银行令〔2021〕第 3 号）风险为本原则与反欺诈常用特征体系。阈值为示例口径，实际以本机构风控策略与监管沟通口径为准。",
+  "state": "一笔待复核交易的结构化摘要：客户身份（个人/商户）、交易金额相对近 90 日均值的倍数（倍）、近 7 日夜间（0-5 点）交易笔数占比（%）、近 1 小时交易笔数（笔）、近 24 小时新增收款方数（个）、近 7 日设备或 IP 异地变更次数（次）、入账后 10 分钟内转出比例（%）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "customer": "male 29, 个人网银",
+    "context": "凌晨连续转账，收款方均为新添加联系人",
+    "indicators": {
+      "金额倍数": "12.0 倍",
+      "夜间交易占比": "55.0 %",
+      "近1小时交易笔数": "42.0 笔",
+      "新增收款方数": "6.0 个",
+      "设备异地变更次数": "1.0 次",
+      "快进快出率": "78.0 %"
+    },
+    "ref_baseline_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "is_suspicious": {
+      "type": "noul",
+      "instructions": "该交易工单是否达到升级复核标准（而不是直接放行）？",
+      "criteria": {
+        "true": "至少一项监测指标越过本表阈值，需升级复核",
+        "false": "全部指标在基线范围内，直接放行"
+      }
+    },
+    "freeze_tier": {
+      "type": "score",
+      "instructions": "应在多快内采取处置动作？",
+      "criteria": [
+        "立即止付冻结并发起可疑上报",
+        "当日完成人工升级复核",
+        "纳入次日批量复审队列",
+        "放行，无需处置"
+      ]
+    },
+    "trigger_category": {
+      "type": "choice",
+      "instructions": "触发升级的主要信号属于哪一类？",
+      "criteria": {
+        "none": "无（全部指标在基线内）",
+        "amount": "金额类：交易金额相对基线的倍数异常",
+        "timing": "时段类：夜间交易占比异常",
+        "frequency": "频率类：短时交易笔数异常",
+        "counterparty": "对手类：新增收款方数异常",
+        "device": "设备类：设备/IP 异地变更异常",
+        "flow": "流向类：快进快出率异常"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "工单是否提供了判定所需的全部要素（指标名、数值、基线口径）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照监测策略判定",
+        "false": "缺基线口径、缺指标单位或指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "is_suspicious 的唯一判据是任一指标超出本表阈值（示例口径，需风控与合规专家复核）：金额倍数 ≥8 倍触发、≥20 倍最高档；夜间占比 ≥40% 触发、≥75% 最高档；近 1 小时 ≥30 笔触发、≥80 笔最高档；新增收款方 ≥5 个触发、≥12 个最高档；设备异地变更 ≥3 次触发、≥6 次最高档；快进快出率 ≥70% 触发、≥90% 最高档。freeze_tier 由最快触发的信号决定，0（立即止付）到 3（放行）：金额倍数与快进快出同时触发时按金额快进快出组合优先取 tier 0——资金转移既快且大是典型诈骗赃款路径。trigger_category 取最快档中的信号类别；单一客户的多笔交易工单按最高风险一笔归类，不在 state 中聚合。商户收款码提现场景金额倍数天然偏高，判定按其 state 中声明的行业基线而非个人基线，context 必须写明商户类型。is_suspicious=false 时 freeze_tier 必须为 3。evidence_sufficient 为 false 时（缺基线、缺单位、缺指标名），is_suspicious 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 trigger_category 不得凭猜测填写——风控工单在证据不全时宁可升级人工也不得自动放行。",
+  "variety": [
+    "客户类型：个人网银、手机银行、商户收款码、企业网银、跨境汇款客户",
+    "触发类别（trigger_category 七选项逐一覆盖）：amount（倍数 8/20 倍）、timing（夜间 40/75%）、frequency（1 小时 30/80 笔）、counterparty（新增 5/12 个）、device（变更 3/6 次）、flow（快进快出 70/90%）、none（全部在基线内）",
+    "处置档（freeze_tier 四档全覆盖）：0 立即止付（倍数 ≥20、夜间 ≥75%、快进快出 ≥90%）、1 当日复核、2 批量复审、3 放行（is_suspicious=false 时必须为 3）",
+    "典型诈骗剧本：冒充客服诱导转账（新收款方+快进快出）、刷单返利（频率+金额倍数）、杀猪盘（夜间+跨境）、假冒商户码（设备变更）——各剧本的核心信号组合在 context 中体现",
+    "正常对照（is_suspicious=true 的反例专门生成）：年终奖集中转存、房租季付、商户节假日流水高峰、留学缴费——含贴边未触发样本（倍数 5-7.5、快进快出 55-68%）",
+    "证据完整度（evidence_sufficient）：齐全、缺历史基线、缺指标单位、工单截断、多项缺失",
+    "工单风格：风控系统告警体、值班复核批注体、商户申诉工单体、中英混排（KYC/AML/velocity）",
+    "易错陷阱：商户流水高峰不是异常、贴边未越界必须放行、多信号同时触发取最快档且 trigger_category 一致、金额倍数必须相对客户自身基线而不是全行均值"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为工单升级建议，止付冻结与可疑交易上报由风控岗与合规岗按授权作出；涉及可疑交易报告（STR）的判断一律转合规复核，模型不生成上报结论。"
+  },
+  "smoke_probe": {
+    "state": {
+      "customer": "female 24, 手机银行",
+      "context": "凌晨 2-4 点连续向 6 个新收款方转账，单笔金额远超历史水平",
+      "indicators": "金额倍数 15.0 倍, 夜间交易占比 80.0 %, 近1小时交易笔数 45.0 笔",
+      "ref_baseline_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "freeze_tier", "type": "score",
+       "instructions": "应在多快内采取处置动作？"}
+    ],
+    "expected_label": {"freeze_tier": "0"}
+  },
+  "sampling": {
+    "n": 780,
+    "notes": "plan_targets 保留 40% 触发升级样本（tier 0-2 约 3:3:2），其余为放行对照；对照中至少 20% 为贴边未触发样本（金额倍数 5-7.5 倍、快进快出 55-68%、新增收款方 3-4 个）。诈骗剧本样本（tier 0）单独 15% 且 context 必须写明剧本特征；商户流水高峰对照单独 10%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 freeze_tier 四档与 trigger_category 七类中至少六类）作为 --examples 输入；few-shot 范例必须保留历史基线口径字段——缺基线的范例会教出把任何大额都判异常；商户流水高峰的正常对照必须与同金额的个人异常样本成对出现，训练「基线相对性」而非「金额绝对值」的判定习惯。",
+  "compliance": [
+    "交易与账户数据按 JR/T 0171-2020 脱敏：剔除卡号、账号、手机号、精确余额与对方户名，只保留金额档与行为特征",
+    "输出仅为工单升级与处置时限建议，止付、冻结与可疑交易上报由授权岗位作出，模型不得输出「客户涉嫌洗钱」等定性结论",
+    "可疑交易报告的保密义务：样本不得包含已上报 STR 的案件细节与侦查信息",
+    "不得基于民族、性别、地域等非行为特征生成差异化的监测描述"
+  ],
+  "acceptance": [
+    "is_suspicious accuracy ≥0.96，漏报率（可疑判放行）≤1.5%（漏报的欺诈损失远高于误报打扰）",
+    "freeze_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "trigger_category 七类 macro-F1 ≥0.88",
+    "贴边未触发子集（倍数 5-7.5、快进快出 55-68%）is_suspicious=false 比例 ≥0.9",
+    "商户流水高峰对照子集 is_suspicious=false 比例 ≥0.9（基线相对性验收）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: freeze_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（检查金额倍数 [[6.5,9]] 与 critical 下界 8 的重叠），核对 realize_tier 返回值",
+    "贴边样本被判升级 → 检查 fields.normal 上界与 critical 下界之间的过渡带（倍数 normal 上界 3 与 critical 8 之间的 3-8 区间必须被采样覆盖）",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "商户样本大量误报 → contexts 未写明商户基线口径，补充商户类型 context 并核对 guidance 的行业基线条款",
+    "distill 轨 label 漂移 → guidance 阈值口径与 generator.tier_windows 必须逐字一致，不一致以 generator 为准"
+  ],
+  "expert_review": [
+    "金额倍数 8/20 倍、夜间占比 40/75%、1 小时 30/80 笔、新增收款方 5/12 个、设备变更 3/6 次、快进快出 70/90% 的分档（依据常用反欺诈特征体系示例，需按机构客群校准，需专家复核）",
+    "金额与快进快出组合优先 tier 0 的规则与机构止付授权流程的对应",
+    "商户/个人基线分离的口径与商户行业分类的映射",
+    "夜间时段定义（0-5 点）与客群作息差异的调整",
+    "可疑交易上报（STR）与模型输出的职责边界（合规条线确认）"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "金额倍数", "unit": "倍", "decimals": 1, "normal": [0.5, 3.0],
+       "critical": {"high": [[8.0, 1000000000.0]]}, "category": "amount"},
+      {"name": "夜间交易占比", "unit": "%", "decimals": 1, "normal": [0.0, 15.0],
+       "critical": {"high": [[40.0, 1000000000.0]]}, "category": "timing"},
+      {"name": "近1小时交易笔数", "unit": "笔", "decimals": 0, "normal": [1.0, 10.0],
+       "critical": {"high": [[30.0, 1000000000.0]]}, "category": "frequency"},
+      {"name": "新增收款方数", "unit": "个", "decimals": 0, "normal": [0.0, 2.0],
+       "critical": {"high": [[5.0, 1000000000.0]]}, "category": "counterparty"},
+      {"name": "设备异地变更次数", "unit": "次", "decimals": 0, "normal": [0.0, 1.0],
+       "critical": {"high": [[3.0, 1000000000.0]]}, "category": "device"},
+      {"name": "快进快出率", "unit": "%", "decimals": 1, "normal": [0.0, 20.0],
+       "critical": {"high": [[70.0, 1000000000.0]]}, "category": "flow"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "金额倍数": [[20.0, 1000000000.0]],
+        "夜间交易占比": [[75.0, 1000000000.0]],
+        "近1小时交易笔数": [[80.0, 1000000000.0]],
+        "新增收款方数": [[12.0, 1000000000.0]],
+        "设备异地变更次数": [[6.0, 1000000000.0]],
+        "快进快出率": [[90.0, 1000000000.0]]
+      },
+      "1": {
+        "金额倍数": [[10.0, 19.9]],
+        "夜间交易占比": [[55.0, 74.9]],
+        "近1小时交易笔数": [[50.0, 79.0]],
+        "新增收款方数": [[8.0, 11.0]],
+        "设备异地变更次数": [[4.0, 5.0]],
+        "快进快出率": [[80.0, 89.9]]
+      },
+      "2": {
+        "金额倍数": [[8.0, 9.9]],
+        "夜间交易占比": [[40.0, 54.9]],
+        "近1小时交易笔数": [[30.0, 49.0]],
+        "新增收款方数": [[5.0, 7.0]],
+        "设备异地变更次数": [[3.0, 3.0]],
+        "快进快出率": [[70.0, 79.9]]
+      }
+    },
+    "contexts": [
+      "凌晨连续向多个新收款方转账，单笔远超历史水平",
+      "商户收款码节假日流水高峰，金额为平日 3 倍",
+      "年终奖到账后集中转存定期，金额倍数高但转入本人定期账户",
+      "房租季付 3.2 万元，收款方为固定房东",
+      "留学缴费 5 万美元，跨境电汇至学校账户",
+      "新设备登录后 10 分钟内完成 3 笔转账并开启免密",
+      "换机后首次大额消费，设备异地变更 1 次",
+      "工单缺少该客户近 90 日交易基线数据",
+      "刷单返利话术诱导的小额高频充值，近 1 小时 55 笔",
+      "客户自述购房首付转账，收款方为房产公司对公账户"
+    ],
+    "patients": [
+      "male 29 个人网银", "female 24 手机银行", "male 41 商户收款码",
+      "female 35 企业网银", "male 19 学生账户", "female 52 跨境汇款客户",
+      "male 33 新市民", "female 46 个体工商户"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "is_suspicious", "value": false},
+          {"label": "freeze_tier", "value": 3},
+          {"label": "trigger_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "is_suspicious", "value": true},
+          {"label": "freeze_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "trigger_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "is_suspicious",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.4},
+      "by_category": {
+        "critical": {
+          "quota": {"amount": 0.25, "timing": 0.15, "frequency": 0.2, "counterparty": 0.15, "device": 0.1, "flow": 0.15},
+          "tier_split": {
+            "amount": [[0, 0.35], [1, 0.35], [2, 0.3]],
+            "timing": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "frequency": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "counterparty": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "device": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "flow": [[0, 0.35], [1, 0.35], [2, 0.3]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "金额倍数": "amount",
+      "夜间交易占比": "timing",
+      "近1小时交易笔数": "frequency",
+      "新增收款方数": "counterparty",
+      "设备异地变更次数": "device",
+      "快进快出率": "flow"
+    }
+  }
+}

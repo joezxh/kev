@@ -1,0 +1,244 @@
+{
+  "name": "edu-admission-screen",
+  "domain": "高校招生录取现场的考生材料初筛。录检员把一份考生录取要素单交给助手：超线分数、体检受限项数、单科线未达项数、材料缺失数、诚信档案标记数、志愿确认距截止小时数。阈值为示例口径（以普通高校招生录取的通行初筛维度为基线），实际以本省招生实施规定与院校招生章程为准。",
+  "state": "一份考生录取材料初筛要素单：考生批次（提前批/本科批/专科批/艺术类/体育类）、超线分数（分，相对批次线）、体检受限项数（项）、单科线未达项数（项）、材料缺失数（份）、诚信档案标记数（次）、志愿确认距截止小时数（小时）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "case": "female 录检员 A, 本科一批",
+    "context": "平行志愿投档，分数贴线",
+    "batch": "本科一批",
+    "indicators": {
+      "超线分数": "12.0 分",
+      "体检受限项数": "0.0 项",
+      "单科线未达项数": "0.0 项",
+      "材料缺失数": "1.0 份",
+      "诚信档案标记数": "0.0 次",
+      "志愿确认距截止小时数": "96.0 小时"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "screen_flag": {
+      "type": "noul",
+      "instructions": "该考生材料是否需要人工复核（而不是直接进入录取队列）？",
+      "criteria": {
+        "true": "至少一项要素超出初筛阈值",
+        "false": "全部要素在阈值内，直接进入录取队列"
+      }
+    },
+    "decision_tier": {
+      "type": "score",
+      "instructions": "初筛处置应在什么层级与时限完成？",
+      "criteria": [
+        "启动诚信核查流程并暂缓录取（诚信标记多项或与材料问题并存）",
+        "人工复核队列，24 小时内完成",
+        "系统预审通过，抽检关注",
+        "直接进入录取队列"
+      ]
+    },
+    "risk_category": {
+      "type": "choice",
+      "instructions": "触发复核的主要风险属于哪一类？",
+      "criteria": {
+        "none": "无（直接录取）",
+        "score_gap": "分数类：超线分数贴线或压线",
+        "physical_limit": "体检类：体检结论受限",
+        "subject_gap": "单科类：单科成绩未达章程要求",
+        "doc_gap": "材料类：录取材料缺失",
+        "integrity_flag": "诚信类：诚信档案标记",
+        "deadline_risk": "时限类：志愿确认截止临近"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "要素单是否提供了判定所需的全部要素（分数基准、体检结论、材料清单）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照阈值判定",
+        "false": "缺分数基准、缺体检结论或缺材料清单，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "screen_flag 的唯一判据是任一要素超出本表阈值（示例口径，实际以本省招生实施规定为准，需专家复核）：超线分数 <10 分触发、<3 分最高档；体检受限 ≥1 项触发、≥3 项最高档；单科未达 ≥1 项触发、≥3 项最高档；材料缺失 ≥1 份触发、≥3 份最高档；诚信标记 ≥1 次触发、≥3 次最高档；确认截止 <24 小时触发、<3 小时最高档。decision_tier 由最快触发的风险决定，等级从 0（诚信流程+暂缓）到 3（直接录取）：integrity_flag ≥3 或 integrity_flag 与 doc_gap 并存时升档 0——材料问题叠加诚信标记须诚信核查流程介入；physical_limit 与其他类并存按 physical_limit 取——体检受限是录取硬约束（对照《指导意见》受限专业口径）；subject_gap 单独触发通常档 2（单科线由院校招生章程约定，录检关注）；deadline_risk 单独触发档 1-2（时限提醒并通知考生）。risk_category 取最快档中的风险类别。screen_flag=false 时 decision_tier 必须为 3 且 risk_category 为 none。evidence_sufficient 为 false 时（缺分数基准、缺体检结论、缺材料清单），screen_flag 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 risk_category 不得凭猜测填写。",
+  "variety": [
+    "批次与场景：提前批（体检/政审）、本科批（分数贴线）、专科批（征集志愿）、艺术体育类（校考与统考并存）——不同批次的初筛重心不同",
+    "风险类别（risk_category 七选项逐一覆盖）：score_gap（超线 1/7 分）、physical_limit（受限 3/1 项）、subject_gap（未达 3/1 项）、doc_gap（缺失 3/1 份）、integrity_flag（标记 3/1 次）、deadline_risk（截止 1/20 小时）、none（全部达标）",
+    "处置档（decision_tier 四档全覆盖）：0 诚信流程+暂缓（诚信 ≥3、诚信+材料并存）、1 人工复核 24 小时、2 系统预审抽检、3 直接录取（screen_flag=false 时必须为 3）",
+    "组合形态：单风险、双风险同档、多风险跨档、风险互相掩盖（分数高但材料缺——按最快档判）",
+    "体检受限对照（专门生成）：受限专业对照样本与专业调剂后可录的对照样本——《指导意见》受限口径",
+    "贴边未触发对照（screen_flag=false 须专门生成）：超线 12-15 分、材料 0 份、截止 48 小时以上",
+    "要素完整度（evidence_sufficient）：齐全、缺分数基准、缺体检结论、缺材料清单、多项缺失",
+    "呈现风格：投档单导出体、录检员批注体、省考试院答复体、录取检查记录体",
+    "易错陷阱：诚信+材料升档 0、体检受限优先取类、单科线看章程、贴线录检关注、截止临近先通知考生"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为录取材料初筛建议，退档与录取决定由省级招生考试机构与高校招生委员会作出；诚信档案的认定与处理按教育考试违规处理办法执行，不在本场景范围；模型不生成对考生个人的定性评价。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "male 录检员 B, 提前批",
+      "context": "专项计划考生，资格审查材料待补，分数压线",
+      "batch": "提前批",
+      "indicators": "超线分数 8.0 分, 体检受限项数 0.0 项, 单科线未达项数 1.0 项, 材料缺失数 2.0 份, 诚信档案标记数 0.0 次, 志愿确认距截止小时数 48.0 小时",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "decision_tier", "type": "score",
+       "instructions": "初筛处置应在什么层级与时限完成？"},
+      {"qid": "risk_category", "type": "choice",
+       "instructions": "触发复核的主要风险属于哪一类？"}
+    ],
+    "expected_label": {"decision_tier": "1", "risk_category": "doc_gap"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触发复核样本（tier 0-2 约 2:2:1），其余为直录对照；对照中至少 15% 为贴边未触发样本（超线 12-15 分、材料 0 份、截止 48 小时以上）。integrity_flag+doc_gap 并存样本单独 6% 并强制档 0；physical_limit 样本单独 7%（各档均有）；体检受限专业对照单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 decision_tier 四档与 risk_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留批次与分数基准——缺批次的范例会教出跨批次套用超线阈值；「诚信+材料升档 0」并存范例必须与单一触发成对出现；physical_limit 范例需写出「体检硬约束优先」的取类推理。",
+  "compliance": [
+    "招生样本须去标识：剔除考生姓名、准考证号与身份证号，仅保留批次与分数结构",
+    "体检结论只保留受限项数与受限类别大类，不保留具体病史",
+    "输出仅为初筛建议，不构成录取决定，不生成对考生的定性评价",
+    "涉考生申诉与行政复议的样本转招办信访通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "screen_flag accuracy ≥0.96，漏报率（应复核判直录）≤1.5%（误直录的合规风险高于复核成本）",
+    "decision_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "risk_category 七类 macro-F1 ≥0.88",
+    "integrity_flag ≥3 子集 decision_tier=0 比例 ≥0.95，integrity_flag+doc_gap 并存子集 decision_tier=0 比例 ≥0.95（升档验收）",
+    "physical_limit 子集取类比例 =1.0（硬规则验收）",
+    "贴边未触发子集 screen_flag=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: decision_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "score_gap 样本档位漂移 → 超线分数是 low 侧字段，检查窗口方向",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "physical_limit 被赋档 2 → 体检受限优先取类口径未进标签，检查 sampling 对照",
+    "诚信样本未升档 0 → integrity_flag 窗口与 tier_windows[\"0\"] 未对齐，检查窗口覆盖"
+  ],
+  "expert_review": [
+    "超线 3/10 分的档位与本省投档比例与招生章程的对应",
+    "体检受限项数与《普通高等学校招生体检工作指导意见》受限专业口径的匹配",
+    "诚信档案标记的来源（考试违规记录）与使用边界",
+    "志愿确认截止时限（24/3 小时）与征集志愿流程的衔接",
+    "单科线要求（院校章程约定）与省级统考口径的一致性"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "超线分数", "unit": "分", "decimals": 0, "normal": [10.0, 200.0],
+       "critical": {"low": [[-20.0, 9.0]]}, "category": "score_gap"},
+      {"name": "体检受限项数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 8.0]]}, "category": "physical_limit"},
+      {"name": "单科线未达项数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 8.0]]}, "category": "subject_gap"},
+      {"name": "材料缺失数", "unit": "份", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 10.0]]}, "category": "doc_gap"},
+      {"name": "诚信档案标记数", "unit": "次", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 8.0]]}, "category": "integrity_flag"},
+      {"name": "志愿确认距截止小时数", "unit": "小时", "decimals": 0, "normal": [24.0, 720.0],
+       "critical": {"low": [[0.0, 23.0]]}, "category": "deadline_risk"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "超线分数": [[-20.0, 2.0]],
+        "体检受限项数": [[3.0, 8.0]],
+        "单科线未达项数": [[3.0, 8.0]],
+        "材料缺失数": [[3.0, 10.0]],
+        "诚信档案标记数": [[3.0, 8.0]],
+        "志愿确认距截止小时数": [[0.0, 2.0]]
+      },
+      "1": {
+        "超线分数": [[3.0, 5.0]],
+        "体检受限项数": [[2.0, 2.0]],
+        "单科线未达项数": [[2.0, 2.0]],
+        "材料缺失数": [[2.0, 2.0]],
+        "诚信档案标记数": [[2.0, 2.0]],
+        "志愿确认距截止小时数": [[3.0, 8.0]]
+      },
+      "2": {
+        "超线分数": [[6.0, 9.0]],
+        "体检受限项数": [[1.0, 1.0]],
+        "单科线未达项数": [[1.0, 1.0]],
+        "材料缺失数": [[1.0, 1.0]],
+        "诚信档案标记数": [[1.0, 1.0]],
+        "志愿确认距截止小时数": [[9.0, 23.0]]
+      }
+    },
+    "contexts": [
+      "平行志愿投档，分数贴线",
+      "提前批军事院校，体检复检结论待出",
+      "专项计划考生，资格审查材料待补",
+      "艺术类校考成绩与统考成绩并存",
+      "常规批投档，全要素平稳",
+      "征集志愿阶段，确认时限临近",
+      "考生档案调阅发现诚信记录",
+      "外省考生，单科成绩待认定",
+      "无背景说明，仅一项要素贴线",
+      "招生录取质量抽查复盘"
+    ],
+    "patients": [
+      "male 录检员 A, 提前批", "female 录检员 B, 本科一批", "male 录检员 C, 本科二批",
+      "female 录检员 D, 专科批", "male 录检员 E, 艺术类", "female 录检员 F, 体育类",
+      "male 录检员 G, 专项计划组", "female 录检员 H, 征集志愿组"
+    ],
+    "rules": [
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "screen_flag", "value": true},
+          {"label": "decision_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "risk_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "screen_flag", "value": false},
+          {"label": "decision_tier", "value": 3},
+          {"label": "risk_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "screen_flag",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"score_gap": 0.18, "physical_limit": 0.15, "subject_gap": 0.14, "doc_gap": 0.18, "integrity_flag": 0.15, "deadline_risk": 0.2},
+          "tier_split": {
+            "score_gap": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "physical_limit": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "subject_gap": [[0, 0.15], [1, 0.4], [2, 0.45]],
+            "doc_gap": [[0, 0.15], [1, 0.4], [2, 0.45]],
+            "integrity_flag": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "deadline_risk": [[0, 0.2], [1, 0.4], [2, 0.4]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "超线分数": "score_gap",
+      "体检受限项数": "physical_limit",
+      "单科线未达项数": "subject_gap",
+      "材料缺失数": "doc_gap",
+      "诚信档案标记数": "integrity_flag",
+      "志愿确认距截止小时数": "deadline_risk"
+    }
+  }
+}

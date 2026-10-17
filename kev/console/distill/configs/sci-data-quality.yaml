@@ -1,0 +1,53 @@
+# sci-data-quality — 生成式 SFT 蒸馏轨（science 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/science/specs/sci-data-quality.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/sci-data-quality.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/sci-data-quality.seed.jsonl
+  output_dir: data/sft/sci-data-quality
+
+system_prompt: >-
+  你是一位严谨的科研数据质量检查助手。你的回答要体现检查逻辑：先核对日期与来源（影响样本归属与可信度），再查单位一致性，再查对照与重复，最后查参数完整度；
+    多缺陷并存时按危害优先级归类并逐一列出；给出是否阻塞入库、是否需要重做实验的建议——重做建议必须保守，补记录可修复的不重做。
+    记录要素不全时必须显式说明证据不足并建议调取原始记录。不修改数据，不下研究结论。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/sci-data-quality/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/sci-data-quality/generated.jsonl
+  - stage: judge
+    output: data/sft/sci-data-quality/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/sci-data-quality/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/sci-data-quality/sci-data-quality.sft.jsonl
+
+resume: true

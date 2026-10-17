@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button as UiButton } from "@/components/ui/button";
 import { useLang } from "@/lib/i18n";
@@ -16,6 +17,12 @@ export default function StudioProjectsPage() {
   const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  // D1：一个项目绑定一个已知场景，创建时必填（后端校验 scenario_known）。
+  const [scenario, setScenario] = useState("");
+  const [scenarioSlugs, setScenarioSlugs] = useState<string[]>([]);
+  useEffect(() => {
+    api.scenarios().then((list) => setScenarioSlugs(list.map((s) => s.name))).catch(() => setScenarioSlugs([]));
+  }, []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -24,6 +31,7 @@ export default function StudioProjectsPage() {
     setSlug("");
     setName("");
     setDescription("");
+    setScenario("");
     setErr(null);
     setOpen(true);
   }
@@ -32,6 +40,7 @@ export default function StudioProjectsPage() {
     setSlug(p.slug);
     setName(p.name);
     setDescription(p.description);
+    setScenario(p.scenario ?? "");
     setErr(null);
     setOpen(true);
   }
@@ -42,7 +51,7 @@ export default function StudioProjectsPage() {
       if (editing) {
         await api.updateProject(editing.id, { slug, name, description });
       } else {
-        await api.createProject({ slug, name, description });
+        await api.createProject({ slug, name, description, scenario });
       }
       setOpen(false);
       reload();
@@ -85,7 +94,9 @@ export default function StudioProjectsPage() {
             <TableBody>
               {projects.map((p) => (
                 <TableRow key={p.id}>
-                  <TableCell className="text-sm">{p.name}</TableCell>
+                  <TableCell className="text-sm">
+                    <Link href={`/studio/projects/${p.id}`} className="hover:text-foreground hover:underline">{p.name}</Link>
+                  </TableCell>
                   <TableCell className="font-mono text-xs">{p.slug}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.description || "—"}</TableCell>
                   <TableCell className="text-right font-mono text-xs text-muted-foreground">{p.created_at.slice(0, 10)}</TableCell>
@@ -121,6 +132,15 @@ export default function StudioProjectsPage() {
             </Field>
             <Field label="name">
               <input value={name} onChange={(e) => setName(e.target.value)} className="rounded border border-border bg-[#111111] px-2 py-1.5 text-sm outline-none focus:border-primary" />
+            </Field>
+            <Field label={lang === "zh" ? "场景" : "scenario"} full
+                   hint={lang === "zh" ? "一个项目绑定一个已知场景，创建后不可改" : "one known scenario per project (D1); fixed at creation"}>
+              <select value={scenario} disabled={!!editing}
+                      onChange={(e) => setScenario(e.target.value)}
+                      className="w-full rounded border border-border bg-[#111111] px-2 py-1.5 text-sm outline-none focus:border-primary disabled:opacity-60">
+                <option value="" disabled>{lang === "zh" ? "选择场景" : "Select scenario"}</option>
+                {scenarioSlugs.map((s) => (<option key={s} value={s}>{s}</option>))}
+              </select>
             </Field>
           </FormGrid>
           <Field label={t("studio.projects.description")} full>

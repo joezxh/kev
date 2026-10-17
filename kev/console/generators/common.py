@@ -14,12 +14,12 @@ Per-label quotas are **not** here: each generator owns its own :func:`plan_targe
 per scenario (a scarce notification tier needs an explicit split table, whereas a choice question just needs a
 round-robin over its issue types).
 
-Standard library plus one deliberate borrow: :func:`label_keys` asks `kev.api.question_keys` what a question's option
-keys are, so the generator and the serving contract cannot drift apart. No network, deterministic under a seed -- same
-conventions as skills/kev-finetune/scripts. Run: uv run python -m pytest tests/test_medical_generators.py -q
+Standard library only, no network, deterministic under a seed -- same conventions as
+skills/kev-finetune/scripts. Run: uv run python -m pytest tests/test_medical_generators.py -q
 """
 import argparse
 import json
+import os
 import random
 import sys
 from collections import Counter
@@ -31,56 +31,42 @@ if str(SKILL / "scripts") not in sys.path:
     sys.path.insert(0, str(SKILL / "scripts"))
 import split_data  # noqa: E402
 
+SPECS = ROOT / "docs/domains/medical/specs"
 
 # Share of values deliberately placed close to a threshold. Without this the model only ever sees values far from
 # the boundary and learns the shortcut "big number -> critical" instead of the rule.
 NEAR_BOUNDARY = 0.45
 
 
-def resolve_spec(name):
-    """One entry point for a scenario's spec (design doc D7), so what the console edits is what gets generated.
-
-    Order: `KEV_ENGINE_SPEC_DIR` (a test points it at a fixture directory) -> `paths.CONSOLE_SPECS`, the projection the
-    DB writes when a spec is saved in the UI -> `paths.SPECS`, the repository's read-only medical specs. Each directory
-    accepts both layouts, `<dir>/<name>/spec.json` and `<dir>/<name>.json`.
-
-    Before this there were three truth sources and the engine read the last one only, so a preview showed the committed
-    copy of a spec the user had just edited, and a new scenario raised FileNotFoundError (§6 defect 2).
-    """
-    import os
-    from kev.console import paths
-    directories = []
-    override = os.environ.get("KEV_ENGINE_SPEC_DIR")
-    if override:
-        directories.append(Path(override))
-    directories += [paths.CONSOLE_SPECS, paths.SPECS]
-    for directory in directories:
-        for candidate in (directory / name / "spec.json", directory / f"{name}.json"):
-            if candidate.exists():
-                try:
-                    return json.loads(candidate.read_text(encoding="utf-8"))
-                except json.JSONDecodeError as error:
-                    # a projection torn by a partial write must name its file, not fall through to the next source
-                    # and quietly generate from a spec the console no longer holds
-                    raise ValueError(f"spec {candidate} is not valid JSON: {error}") from error
-    raise FileNotFoundError(f"no spec for {name!r}; searched " + ", ".join(str(d) for d in directories))
-
-
 def load_spec(name):
-    """The scenario's own spec, so the generator can never invent a question id or type the spec does not declare."""
-    return resolve_spec(name)
+    """The scenario's own spec, so the generator can never invent a question id or type the spec does not declare.
+
+    Resolution order: the default specs directory (medical), then KEV_ENGINE_SPEC_DIR (the same override the
+    engine honours) — so cross-domain specs can run the full label-key audit without being copied into the
+    medical directory.
+    """
+    path = SPECS / f"{name}.json"
+    if not path.exists():
+        alt = os.environ.get("KEV_ENGINE_SPEC_DIR")
+        if alt:
+            alt_path = Path(alt) / f"{name}.json"
+            if alt_path.exists():
+                path = alt_path
+            else:
+                raise SystemExit(f"no spec at {path} or {alt_path}")
+        else:
+            raise SystemExit(f"no spec at {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def label_keys(spec, qid):
-    """The keys a question's labels must come from, read from the serving contract itself (kev.api.question_keys).
-
-    The helper used to re-derive them, and the copy had already drifted: it listed a noul question's two keys in the
-    opposite order to `kev.api.question_keys`. Callers only take the set today, so nothing broke -- which is exactly
-    the kind of quiet second home `tests/test_conventions.py` guards against.
-    """
-    from kev.api import question_keys  # the option-key contract lives in kev.api, not here
+    """The keys a question's labels must come from (option names / "true"|"false" / level indices as strings)."""
     q = spec["questions"][qid]
-    return question_keys(q["type"], q.get("criteria"))
+    if q["type"] == "noul":
+        return ["true", "false"]
+    if q["type"] == "choice":
+        return list(q["criteria"])
+    return [str(i) for i in range(len(q["criteria"]))]
 
 
 def labelled(spec, state, labels, soft=None):
@@ -117,20 +103,6 @@ def label_table(records):
         for qid, q in record["questions"].items():
             counts.setdefault(qid, Counter())[split_data.label_key(q)] += 1
     return counts
-
-
-def label_of(record, qid):
-    """The key one record's answer to `qid` is reported under, through split_data's own normaliser.
-
-    One home for the normalisation, so the engine's `by_label` target check, its exit gate and `label_table` cannot
-    disagree about whether `True`, `"true"` and `3` are the same answer as each other.
-    """
-    return split_data.label_key(record["questions"][qid])
-
-
-def label_key_of(spec, qid, label):
-    """`label_of` for a raw label value: the type comes from the spec's question rather than a built record."""
-    return split_data.label_key({"type": spec["questions"][qid]["type"], "label": label})
 
 
 def boundary_value(rng, threshold, low, high, side=None, near=NEAR_BOUNDARY, decimals=1):
@@ -188,13 +160,8 @@ def changed_fields(a, b):
     return sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
 
 
-def write_records(records, out, seed, spec_name, warn=True):
-    """Write labelled JSONL and print the same shape of summary split_data.py prints, so the two agree on sight.
-
-    `warn=False` keeps the stdout summary and drops the two stderr warnings: the spec-driven engine judges the same
-    numbers at its exit, with the gap spelled out as a count to move (§3's exit row), and a caller that turns those
-    numbers into a non-zero code must not read them twice (§6 defect 1's second home).
-    """
+def write_records(records, out, seed, spec_name):
+    """Write labelled JSONL and print the same shape of summary split_data.py prints, so the two agree on sight."""
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8", newline="\n") as f:
@@ -211,14 +178,11 @@ def write_records(records, out, seed, spec_name, warn=True):
         rare = [k for k, v in table.items() if v / total < 0.05]
         if rare:
             warned = True
-            if warn:
-                print(f"  warning: {qid}: {rare} under 5% of {total} records", file=sys.stderr)
+            print(f"  warning: {qid}: {rare} under 5% of {total} records", file=sys.stderr)
         missing = sorted(set(label_keys(spec, qid)) - set(table))
         if missing:
             warned = True
-            if warn:
-                print(f"  warning: {qid}: no record is ever labelled {missing}; the model cannot learn them",
-                      file=sys.stderr)
+            print(f"  warning: {qid}: no record is ever labelled {missing}; the model cannot learn them", file=sys.stderr)
     print("next: python3 skills/kev-finetune/scripts/split_data.py "
           f"{out} --out {out.with_suffix('')} [--holdout <gold.jsonl>]")
     return warned

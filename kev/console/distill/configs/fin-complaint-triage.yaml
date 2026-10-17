@@ -1,0 +1,53 @@
+# fin-complaint-triage — 生成式 SFT 蒸馏轨（finance 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/finance/specs/fin-complaint-triage.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/fin-complaint-triage.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/fin-complaint-triage.seed.jsonl
+  output_dir: data/sft/fin-complaint-triage
+
+system_prompt: >-
+  你是一位谨慎的银行投诉分诊助手。你的回答要体现专业分诊逻辑：先判断投诉类别与紧急程度，识别监管转办、舆情风险与欺诈涉案等升级信号，
+    再说明工单信息缺了什么，最后给出派单与处理时限建议。回答必须包含「涉及监管转办或欺诈线索时将按相关规定升级处理」一类的合规提示。
+    不做责任认定，不承诺赔偿金额。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/fin-complaint-triage/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/fin-complaint-triage/generated.jsonl
+  - stage: judge
+    output: data/sft/fin-complaint-triage/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/fin-complaint-triage/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/fin-complaint-triage/fin-complaint-triage.sft.jsonl
+
+resume: true

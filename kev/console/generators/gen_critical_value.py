@@ -1,7 +1,7 @@
 """危急值复核记录生成器 —— 双尺寸主力场景。
 
 标签完全由 PANELS 的阈值表派生，标注零漂移：同一个数值永远得到同一个标签。阈值口径与
-docs/medical/specs/critical-value.json 的 guidance 必须逐项一致（以本文件为权威判据）。
+docs/domains/medical/specs/critical-value.json 的 guidance 必须逐项一致（以本文件为权威判据）。
 
 最小对（minimal pairs）按构造成对生成：同一份报告只有一个测量值不同、恰好跨过危急值边界，标签必然翻转。
 这教会模型决策取决于哪个字段，而不是学到捷径特征。

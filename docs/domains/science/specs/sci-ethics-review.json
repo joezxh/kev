@@ -1,0 +1,158 @@
+{
+  "_meta": {
+    "purpose": "机构伦理委员会的伦理审查申请预分诊 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/sci-ethics-review.yaml"
+  },
+  "name": "sci-ethics-review",
+  "label_zh": "伦理预分诊",
+  "label_en": "Ethics Review Triage",
+  "domain": "机构伦理委员会（IRB）的审查申请预分诊。伦理秘书把一份申请预分诊要素单交给助手：研究类型、受试者涉及、知情同意状态、数据去标识状态、风险描述、既往批件情况。助手判断审查路径（path_category 七选一）、是否涉及受试者风险（human_subject_risk）、审查时限档（review_tier 四档），以及申请要素是否足以判定（application_evidence）。口径以《涉及人的生命科学和医学研究伦理审查办法》的免除/简易/会议审查分级为基线，阈值为示例口径，需伦理委员会委员复核。",
+  "state": "一份伦理审查申请预分诊要素单：项目编号、研究类型（干预性研究/观察性研究/调查问卷/回顾性病历/生物样本研究/教学案例）、受试者涉及（健康人/患者/未成年人/无）、知情同意状态（已取得/待取得/申请免除）、数据去标识状态（已完成/部分/未处理）、风险描述（大于最小风险/最小风险/无风险）、既往批件情况（无/有效期内/已到期）。",
+  "state_example": {
+    "desk": "female 伦理秘书 A, 伦理委员会办公室",
+    "context": "新申请预分诊，回顾性病历研究",
+    "project": "项目号 E-2026-0142",
+    "research_type": "回顾性病历研究",
+    "subjects": "患者（病历数据）",
+    "consent_status": "申请免除（回顾性）",
+    "deidentification": "已完成（编码替代标识）",
+    "risk_description": "最小风险（仅回顾既有数据）",
+    "prior_approval": "无"
+  },
+  "questions": {
+    "path_category": {
+      "type": "choice",
+      "instructions": "该申请应进入哪条审查路径？",
+      "criteria": {
+        "not_research": "非研究活动（教学案例、内部质控），不属伦理审查范围",
+        "exempt": "免除审查：利用既有去标识数据、无受试者互动",
+        "expedited": "简易审查：最小风险且不涉及弱势群体",
+        "full_board": "会议审查：大于最小风险、涉及弱势群体或干预性研究",
+        "amendment": "修正案审查：已批项目的方案变更",
+        "continuing_review": "跟踪复审：批件到期前的年度进展复核",
+        "adverse_event": "不良事件上报：研究过程中发生受试者损害"
+      }
+    },
+    "human_subject_risk": {
+      "type": "noul",
+      "instructions": "该研究是否涉及受试者风险（而不是纯数据活动）？",
+      "criteria": {
+        "true": "存在受试者互动、干预或可识别数据再识别风险",
+        "false": "仅使用已去标识的既有数据，无受试者接触"
+      }
+    },
+    "review_tier": {
+      "type": "score",
+      "instructions": "审查应在什么时限内完成？",
+      "criteria": [
+        "立即上报伦理委员会并建议暂停研究（不良事件或超范围实施）",
+        "下次例会前完成简易/修正审查",
+        "按例会周期安排会议审查或跟踪复审",
+        "豁免登记归档"
+      ]
+    },
+    "application_evidence": {
+      "type": "noul",
+      "instructions": "申请要素是否提供了判定所需的全部要素（研究类型、同意状态、风险描述）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照分级口径判定",
+        "false": "缺研究类型、缺同意状态或缺风险描述，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "path_category 的唯一判据是研究类型与风险分级（示例口径，需伦理委员复核）：教学案例与内部质控 → not_research；利用既有去标识数据、无受试者互动、申请免除同意有据 → exempt；最小风险且不涉及未成年人等弱势群体 → expedited；大于最小风险、干预性研究、涉及弱势群体（未成年人/认知障碍）→ full_board；已批项目的方案变更（新增干预、扩大样本）→ amendment；批件到期前年度复核 → continuing_review；研究过程中发生受试者损害或方案外事件 → adverse_event。human_subject_risk 的判据是受试者接触：有互动、干预或可识别数据再识别可能 → true；纯去标识数据 → false。review_tier 由路径与风险决定：adverse_event → 档 0 立即上报并建议暂停相关环节；expedited 与 amendment → 档 1（下次例会前）；full_board 与 continuing_review → 档 2（例会周期）；exempt 与 not_research → 档 3 登记归档。path_category 与 risk 并存时按更严路径取——会议审查覆盖简易审查。application_evidence=false 时（缺研究类型、缺同意状态、缺风险描述），path_category 与 review_tier 不得凭猜测填写，标记待补并按档 2 暂存。",
+  "variety": [
+    "研究类型谱系：干预性研究（新药/器械/行为干预）、观察性研究（队列随访）、调查问卷（敏感话题）、回顾性病历（免除场景）、生物样本（剩余样本再利用）、教学案例（非研究）——不同类型的同意与风险口径不同",
+    "路径（path_category 七选项逐一覆盖）：not_research（内部质控）、exempt（去标识病历）、expedited（最小风险问卷）、full_board（未成年人干预）、amendment（扩大样本）、continuing_review（年度复核）、adverse_event（采样后感染）",
+    "审查档（review_tier 四档全覆盖）：0 立即上报（不良事件）、1 例会前简易/修正、2 例会周期（会议/跟踪）、3 豁免登记（exempt 必须为 3）",
+    "弱势群体对照（专门生成）：涉及未成年人/认知障碍受试者升会议审查的样本与成人知情同意的对照",
+    "同意豁免对照（专门生成）：免除同意有据（回顾性、去标识）与免除无据（前瞻性采集）的成对样本",
+    "要素完整度（application_evidence）：齐全、缺研究类型、缺同意状态、缺风险描述、多项缺失",
+    "呈现风格：申请表摘录体、伦理秘书批注体、委员预审意见体、年度跟踪报告体",
+    "易错陷阱：不良事件档 0、弱势群体升会议审查、免除同意要有据、方案变更走修正案、去标识是免除前提"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "application_evidence",
+    "note": "模型输出仅为预分诊建议，审查路径与批件决定由伦理委员会会议作出；研究不当行为的调查与受试者损害的赔偿不属本场景，转科研诚信与法务通道；模型不替代伦理委员会的实质性审查判断。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 伦理秘书 B, 伦理委员会办公室",
+      "context": "新申请预分诊，问卷涉及未成年人心理健康",
+      "project": "项目号 E-2026-0155",
+      "research_type": "调查问卷",
+      "subjects": "未成年人（中学生）",
+      "consent_status": "待取得（监护人知情同意）",
+      "deidentification": "已完成（问卷编码）",
+      "risk_description": "最小风险（敏感话题）",
+      "prior_approval": "无"
+    },
+    "questions": [
+      {"qid": "path_category", "type": "choice",
+       "instructions": "该申请应进入哪条审查路径？"},
+      {"qid": "review_tier", "type": "score",
+       "instructions": "审查应在什么时限内完成？"}
+    ],
+    "expected_label": {"path_category": "full_board", "review_tier": "2"}
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：path_category 七类中 not_research 8%、exempt 20%、expedited 18%、full_board 22%、amendment 12%、continuing_review 12%、adverse_event 8%；review_tier 四档 10/30/42/18；human_subject_risk true 55%、false 45%；application_evidence=false 占比 15%。弱势群体升会议审查对照对单独 6%；「免除同意有据 vs 无据」对照对单独 6%；不良事件立即上报样本单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 path_category 七类中至少五类与 review_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 consent_status 与 deidentification 字段——缺同意状态的范例会教出忽视豁免前提；「expedited vs full_board」对照范例必须成对出现并标注弱势群体判据；adverse_event 范例需写出立即上报与暂停建议的推理。",
+  "compliance": [
+    "申请样本须去标识：剔除研究者姓名、项目资助方与受试者任何信息，仅保留研究类型与要素结构",
+    "风险描述只保留分级结论，不保留具体病例细节",
+    "输出仅为预分诊建议，不构成伦理批件，不替代委员会实质性审查",
+    "涉研究不端与数据造假的样本转科研诚信通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "path_category 七类 macro-F1 ≥0.85，adverse_event 漏检率 ≤2%（漏检的受试者损害风险最高）",
+    "human_subject_risk accuracy ≥0.95",
+    "review_tier 四档 QWK ≥0.75",
+    "adverse_event 子集 review_tier=0 比例 =1.0（硬规则验收）",
+    "弱势群体子集 full_board 取类比例 ≥0.95",
+    "application_evidence=false 子集上不强行判定率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "expedited 被归 full_board → 「最小风险」判据在 sidecar 缺失，检查风险描述完整性",
+    "adverse_event 未档 0 → 「立即上报」口径未进蒸馏标签，检查对照样本",
+    "exempt 被归 expedited → 去标识与受试者互动的区分缺失，检查标注",
+    "amendment 被归 full_board → 「已批项目变更」语境缺失，检查 prior_approval 字段",
+    "application_evidence=false 仍判定 → 违反软标签纪律，检查待补标注"
+  ],
+  "expert_review": [
+    "免除审查的条件清单与现行《伦理审查办法》条款的对应",
+    "简易审查（expedited）的适用边界与委员指定规则",
+    "弱势群体（未成年人/认知障碍/囚犯）的界定与加严要求",
+    "不良事件上报时限（24/72 小时分级）与监管报送的衔接",
+    "年度跟踪复审的触发条件与批件有效期管理"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；审查路径判定依赖研究类型与弱势群体的语义判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是机构伦理委员会办公室的审查申请预分诊助手。基于申请预分诊要素单输出：审查路径（not_research/exempt/expedited/full_board/amendment/continuing_review/adverse_event 七选一）、是否涉及受试者风险、审查时限档（0-3 档：立即上报并建议暂停/下次例会前简易或修正审查/例会周期会议或跟踪复审/豁免登记）、申请要素是否足以判定。不良事件档 0 立即上报；未成年人等弱势群体升会议审查；免除同意须有据（回顾性、去标识、无互动）；方案变更走修正案；去标识是免除审查前提。路径与风险并存取更严者。信息不足时标记待补并按档 2 暂存，不得凭部分信息判定。输出为预分诊建议，审查决定由伦理委员会作出。",
+      "en": "You are an IRB office intake triage assistant. From a pre-screening sheet, output: the review path (not_research/exempt/expedited/full_board/amendment/continuing_review/adverse_event), whether human-subject risk exists, the review tier (0-3: immediate report with pause recommendation / expedited or amendment before next meeting / convened-board cycle / exempt registration), and whether the application suffices. Adverse events are tier 0; vulnerable populations escalate to full board; consent waivers require justification (retrospective, de-identified, no interaction); protocol changes go through amendment; de-identification is the prerequisite for exemption. Take the stricter path when criteria overlap. Mark missing elements and hold rather than guessing. Output is triage advice; decisions rest with the ethics committee."
+    },
+    "ask_template": "请根据以下伦理审查申请预分诊要素单完成分诊：\n\n预分诊要素单：\n{{ state }}\n\n请逐项输出：\n1. path_category：审查路径（七选一），说明路径判据推理（研究类型、风险、弱势群体）。\n2. human_subject_risk：是否涉及受试者风险（true/false），注明判断依据（互动/干预/再识别）。\n3. review_tier：审查时限档（0-3），列明时限依据。\n4. application_evidence：申请要素是否足以判定（true/false），false 时列出缺失要素与暂存处置。",
+    "topics": [
+      "免除审查的条件与去标识前提",
+      "简易审查的适用边界",
+      "弱势群体与会议审查升级",
+      "知情同意豁免的有据与无据",
+      "方案变更与修正案审查",
+      "年度跟踪复审的触发",
+      "不良事件上报与暂停建议",
+      "非研究活动（质控/教学）的界定"
+    ],
+    "kev_track": false
+  }
+}

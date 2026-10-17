@@ -1,0 +1,160 @@
+{
+  "_meta": {
+    "purpose": "企业个人信息保护部门的主体请求（DSR）分诊 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/law-privacy-dsr.yaml"
+  },
+  "name": "law-privacy-dsr",
+  "label_zh": "DSR 分诊",
+  "label_en": "Data Subject Request Triage",
+  "domain": "企业个人信息保护办公室（DPO）的数据主体请求分诊。隐私专员把一份 DSR 分诊要素单交给助手：请求类型、身份核验材料、请求关联的数据范围、数据是否涉第三人、是否涉自动化决策、距请求接收天数。助手判断请求类型（dsr_type 七选一）、身份核验是否通过（verifier）、处理时限档（deadline_tier 四档），以及请求要素是否足以判定（dsr_evidence）。口径以《个人信息保护法》第四章（查阅复制/更正补充/删除/可携带/规则说明）与第 50 条 15 个工作日答复要求为基线，阈值为示例口径，需 DPO 与合规复核。",
+  "state": "一份 DSR 分诊要素单：请求编号、请求类型描述、行使的权利（查阅复制/更正补充/删除/可携带转移/拒绝自动化决策/撤回同意）、身份核验材料（人脸核身/证件比对/绑定手机+短信/仅自称）、请求关联的数据范围（单一账户/多产品线/含他人信息/范围不明）、数据是否涉第三人（涉/不涉/不明）、是否涉自动化决策（涉/不涉/不明）、距请求接收天数（天）。",
+  "state_example": {
+    "desk": "female 隐私专员 A, DPO 办公室",
+    "context": "用户要求删除账号与全部个人数据",
+    "request": "请求号 DSR-2026-0311",
+    "type_desc": "要求删除账号下全部订单与行为数据",
+    "right": "删除权",
+    "verification": "证件比对通过",
+    "data_scope": "单一账户，含 3 笔订单关联骑手信息",
+    "third_party": "涉（订单中的第三方配送员信息）",
+    "automated_decision": "不涉",
+    "days_elapsed": "3.0 天前"
+  },
+  "questions": {
+    "dsr_type": {
+      "type": "choice",
+      "instructions": "该请求行使的是哪一项权利？",
+      "criteria": {
+        "none": "非权利行使请求（咨询/投诉其他事项）",
+        "access": "查阅复制权：要求提供其个人信息副本",
+        "correction": "更正补充权：要求更正或补充不准确信息",
+        "deletion": "删除权：要求删除其个人信息（含撤回同意后的删除）",
+        "portability": "可携带权：要求将信息转移至其指定的处理者",
+        "objection": "拒绝权：拒绝仅通过自动化决策方式作出决定",
+        "withdraw_consent": "撤回同意：撤回此前给予的处理同意"
+      }
+    },
+    "verifier": {
+      "type": "noul",
+      "instructions": "请求人身份核验是否通过（可以继续处理）？",
+      "criteria": {
+        "true": "核验材料足以确认请求人为信息主体本人",
+        "false": "核验材料不足或存疑，需补充核验（防冒用与二次泄露）"
+      }
+    },
+    "deadline_tier": {
+      "type": "score",
+      "instructions": "该请求应在什么时限内处理？",
+      "criteria": [
+        "立即处理并上报 DPO（未成年人数据/涉敏感信息泄露/监管督办）",
+        "法定 15 个工作日内完成处理与答复",
+        "依法延期（复杂请求，不超过 30 日并告知理由）",
+        "登记答复（重复请求/明显滥用/非权利行使）"
+      ]
+    },
+    "dsr_evidence": {
+      "type": "noul",
+      "instructions": "请求要素是否提供了处理所需的全部要素（权利指向、数据范围、核验状态）？",
+      "criteria": {
+        "true": "要素齐全，可直接进入处理流程",
+        "false": "缺数据范围、缺核验材料或缺权利指向，无法可靠处理"
+      }
+    }
+  },
+  "guidance": "dsr_type 的判据是请求描述与权利内容的对应（示例口径，需 DPO 复核）：要副本 → access；改错 → correction；删除 → deletion（撤回同意伴随删除要求的，主类型取 deletion）；转移至其他平台 → portability；拒绝自动化决策 → objection；仅撤回同意无删除指向 → withdraw_consent；咨询资费、投诉服务质量 → none。verifier 的判据是核验材料强度：人脸核身或证件比对通过 → true；仅自称、绑定手机非本人常用 → false——核验不足时不得提供任何数据（防冒用）。deadline_tier：未成年人个人信息或请求关联敏感信息泄露事件 → 档 0 立即处理并上报 DPO；verifier=true 的常规请求 → 档 1（15 个工作日法定时限）；数据范围跨多产品线且含第三人信息需逐一评估 → 档 2（依法延期并书面告知）；60 日内重复提交且已答复 → 档 3。类型与核验并存按类型取——核验只影响是否继续处理。deletion 涉第三人信息时注明「对第三人部分依法可拒绝并说明理由」。dsr_evidence=false 时（缺数据范围、缺核验材料、缺权利指向），dsr_type 与 deadline_tier 不得凭猜测填写，标记待补并按档 1 暂存（不得以补件为由超法定时限）。",
+  "variety": [
+    "请求类型谱系：查阅复制（副本格式）、更正补充（昵称/手机号错误）、删除（注销账号/撤回同意后）、可携带（转投他平台）、拒绝自动化决策（算法派单/定价）、撤回同意（营销推送）、none（咨询投诉）——不同权利的处理链路不同",
+    "核验材料谱系：人脸核身、证件比对、绑定手机+短信、仅自称——核验强度决定 verifier 与防冒用",
+    "时限档（deadline_tier 四档全覆盖）：0 立即上报（未成年人/敏感泄露关联）、1 法定 15 个工作日、2 依法延期 30 日（多产品线+第三人）、3 登记答复（重复请求/none）",
+    "第三人信息对照（专门生成）：请求范围含他人信息（依法可拒绝该部分）与纯本人信息的成对样本",
+    "自动化决策对照（专门生成）：拒绝算法决定与一般查阅的成对样本——第 24 条说明义务",
+    "要素完整度（dsr_evidence）：齐全、缺数据范围、缺核验材料、缺权利指向、多项缺失",
+    "呈现风格：DSR 工单体、隐私专员批注体、DPO 复核意见体、监管检查答复体",
+    "易错陷阱：核验不足不提供任何数据、撤回同意伴随删除取 deletion、涉第三人部分可拒绝但要说明、延期须书面告知、重复请求档 3"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "dsr_evidence",
+    "note": "模型输出仅为 DSR 分诊建议，请求答复与拒绝决定由 DPO 作出；数据泄露事件的上报（监管通报时限）不属本场景，转安全事件通道；模型不生成对请求人权利主张的法律意见，不代行拒绝权。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 隐私专员 B, DPO 办公室",
+      "context": "用户来电要求提供平台掌握的全部个人数据副本以便转投其他平台",
+      "request": "请求号 DSR-2026-0345",
+      "type_desc": "要求提供个人资料、订单与偏好标签的结构化副本",
+      "right": "可携带转移至指定平台",
+      "verification": "人脸核身通过",
+      "data_scope": "单一账户，数据范围明确",
+      "third_party": "不涉",
+      "automated_decision": "不涉",
+      "days_elapsed": "1.0 天前"
+    },
+    "questions": [
+      {"qid": "dsr_type", "type": "choice",
+       "instructions": "该请求行使的是哪一项权利？"},
+      {"qid": "deadline_tier", "type": "score",
+       "instructions": "该请求应在什么时限内处理？"}
+    ],
+    "expected_label": {"dsr_type": "portability", "deadline_tier": "1"}
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：dsr_type 七类中 none 12%、access 20%、correction 14%、deletion 22%、portability 10%、objection 12%、withdraw_consent 10%；deadline_tier 四档 8/56/22/14；verifier true 78%、false 22%；dsr_evidence=false 占比 15%。「核验通过 vs 仅自称」对照对单独 6%；「涉第三人 vs 纯本人」对照对单独 6%；未成年人/敏感泄露档 0 样本单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 dsr_type 七类中至少五类与 deadline_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 verification 字段——缺核验材料的范例会教出忽视防冒用前提；「撤回同意 vs 删除权」对照范例必须成对出现并标注主权利指向判据；deletion 涉第三人范例需写出「部分可拒绝但须说明」的推理。",
+  "compliance": [
+    "DSR 样本须去标识：剔除用户标识、手机号与请求原文中的个人细节，仅保留权利类型与要素结构",
+    "数据范围只保留范围描述结构，不保留任何真实数据内容",
+    "输出仅为分诊建议，不构成对请求的答复，不生成拒绝决定",
+    "涉监管投诉与集体诉讼的样本转 DPO 与外部律师通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "dsr_type 七类 macro-F1 ≥0.85",
+    "verifier accuracy ≥0.96，误通过率（核验不足判通过）≤2%（冒用获取数据的风险最高）",
+    "deadline_tier 四档 QWK ≥0.75",
+    "verifier=false 子集不提供数据标注率 =1.0（硬规则验收）",
+    "deletion 涉第三人子集「部分拒绝+说明」标注比例 ≥0.9",
+    "dsr_evidence=false 子集上不强行判定率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "withdraw_consent 被归 deletion → 「主权利指向」判据在 sidecar 缺失，检查请求描述完整性",
+    "verifier 误判 true → 核验材料强度分级缺失，检查 verification 字段",
+    "portability 被归 access → 「转移至指定处理者」的语境缺失，检查 type_desc",
+    "objection 被归 none → 自动化决策场景描述缺失，检查 automated_decision 字段",
+    "dsr_evidence=false 仍判定 → 违反软标签纪律，检查待补标注"
+  ],
+  "expert_review": [
+    "15 个工作日答复时限的计算口径（工作日/自然日、起算点）与《个保法》第 50 条的对应",
+    "身份核验的合理限度（防冒用 vs 不得设置不合理条件）与监管案例的衔接",
+    "可携带权的适用范围（结构化、通用格式、本人提供的信息）边界",
+    "涉第三人信息的拒绝口径与说明义务",
+    "延期处理的条件（复杂程度认定）与 30 日上限的告知格式"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；请求类型与核验判定依赖请求描述的语义判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是企业个人信息保护办公室的 DSR 分诊助手。基于 DSR 分诊要素单输出：请求行使的权利（none/access/correction/deletion/portability/objection/withdraw_consent 七选一）、身份核验是否通过（verifier，核验不足不得提供任何数据）、处理时限档（0-3 档：立即处理并上报 DPO/法定 15 个工作日/依法延期 30 日并告知/登记答复）、请求要素是否足以判定。撤回同意伴随删除要求取 deletion；涉第三人信息部分依法可拒绝但须说明理由；未成年人数据与敏感信息泄露关联档 0；多产品线+第三人可依法延期；重复请求档 3。信息不足时标记待补并按档 1 暂存，不得以补件为由超法定时限。输出为分诊建议，答复与拒绝决定由 DPO 作出。",
+      "en": "You are a DPO-office DSR triage assistant. From a request intake sheet, output: the right exercised (none/access/correction/deletion/portability/objection/withdraw_consent), whether identity verification passed (verifier - no data may be released without adequate verification), the handling tier (0-3: immediate escalation to DPO / statutory 15 working days / lawful extension up to 30 days with notice / log only), and whether the request suffices. Withdrawal accompanied by a deletion demand is deletion; third-party data may be refused in part with reasons; minors' data and sensitive-breach links are tier 0; multi-product with third parties may extend; duplicates are tier 3. Mark missing elements and hold at tier 1 rather than missing the statutory clock. Output is triage advice; responses and refusals rest with the DPO."
+    },
+    "ask_template": "请根据以下 DSR 分诊要素单完成分诊：\n\nDSR 要素单：\n{{ state }}\n\n请逐项输出：\n1. dsr_type：请求行使的权利（七选一），说明请求描述与权利内容的对应推理。\n2. verifier：身份核验是否通过（true/false），注明核验材料强度判断。\n3. deadline_tier：处理时限档（0-3），列明时限依据（法定/延期/立即/登记）。\n4. dsr_evidence：请求要素是否足以处理（true/false），false 时列出缺失要素与补充指引。",
+    "topics": [
+      "查阅复制权与副本格式",
+      "更正补充权的处理链路",
+      "删除权与撤回同意的竞合",
+      "可携带权的适用边界",
+      "拒绝自动化决策与说明义务",
+      "身份核验强度与防冒用",
+      "涉第三人信息的部分拒绝",
+      "法定时限与延期告知"
+    ],
+    "kev_track": false
+  }
+}

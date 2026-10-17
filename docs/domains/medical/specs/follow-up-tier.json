@@ -1,0 +1,246 @@
+{
+  "name": "follow-up-tier",
+  "domain": "出院随访中心的随访分级与主动干预。随访护士把一份出院患者随访台账条目交给助手：距计划随访到期天数、再入院风险评分、异常生命体征项数、用药依从性评分、随访失联次数、并发症症状报告数。阈值为示例口径（以出院后 30 天再入院高发窗口与慢病随访分级管理惯例为基线），实际以本院随访制度与专科路径为准。",
+  "state": "一份出院患者随访台账条目：科室、出院诊断大类、距计划随访到期天数（天）、再入院风险评分（0-100）、异常生命体征项数（项）、用药依从性评分（%）、随访失联次数（次）、并发症症状报告数（项）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "case": "female 随访护士 A, 心内科",
+    "context": "心衰出院 12 天，30 天再入院高发窗口内",
+    "dept": "心内科",
+    "diagnosis": "慢性心力衰竭",
+    "indicators": {
+      "距计划随访到期天数": "4.0 天",
+      "再入院风险评分": "72.0 分",
+      "异常生命体征项数": "1.0 项",
+      "用药依从性评分": "55.0 %",
+      "随访失联次数": "1.0 次",
+      "并发症症状报告数": "0.0 项"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "follow_up_intervene": {
+      "type": "noul",
+      "instructions": "该患者是否需要主动随访干预（而不是按计划常规随访）？",
+      "criteria": {
+        "true": "至少一项随访指标超出干预阈值",
+        "false": "全部指标在阈值内，按计划常规随访"
+      }
+    },
+    "contact_tier": {
+      "type": "score",
+      "instructions": "主动干预应在多长时间内完成首次接触？",
+      "criteria": [
+        "当日电话干预并通知主管医师（高风险）",
+        "48 小时内完成电话随访并记录",
+        "本周内完成随访，轻度越界",
+        "按计划常规随访，无需提前"
+      ]
+    },
+    "risk_category": {
+      "type": "choice",
+      "instructions": "触发干预的主要风险属于哪一类？",
+      "criteria": {
+        "none": "无（常规随访）",
+        "overdue": "随访到期类：随访窗口临期或已过",
+        "readmit": "再入院风险类：评分超阈值",
+        "vitals": "体征类：异常生命体征项数超限",
+        "adherence": "依从性类：用药依从性评分过低",
+        "contact": "失联类：连续失联次数超限",
+        "complication": "并发症类：症状报告数超限"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "台账条目是否提供了判定所需的全部要素（指标名、数值、统计窗口）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照阈值判定",
+        "false": "缺统计窗口、缺数值或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "follow_up_intervene 的唯一判据是任一随访指标超出本表阈值（示例口径，实际以本院随访制度为准，需专家复核）：距计划随访到期 ≤7 天触发、≤1 天最高档；再入院风险评分 ≥60 触发、≥85 最高档；异常生命体征 ≥1 项触发、≥4 项最高档；用药依从性 <60% 触发、<40% 最高档；随访失联 ≥2 次触发、≥5 次最高档；并发症症状报告 ≥1 项触发、≥3 项最高档。contact_tier 由最快触发的风险决定，等级从 0（当日干预）到 3（常规随访）：vitals ≥3 项或 readmit ≥85 单独即档 0——多系统异常与极高再入院风险都不容等；contact 与 readmit 并存时升档 0——失联叠加高风险是脱管前兆；出院 ≤30 天（context 注明高发窗口）内任何触发项升一档（不低于档 1）——30 天窗口是再入院高发期；adherence 单独触发通常档 2（电话用药教育），但涉及抗凝/心衰核心药物（context 注明）升档 1。risk_category 取最快档中的风险类别，contact 与 overdue 并存按 contact 取——失联本身使计划随访失效，先恢复联系。follow_up_intervene=false 时 contact_tier 必须为 3 且 risk_category 为 none。evidence_sufficient 为 false 时（缺统计窗口、缺单位、缺指标名），follow_up_intervene 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 risk_category 不得凭猜测填写。",
+  "variety": [
+    "科室与诊断：心内科（心衰）、内分泌科（糖尿病）、骨科（关节置换术后）、普外科（胃肠手术后）、神经内科（脑卒中）、肿瘤科（化疗后）——不同科室的并发症谱在 state 中带出",
+    "风险类别（risk_category 七选项逐一覆盖）：overdue（距到期 1/6 天）、readmit（评分 88/65）、vitals（异常 3/1 项）、adherence（评分 35/58%）、contact（失联 5/2 次）、complication（报告 3/1 项）、none（全部达标）",
+    "干预档（contact_tier 四档全覆盖）：0 当日干预（readmit ≥85、vitals ≥3、contact+readmit 并存）、1 48 小时、2 本周、3 常规（follow_up_intervene=false 时必须为 3）",
+    "组合形态：单风险、双风险同档、多风险跨档、风险互相掩盖（依从性 35% 但体征平稳——按最快档判不因优点抵扣）",
+    "30 天窗口对照（专门生成）：出院 12 天内触发的升档样本与出院 45 天同分值不升档的对照样本",
+    "贴边未触发对照（follow_up_intervene=false 须专门生成）：距到期 9-12 天、评分 52-58、依从性 63-68%",
+    "要素完整度（evidence_sufficient）：齐全、缺统计窗口、缺科室、缺指标名、多项缺失",
+    "呈现风格：随访台账导出体、护士批注体、电话随访记录体、出院小结摘要体",
+    "易错陷阱：30 天窗口升档、失联叠加高风险升档 0、抗凝药依从性升档 1、失联优先于到期、体征 ≥3 项当日干预"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为随访分级与干预时限建议，医疗处置与用药调整由主管医师作出；随访中发现的急症症状（胸痛、呼吸困难加重、意识改变）一律指导急诊就医并转医师，模型不给出诊疗建议；失联患者的强制报告（严重精神障碍、传染病随访要求）按制度走人工通道。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "male 随访护士 B, 内分泌科",
+      "context": "糖尿病酮症纠正后出院 8 天，胰岛素方案刚调整",
+      "dept": "内分泌科",
+      "diagnosis": "2 型糖尿病",
+      "indicators": "再入院风险评分 78.0 分, 随访失联次数 2.0 次, 用药依从性评分 52.0 %",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "contact_tier", "type": "score",
+       "instructions": "主动干预应在多长时间内完成首次接触？"},
+      {"qid": "risk_category", "type": "choice",
+       "instructions": "触发干预的主要风险属于哪一类？"}
+    ],
+    "expected_label": {"contact_tier": "1", "risk_category": "readmit"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触发干预样本（tier 0-2 约 2:2:1），其余为常规随访对照；对照中至少 15% 为贴边未触发样本（距到期 9-12 天、评分 52-58、依从性 63-68%）。contact 与 readmit 并存样本单独 6% 并强制档 0；30 天窗口内外的升档对照对单独 8%；抗凝/心衰核心药物依从性样本单独 5% 并强制档 1。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 contact_tier 四档与 risk_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留 context 的出院天数——缺出院天数的范例教不出 30 天窗口升档规则；「失联+高风险」并存范例必须与单一触发成对出现，训练升档 0 的组合判据；adherence 范例需标注核心药物说明。",
+  "compliance": [
+    "随访样本须去标识：剔除患者姓名、住院号与联系方式，仅保留科室、诊断大类与随访指标",
+    "生命体征只保留异常项数，不保留原始波形与影像",
+    "输出仅为随访分级建议，不构成诊疗建议，不生成用药调整方案",
+    "涉精神障碍与传染病强制随访要求的样本转人工通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "follow_up_intervene accuracy ≥0.96，漏报率（应干预判常规）≤2%（漏报的再入院风险高于误打扰）",
+    "contact_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "risk_category 七类 macro-F1 ≥0.88",
+    "contact+readmit 并存子集 contact_tier=0 比例 =1.0（硬规则验收）",
+    "30 天窗口子集较窗口外同分值样本至少升一档的一致率 ≥0.9",
+    "贴边未触发子集 follow_up_intervene=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: contact_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "30 天窗口升档未生效 → rules 未读 context 的出院天数，检查蒸馏标签与 guidance 口径一致",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "contact 与 overdue 并存取类漂移 → rules 分支顺序必须失联优先",
+    "依从性样本被赋档 0 → adherence 单独触发最高档 2（核心药物升档 1），检查 rules 分支"
+  ],
+  "expert_review": [
+    "到期 7/1 天、评分 60/85、依从性 60/40% 的档位与本院随访制度的对应",
+    "30 天再入院窗口的升档规则与再入院监测项目的一致性",
+    "失联叠加高风险升档 0 的判据与脱管风险管理的衔接",
+    "核心药物清单（抗凝、心衰、免疫抑制剂）与专科路径的对应",
+    "异常生命体征项数的口径（家中自测设备可信度的边界）"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "距计划随访到期天数", "unit": "天", "decimals": 0, "normal": [8.0, 90.0],
+       "critical": {"low": [[0.0, 7.0]]}, "category": "overdue"},
+      {"name": "再入院风险评分", "unit": "分", "decimals": 1, "normal": [0.0, 59.0],
+       "critical": {"high": [[60.0, 100.0]]}, "category": "readmit"},
+      {"name": "异常生命体征项数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "vitals"},
+      {"name": "用药依从性评分", "unit": "%", "decimals": 1, "normal": [60.0, 100.0],
+       "critical": {"low": [[0.0, 59.0]]}, "category": "adherence"},
+      {"name": "随访失联次数", "unit": "次", "decimals": 0, "normal": [0.0, 1.0],
+       "critical": {"high": [[2.0, 1000000000.0]]}, "category": "contact"},
+      {"name": "并发症症状报告数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "complication"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "距计划随访到期天数": [[0.0, 1.0]],
+        "再入院风险评分": [[85.0, 100.0]],
+        "异常生命体征项数": [[4.0, 1000000000.0]],
+        "用药依从性评分": [[0.0, 39.0]],
+        "随访失联次数": [[5.0, 1000000000.0]],
+        "并发症症状报告数": [[3.0, 1000000000.0]]
+      },
+      "1": {
+        "距计划随访到期天数": [[2.0, 3.0]],
+        "再入院风险评分": [[75.0, 84.9]],
+        "异常生命体征项数": [[2.0, 3.0]],
+        "用药依从性评分": [[40.0, 49.0]],
+        "随访失联次数": [[3.0, 4.0]],
+        "并发症症状报告数": [[2.0, 2.0]]
+      },
+      "2": {
+        "距计划随访到期天数": [[4.0, 7.0]],
+        "再入院风险评分": [[60.0, 74.9]],
+        "异常生命体征项数": [[1.0, 1.0]],
+        "用药依从性评分": [[50.0, 59.0]],
+        "随访失联次数": [[2.0, 2.0]],
+        "并发症症状报告数": [[1.0, 1.0]]
+      }
+    },
+    "contexts": [
+      "心衰出院 12 天，30 天再入院高发窗口内",
+      "关节置换术后出院 45 天，康复计划平稳",
+      "化疗间歇期出院，下一疗程前常规随访",
+      "胰岛素方案刚调整，血糖记录待回传",
+      "脑卒中出院 20 天，家属代管用药",
+      "胃肠手术后出院 60 天，饮食过渡期",
+      "常规季度随访点名，全部指标平稳",
+      "出院 8 天，抗凝方案依从性待确认",
+      "无背景说明，仅一项指标贴线",
+      "年度随访台账复盘"
+    ],
+    "patients": [
+      "male 随访护士 A, 心内科", "female 随访护士 B, 内分泌科", "male 随访护士 C, 骨科",
+      "female 随访护士 D, 普外科", "male 随访护士 E, 神经内科", "female 随访护士 F, 肿瘤科",
+      "male 随访护士 G, 呼吸科", "female 随访护士 H, 肾内科"
+    ],
+    "rules": [
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "follow_up_intervene", "value": true},
+          {"label": "contact_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "risk_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "follow_up_intervene", "value": false},
+          {"label": "contact_tier", "value": 3},
+          {"label": "risk_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "follow_up_intervene",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"overdue": 0.14, "readmit": 0.18, "vitals": 0.14, "adherence": 0.16, "contact": 0.18, "complication": 0.2},
+          "tier_split": {
+            "overdue": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "readmit": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "vitals": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "adherence": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "contact": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "complication": [[0, 0.25], [1, 0.35], [2, 0.4]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "距计划随访到期天数": "overdue",
+      "再入院风险评分": "readmit",
+      "异常生命体征项数": "vitals",
+      "用药依从性评分": "adherence",
+      "随访失联次数": "contact",
+      "并发症症状报告数": "complication"
+    }
+  }
+}

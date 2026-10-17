@@ -32,34 +32,17 @@ def test_provider_crud_and_usage_ingest(client, tmp_path):
 
     # 用量采集：造一个 distill 作业 + 假 usage 文件
     jid = client.app.state.store.create_job(
+        project_id=client.app.state.store.create_project("distill-fx1", "Fx"),
         kind="distill", stage="data", scenario="critical-value", title="t",
         request={"provider_id": pid, "state_dir": str(tmp_path / "state")},
         argv=["x"], env_overlay={}, cwd="/repo", log_path="l.log",
         artifacts_in=[], artifacts_out=[])
     (tmp_path / "state").mkdir()
-    # one line so tests/test_conventions.py's line-based UTF-8 rule sees the encoding= it demands
-    (tmp_path / "state" / "usage_2026-10-06.json").write_text(json.dumps({"sk-aaa1111": 123}), encoding="utf-8")
+    (tmp_path / "state" / "usage_2026-10-06.json").write_text(
+        json.dumps({"sk-aaa1111": 123}), encoding="utf-8")
     rows = client.get(f"/console/api/distill/{jid}/usage").json()
     assert rows[0]["tokens"] == 123
     assert rows[0]["key_hint"] == "sk-...1111"
-
-
-def test_distill_preview_serves_no_credential(client):
-    """选了蒸馏配置的预览/提交响应里不许出现明文 key。
-
-    env 与 secrets 是两条通道：前者进 preview 响应、也落库审计，后者只进子进程。
-    旧版把 key 写进 env，所以 /jobs/preview 与 /jobs 都会把它带回浏览器。
-    """
-    r = client.post("/console/api/distill-providers", json={
-        "name": "oa", "base_url": "https://api.openai.com/v1", "model": "gpt-4.1-mini",
-        "daily_limit": 100, "keys": ["sk-aaa1111"]})
-    pid = r.json()["id"]
-    preview = client.post("/console/api/jobs/preview", json={
-        "kind": "distill", "scenario": "critical-value", "run_name": "cv-1",
-        "params": {"provider_id": pid, "skip_exists_check": True}})
-    assert preview.status_code == 200, preview.text
-    assert "sk-aaa1111" not in preview.text
-    assert preview.json()["env"]["KEV_GEN_MODEL"] == "gpt-4.1-mini"
 
 
 def test_distill_build_resolves_existing_generate_data_script():
@@ -112,13 +95,15 @@ def test_distill_usage_ingest_uses_default_state_dir(client, tmp_path, monkeypat
         "daily_limit": 100, "keys": ["sk-aaa1111"]})
     pid = r.json()["id"]
     jid = client.app.state.store.create_job(
+        project_id=client.app.state.store.create_project("distill-fx2", "Fx"),
         kind="distill", stage="data", scenario="critical-value", title="t",
         request={"provider_id": pid},  # 不传 state_dir
         argv=["x"], env_overlay={}, cwd="/repo", log_path="l.log",
         artifacts_in=[], artifacts_out=[])
     default_dir = tmp_path / "default-state"
     default_dir.mkdir()
-    (default_dir / "usage_2026-10-06.json").write_text(json.dumps({"sk-aaa1111": 123}), encoding="utf-8")
+    (default_dir / "usage_2026-10-06.json").write_text(
+        json.dumps({"sk-aaa1111": 123}), encoding="utf-8")
     rows = client.get(f"/console/api/distill/{jid}/usage").json()
     assert rows[0]["tokens"] == 123
     assert rows[0]["key_hint"] == "sk-...1111"

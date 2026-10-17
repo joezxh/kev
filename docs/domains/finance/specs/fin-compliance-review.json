@@ -1,0 +1,157 @@
+{
+  "_meta": {
+    "purpose": "金融产品营销文本合规审查 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/fin-compliance-review.yaml"
+  },
+  "name": "fin-compliance-review",
+  "label_zh": "营销文本合规审查",
+  "label_en": "Marketing Compliance Review",
+  "domain": "银行、理财子公司与保险机构的营销宣传文本合规审查。合规人员把一条待投放的营销文案（产品、渠道、面向客群、文案正文摘录）交给助手，助手判断是否存在违规表述（violation_present）、违规严重程度与整改时限（severity_tier）、违规类型（violation_type 七选一），以及文案证据是否足以判定（evidence_sufficient）。监管基线为《商业银行理财业务监督管理办法》第二十六条（不得宣传预期收益率）、《关于规范金融机构资产管理业务的指导意见》保本表述禁令、《金融产品网络营销管理办法》与《消费者权益保护条例》。违规类型口径为示例分类，需合规专家复核。",
+  "state": "一条待投放营销文本的结构化摘要：产品类型（理财/基金/保险/信贷/存款）、投放渠道（短信/APP 推送/海报/朋友圈物料/电话脚本）、面向客群（全量/老年客户/新客/存量高净值）、文案正文摘录（3-8 句，含收益表述、风险提示有无、比较表述）、是否附带风险提示与免责声明。",
+  "state_example": {
+    "copy": "male 61, 朋友圈物料",
+    "product_type": "理财",
+    "channel": "朋友圈物料",
+    "audience": "老年客户",
+    "excerpt": "「XX 稳盈 90 天，年化 5.8%，历史 100% 兑付，存进去比大额存单强多了，隔壁王阿姨已经买了三期」。文末小字：理财非存款，产品有风险。",
+    "risk_disclosure": "附带但极不显著"
+  },
+  "questions": {
+    "violation_present": {
+      "type": "noul",
+      "instructions": "该营销文本是否存在违规表述？",
+      "criteria": {
+        "true": "存在保本保收益承诺、夸大收益、不当比较、面向不适当客群或风险揭示缺失等任一违规",
+        "false": "表述合规，风险提示与收益口径符合监管要求"
+      }
+    },
+    "severity_tier": {
+      "type": "score",
+      "instructions": "违规的严重程度与整改时限属于哪一档？",
+      "criteria": [
+        "严重违规：立即下线物料并评估上报监管风险",
+        "24 小时内完成整改并复核后重新投放",
+        "3 个工作日内整改，轻度瑕疵",
+        "无违规，文案可直接投放"
+      ]
+    },
+    "violation_type": {
+      "type": "choice",
+      "instructions": "主要违规属于哪一类？",
+      "criteria": {
+        "none": "无违规",
+        "guarantee": "保本保收益承诺：「100% 兑付」「稳赚」「保本」类表述",
+        "yield": "夸大或虚假收益：使用最高/预期收益率替代业绩比较基准，选择性展示历史业绩",
+        "exculpatory": "误导性免责：免除自身法定责任、加重客户责任、小字声明规避风险揭示义务",
+        "comparison": "不当比较：贬低同业产品、与其他机构产品直接优劣对比",
+        "target": "面向不适当客群：向老年人、学生等营销超出其风险承受能力的产品",
+        "disclosure": "风险揭示不足：未充分揭示风险或提示刻意弱化"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "文案摘录是否提供了判定所需的全部要素（完整表述、风险提示现状、面向客群）？",
+      "criteria": {
+        "true": "要素齐全，可对照营销合规规则判定",
+        "false": "摘录不完整、缺风险提示现状或缺客群信息，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "violation_present 的唯一判据是文案出现任一监管禁止表述或风险揭示义务未履行（示例口径，需合规专家复核）。violation_type 按文案中最严重的一处违规归类，多类并存时优先级：guarantee > target > yield > exculpatory > comparison > disclosure——保本承诺是对资管新规刚性兑付禁令的直接触碰，客群不当直接危及适当性义务。severity_tier 由违规类型与客群叠加决定：guarantee 或面向老年客户的违规无论表述轻重均为档 0（适当性义务是硬约束）；yield 与 exculpatory 视收益数字是否虚构分档 0-1；comparison 与披露瑕疵通常档 1-2；仅排版弱化（有提示但极不显著）不降档——小字声明不能洗白「100% 兑付」的主文表述。violation_present=false 时 severity_tier 必须为 3 且 violation_type 为 none。evidence_sufficient=false 时（摘录被截断、缺风险提示现状），violation_present 必须用软标签 target {\"true\":0.5,\"false\":0.5}，violation_type 不得凭猜测填写；「历史 100% 兑付」属于 guarantee 的变体（隐含刚兑暗示），不要因带「历史」二字而误判为 yield。",
+  "variety": [
+    "违规类型（violation_type 七选项逐一覆盖）：guarantee（保本/稳赚/100% 兑付/兜底表述）、yield（预期收益率 5.8%/历史最高 12%/业绩展示起止期截取）、exculpatory（小字免责/最终解释权/投资亏损与我行无关）、comparison（比 XX 银行理财强/同类最高）、target（老年客户高息推文/学生贷话术/新客零风险体验金）、disclosure（无风险提示/提示弱化/风险提示在二级页）、none（合规对照）",
+    "严重程度（severity_tier 四档全覆盖）：0 下线+评估上报（guarantee、面向老年人、虚构收益）、1 24 小时整改（显著夸大、比较贬低）、2 轻度瑕疵（排版、术语不规范）、3 直接投放",
+    "产品类型：理财、基金、保险、信贷、存款；存款营销的利率表述口径与理财不同（存款利率可明示）",
+    "渠道：短信（字数限制导致提示压缩，重点考察）、APP 推送、海报、朋友圈物料、电话脚本（话术体）",
+    "合规对照样本（violation_present=false 须专门生成）：含业绩比较基准+完整风险提示的理财文案、明示利率的存款文案、提示位置显著且字号合规的海报",
+    "贴边样本：业绩比较基准合规但文末「 past performance 」翻译腔表述、风险提示有但字号不达标、比较表述是事实陈述还是贬损的边界",
+    "文本风格：营销海报体、短信模板体、电话话术脚本体、内部审批稿（带修订痕迹）",
+    "易错陷阱：保本变体（100% 兑付/历史零亏损）归 guarantee 不归 yield、小字免责不能洗白主文违规、存款利率明示不是 yield 违规、面向老年客群把严重程度抬到档 0、violation_present=false 时不得虚报 violation_type"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为营销文本合规审查建议，物料下线、整改与监管沟通由合规部门按授权作出；涉监管处罚评估的情形一律转合规复核，模型不生成上报结论或处罚意见。"
+  },
+  "smoke_probe": {
+    "state": {
+      "copy": "female 68, 电话脚本",
+      "product_type": "理财",
+      "channel": "电话脚本",
+      "audience": "老年客户",
+      "excerpt": "「阿姨，这款理财我们内部人都在买，从来没亏过，比您放定期强十倍，您这年纪买正合适，到时候收益比养老钱还稳当」。",
+      "risk_disclosure": "无"
+    },
+    "questions": [
+      {
+        "qid": "violation_present",
+        "type": "noul",
+        "instructions": "该营销文本是否存在违规表述？"
+      },
+      {
+        "qid": "violation_type",
+        "type": "choice",
+        "instructions": "主要违规属于哪一类？"
+      }
+    ],
+    "expected_label": {
+      "violation_present": "true",
+      "violation_type": "target"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：violation_present=true 占比 55%；violation_type 七类中 none 类 45%（与 false 对齐）、guarantee 12%、yield 10%、target 8%、exculpatory 6%、comparison 4%、disclosure 15%（披露类最易漏检故加大）；severity_tier 四档 12/28/20/40；面向老年客户的 target 样本单独 8% 并强制 severity_tier=0。合规对照（含完整风险提示+业绩比较基准）样本单独 12%。「保本变体 vs 夸大收益」最小对照对（同一产品的两种违规表述）单独 8%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 violation_type 七类中至少五类与 severity_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 risk_disclosure 现状字段——缺风险提示现状的范例会教出对披露类违规漏判；「保本变体」范例必须与合规的业绩比较基准表述成对出现，训练「隐含刚兑 vs 合规收益表述」的区分纪律；面向老年客群的范例需标注 severity_tier 抬档的依据。",
+  "compliance": [
+    "营销文案样本仅保留产品类型、收益口径与表述结构，剔除可识别特定金融机构与具体产品名称的表述",
+    "输出仅为合规审查建议，不构成监管处罚意见，不生成对客户的产品推荐",
+    "电话话术样本中客户的个人信息（年龄、资产）做泛化处理，保留适当性违规的结构特征",
+    "涉同业贬损的比较样本只保留比较结构，不保留被比较机构名称"
+  ],
+  "acceptance": [
+    "violation_present accuracy ≥0.95，漏报率（应检出判无违规）≤3%（漏报的消费者保护风险远高于误报整改打扰）",
+    "violation_type 七类 macro-F1 ≥0.85，guarantee 与 yield 的混淆率 ≤5%（核心失败模式）",
+    "severity_tier 四档 QWK ≥0.75；target 类样本 severity_tier=0 比例 =1.0（硬规则验收）",
+    "violation_present=false 子集上 violation_type=none 比例 =1.0（硬规则验收）",
+    "evidence_sufficient=false 子集上软标签纪律遵守率 =1.0，violation_type 凭猜测填写率 =0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "guarantee 吞并 yield → few-shot 缺少「保本变体 vs 夸大收益」对照，补充同产品双违规表述样本并核对 sidecar 的优先级标注",
+    "disclosure 类漏检 → 检查蒸馏数据中 risk_disclosure 字段是否被截断或删除，披露违规依赖该字段",
+    "存款文案被误报 yield → sidecar 未区分存款明示利率与理财业绩表述，核对 product_type 与判定的一致性",
+    "老年客群样本 severity_tier 未抬档 → sidecar 标注不一致，检查 target 类是否强制档 0",
+    "violation_present=false 但 violation_type 非 none → 违反硬规则，检查 sidecar 是否把贴边合规样本错误标注为违规类型"
+  ],
+  "expert_review": [
+    "violation_type 七分类与机构营销合规审查清单的映射（各机构审查口径不同，需合规专家复核）",
+    "guarantee/yield/exculpatory 优先级排序与监管处罚案例的严重程度对应",
+    "面向老年客户违规一律抬档 0 的口径是否过严（与内部适当性制度核对）",
+    "「历史 100% 兑付」「内部人都在买」等话术的违规归类边界",
+    "存款产品营销的利率表述豁免边界（存款利率市场化调整机制下的合规口径）"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；营销文本的违规判定无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是金融机构的营销文本合规审查助手。基于营销文案摘录输出：是否存在违规表述、违规严重程度与整改时限（0-3 档）、违规类型（none/guarantee/yield/exculpatory/comparison/target/disclosure 七选一）、文案证据是否足以判定。违规类型按最严重的一处归类，多类并存时优先级 guarantee > target > yield > exculpatory > comparison > disclosure；面向老年客户的违规与保本承诺直接判最严重档。信息不足时给初步判断并标注「待补充后修正」。输出为合规审查建议，不下线物料，不构成监管处罚意见。",
+      "en": "You are a marketing compliance reviewer for a financial institution. From an ad copy excerpt, output: whether a violation exists, severity and remediation deadline (0-3), violation type (one of none/guarantee/yield/exculpatory/comparison/target/disclosure), and whether the evidence suffices. Classify by the most severe violation (priority guarantee > target > yield > exculpatory > comparison > disclosure); capital-preservation promises and senior-targeted marketing are always top severity. Mark insufficient evidence as provisional. Output is review advice only — never order takedowns or regulatory penalties."
+    },
+    "ask_template": "请基于以下营销文本摘要输出合规审查判断：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "金融产品营销文本的合规审查",
+      "违规七分类（保本承诺/夸大收益/误导免责/不当比较/客群不当/披露不足/无违规）",
+      "严重程度四档与整改时限",
+      "老年客户适当性与硬性抬档规则",
+      "证据不足时的保守审查口径"
+    ],
+    "kev_track": false
+  }
+}

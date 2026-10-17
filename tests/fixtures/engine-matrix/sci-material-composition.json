@@ -255,7 +255,7 @@
     ],
     "rules": [
       {
-        "when": "all(p['energy'] > 0 for p in state['相竞争']) and state['凸包距离'] < 0.01",
+        "when": "all(p['energy'] > 0 for p in state['相竞争']) and state['凸包距离'] < '0.0100 eV/atom'",
         "then": [
           {
             "label": "stable",

@@ -1,0 +1,244 @@
+{
+  "name": "sci-metadata-fair",
+  "domain": "科研数据管理部的数据集 FAIR 合规审查。数据管理员把一份数据集审查要素单交给助手：元数据完整度、许可条款缺口数、标准词表覆盖缺口数、数据版本不一致数、引用格式错误数、保密期剩余天数。阈值为示例口径（以 FAIR 原则与机构数据共享政策的通行审查维度为基线），实际以本机构数据管理计划与仓储平台规范为准。",
+  "state": "一份数据集 FAIR 审查要素单：数据集类型（观测数据/基因组数据/调查数据/仿真数据/图像数据）、元数据完整度（%）、许可条款缺口数（项）、标准词表覆盖缺口数（项）、数据版本不一致数（处）、引用格式错误数（处）、保密期剩余天数（天）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "case": "female 数据管理员 A, 生命科学仓储",
+    "context": "课题组新提交数据集，准备公开发布",
+    "dataset_type": "基因组数据",
+    "indicators": {
+      "元数据完整度": "88.0 %",
+      "许可条款缺口数": "1.0 项",
+      "标准词表覆盖缺口数": "2.0 项",
+      "数据版本不一致数": "0.0 处",
+      "引用格式错误数": "1.0 处",
+      "保密期剩余天数": "0.0 天"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "fair_flag": {
+      "type": "noul",
+      "instructions": "该数据集是否需要整改（而不是达标归档）？",
+      "criteria": {
+        "true": "至少一项要素超出审查阈值",
+        "false": "全部要素在阈值内，达标归档"
+      }
+    },
+    "action_tier": {
+      "type": "score",
+      "instructions": "整改应在什么层级与时限完成？",
+      "criteria": [
+        "暂停共享并启动合规评估（长期保密或许可缺口多项）",
+        "一个月内完成整改并复检",
+        "纳入季度元数据维护",
+        "达标归档"
+      ]
+    },
+    "gap_category": {
+      "type": "choice",
+      "instructions": "触发整改的主要缺口属于哪一类？",
+      "criteria": {
+        "none": "无（达标归档）",
+        "metadata_cov": "元数据类：元数据完整度不足",
+        "license_gap": "许可类：许可条款缺口",
+        "vocab_gap": "词表类：标准词表覆盖缺口",
+        "version_conflict": "版本类：数据版本不一致",
+        "citation_err": "引用类：引用格式错误",
+        "embargo_days": "保密类：保密期内不可访问"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "审查要素单是否提供了判定所需的全部要素（类型、指标数值、统计口径）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照阈值判定",
+        "false": "缺统计口径、缺类型或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "fair_flag 的唯一判据是任一要素超出本表阈值（示例口径，实际以本机构数据管理计划为准，需专家复核）：元数据完整度 <80% 触发、<50% 最高档；许可条款缺口 ≥1 项触发、≥3 项最高档；词表覆盖缺口 ≥1 项触发、≥10 项最高档；版本不一致 ≥1 处触发、≥3 处最高档；引用格式错误 ≥3 处触发、≥20 处最高档；保密期剩余 ≥1 天触发（保密期内不可公开访问）、≥365 天最高档。action_tier 由最快触发的缺口决定，等级从 0（暂停共享）到 3（达标归档）：license_gap ≥3 单独即档 0——许可不明不得公开发布；embargo_days 与 license_gap 并存按 license_gap 取——许可优先于时效；metadata_cov 单独触发通常档 1（元数据是可发现性的基础）；citation_err 单独触发档 2（格式问题批量修正即可）；vocab_gap 单独触发档 2（映射表可后补）。gap_category 取最快档中的缺口类别。fair_flag=false 时 action_tier 必须为 3 且 gap_category 为 none。evidence_sufficient 为 false 时（缺统计口径、缺类型、缺指标名），fair_flag 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 gap_category 不得凭猜测填写。",
+  "variety": [
+    "数据集类型与场景：观测数据（站点元数据）、基因组数据（受控词表与保密期）、调查数据（问卷变量字典）、仿真数据（版本链）、图像数据（采集参数）——不同类型的词表与许可重心不同",
+    "缺口类别（gap_category 七选项逐一覆盖）：metadata_cov（完整度 45%/70%）、license_gap（缺口 3/1 项）、vocab_gap（缺口 12/2 项）、version_conflict（不一致 4/1 处）、citation_err（错误 25/4 处）、embargo_days（剩余 400/30 天）、none（全部达标）",
+    "处置档（action_tier 四档全覆盖）：0 暂停共享（许可 ≥3、长期保密+许可并存）、1 一个月整改、2 季度维护、3 达标归档（fair_flag=false 时必须为 3）",
+    "组合形态：单缺口、双缺口同档、多缺口跨档、缺口互相掩盖（元数据全但许可缺——按最快档判）",
+    "保密期对照（专门生成）：保密期内受限访问与已解密开放的对照——保密不是缺陷是状态，档位看剩余时长",
+    "贴边未触发对照（fair_flag=false 须专门生成）：完整度 82-85%、引用 1-2 处、词表缺口 0 项",
+    "要素完整度（evidence_sufficient）：齐全、缺统计口径、缺数据集类型、缺指标名、多项缺失",
+    "呈现风格：仓储平台导出体、数据管理员批注体、数据管理计划摘录体、发布评审记录体",
+    "易错陷阱：许可不明不发布、保密按剩余时长分档、元数据是可发现性基础、引用格式可批量修、版本链不一致先冻结"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为 FAIR 合规审查建议，发布与撤回决定由数据管理负责人按数据管理计划作出；涉人类受试者数据的隐私评估与伦理审批不属本场景，转伦理委员会通道；模型不生成对课题组科研质量的定性评价。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "male 数据管理员 B, 地球科学仓储",
+      "context": "课题组提交观测数据集，许可协议未定稿",
+      "dataset_type": "观测数据",
+      "indicators": "元数据完整度 72.0 %, 许可条款缺口数 2.0 项, 标准词表覆盖缺口数 6.0 项, 数据版本不一致数 0.0 处, 引用格式错误数 5.0 处, 保密期剩余天数 0.0 天",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "action_tier", "type": "score",
+       "instructions": "整改应在什么层级与时限完成？"},
+      {"qid": "gap_category", "type": "choice",
+       "instructions": "触发整改的主要缺口属于哪一类？"}
+    ],
+    "expected_label": {"action_tier": "1", "gap_category": "license_gap"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触发整改样本（tier 0-2 约 2:2:1），其余为达标归档对照；对照中至少 15% 为贴边未触发样本（完整度 82-85%、引用 1-2 处、词表缺口 0 项）。license_gap 样本单独 8%（各档均有）；embargo_days 样本单独 7%（与 license_gap 并存的强制档 0）；保密期受限与已解密对照单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 action_tier 四档与 gap_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留数据集类型与统计口径——缺类型的范例会教出跨类型套用词表要求；「许可缺口 3 项档 0」范例必须与单一缺口成对出现；embargo 范例需写出「许可优先于时效」的取类推理。",
+  "compliance": [
+    "数据集样本须去标识：剔除课题组名称、基金号与人员姓名，仅保留类型与指标结构",
+    "涉人类受试者数据只保留去标识状态描述，不保留任何个体信息",
+    "输出仅为合规审查建议，不构成数据发布许可，不生成对课题组的定性评价",
+    "涉知识产权纠纷与保密协议违约的样本转法务通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "fair_flag accuracy ≥0.96，漏报率（应整改判达标）≤1.5%（许可不明的发布风险高于整改成本）",
+    "action_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "gap_category 七类 macro-F1 ≥0.88",
+    "license_gap ≥3 子集 action_tier=0 比例 =1.0（硬规则验收）",
+    "embargo_days+license_gap 并存子集取 license_gap 比例 ≥0.9（取类验收）",
+    "贴边未触发子集 fair_flag=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: action_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "metadata_cov 样本档位漂移 → 元数据完整度是 low 侧字段，检查窗口方向",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "embargo 样本被赋档 1 → 剩余天数窗口与 tier0 未对齐，检查 tier_windows[\"0\"]",
+    "跨类型词表要求误判 → 标签未按数据集类型区分，检查 dataset_type 字段保留"
+  ],
+  "expert_review": [
+    "元数据完整度 50/80% 的档位与本机构仓储平台规范的对应",
+    "许可条款缺口（CC 系列与机构许可的兼容矩阵）的判定口径",
+    "标准词表（DWC/OBO/CF 约定）覆盖缺口的计数方法",
+    "保密期剩余 90/365 天的档位与资助机构开放获取政策的衔接",
+    "版本不一致的认定（哈希/变更日志）与冻结流程"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "元数据完整度", "unit": "%", "decimals": 1, "normal": [80.0, 100.0],
+       "critical": {"low": [[0.0, 79.9]]}, "category": "metadata_cov"},
+      {"name": "许可条款缺口数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 8.0]]}, "category": "license_gap"},
+      {"name": "标准词表覆盖缺口数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 40.0]]}, "category": "vocab_gap"},
+      {"name": "数据版本不一致数", "unit": "处", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 10.0]]}, "category": "version_conflict"},
+      {"name": "引用格式错误数", "unit": "处", "decimals": 0, "normal": [0.0, 2.0],
+       "critical": {"high": [[3.0, 80.0]]}, "category": "citation_err"},
+      {"name": "保密期剩余天数", "unit": "天", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 3650.0]]}, "category": "embargo_days"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "元数据完整度": [[0.0, 49.9]],
+        "许可条款缺口数": [[3.0, 8.0]],
+        "标准词表覆盖缺口数": [[10.0, 40.0]],
+        "数据版本不一致数": [[3.0, 10.0]],
+        "引用格式错误数": [[20.0, 80.0]],
+        "保密期剩余天数": [[365.0, 3650.0]]
+      },
+      "1": {
+        "元数据完整度": [[50.0, 64.9]],
+        "许可条款缺口数": [[2.0, 2.0]],
+        "标准词表覆盖缺口数": [[4.0, 9.0]],
+        "数据版本不一致数": [[2.0, 2.0]],
+        "引用格式错误数": [[8.0, 19.0]],
+        "保密期剩余天数": [[90.0, 364.0]]
+      },
+      "2": {
+        "元数据完整度": [[65.0, 79.9]],
+        "许可条款缺口数": [[1.0, 1.0]],
+        "标准词表覆盖缺口数": [[1.0, 3.0]],
+        "数据版本不一致数": [[1.0, 1.0]],
+        "引用格式错误数": [[3.0, 7.0]],
+        "保密期剩余天数": [[1.0, 89.0]]
+      }
+    },
+    "contexts": [
+      "课题组新提交数据集，准备公开发布",
+      "期刊投稿要求同步存档，材料仓促",
+      "资助机构开放获取检查前自查",
+      "跨机构合作数据，许可待协商",
+      "常规入库复核，全要素平稳",
+      "老数据集迁移，版本链待梳理",
+      "保密数据到期，准备解密开放",
+      "受控词表更新，映射表待补",
+      "无背景说明，仅一项要素贴线",
+      "季度数据质量抽查复盘"
+    ],
+    "patients": [
+      "male 数据管理员 A, 生命科学仓储", "female 数据管理员 B, 地球科学仓储", "male 数据管理员 C, 社会科学仓储",
+      "female 数据管理员 D, 工程仿真仓储", "male 数据管理员 E, 图像数据仓储", "female 数据管理员 F, 基因组数据仓储",
+      "male 数据管理员 G, 机构库综合组", "female 数据管理员 H, 长期保存组"
+    ],
+    "rules": [
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "fair_flag", "value": true},
+          {"label": "action_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "gap_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "fair_flag", "value": false},
+          {"label": "action_tier", "value": 3},
+          {"label": "gap_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "fair_flag",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"metadata_cov": 0.2, "license_gap": 0.16, "vocab_gap": 0.14, "version_conflict": 0.14, "citation_err": 0.16, "embargo_days": 0.2},
+          "tier_split": {
+            "metadata_cov": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "license_gap": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "vocab_gap": [[0, 0.15], [1, 0.4], [2, 0.45]],
+            "version_conflict": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "citation_err": [[0, 0.15], [1, 0.4], [2, 0.45]],
+            "embargo_days": [[0, 0.2], [1, 0.4], [2, 0.4]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "元数据完整度": "metadata_cov",
+      "许可条款缺口数": "license_gap",
+      "标准词表覆盖缺口数": "vocab_gap",
+      "数据版本不一致数": "version_conflict",
+      "引用格式错误数": "citation_err",
+      "保密期剩余天数": "embargo_days"
+    }
+  }
+}

@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>张量与算子 —— 一次不可再分的计算</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --card: #121a23;
+    --line: #223142;
+    --text: #dbe7f3;
+    --dim: #8296ab;
+    --cyan: #7dd3fc;
+    --green: #34d399;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --violet: #a78bfa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    padding: 32px 20px 64px;
+    line-height: 1.6;
+  }
+  main { max-width: 1040px; margin: 0 auto; }
+  h1 { font-size: 26px; letter-spacing: .02em; }
+  .quote {
+    margin: 14px 0 34px; padding: 12px 16px;
+    border-left: 3px solid var(--cyan);
+    background: var(--card); border-radius: 0 10px 10px 0;
+    color: var(--dim); font-size: 14px;
+  }
+  .quote b { color: var(--cyan); }
+  section {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 22px 24px; margin-bottom: 26px;
+  }
+  h2 { font-size: 17px; margin-bottom: 6px; }
+  h2 .tag {
+    font-size: 11px; font-weight: 600; vertical-align: 3px; margin-left: 8px;
+    padding: 2px 8px; border-radius: 999px; background: #1c2b3a; color: var(--cyan);
+  }
+  p.note { color: var(--dim); font-size: 13px; margin-bottom: 16px; }
+
+  /* ---------- 张量秩 ---------- */
+  .ranks { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-end; }
+  .rank { text-align: center; }
+  .rank .label { font-size: 12px; color: var(--dim); margin-top: 8px; }
+  .rank .label b { color: var(--text); }
+  .cellx {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 6px;
+    background: #16232f; border: 1px solid var(--line);
+    font-size: 12px; color: var(--dim);
+  }
+  .cellx.hot { border-color: var(--cyan); color: var(--cyan); }
+  .row { display: flex; gap: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 34px); gap: 6px; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .scalar { width: 48px; height: 48px; border-radius: 50%; font-size: 14px; }
+
+  /* ---------- 通用动画元件 ---------- */
+  .stage { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+  .tensor { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .tensor .cells { display: flex; gap: 6px; }
+  .tcell {
+    width: 46px; height: 46px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; font-weight: 600;
+    background: #16232f; border: 1px solid var(--line); color: var(--dim);
+    transition: transform .25s ease, border-color .25s ease, color .25s ease,
+                background .25s ease, box-shadow .25s ease;
+  }
+  .tcell.in { color: var(--cyan); border-color: #2c4a63; }
+  .tcell.active {
+    transform: translateY(-4px) scale(1.06);
+    border-color: var(--amber); color: var(--amber);
+    box-shadow: 0 0 14px rgba(251,191,36,.35);
+  }
+  .tcell.out {
+    color: var(--green); border-color: #235741; background: #10231b;
+    opacity: 0; transform: scale(.6);
+  }
+  .tcell.out.show { opacity: 1; transform: scale(1); }
+  .tcell.out.clamped {
+    color: var(--red); border-color: #5a2626; background: #231010;
+  }
+  .tensor .cap { font-size: 11px; color: var(--dim); }
+  .opbox {
+    padding: 14px 18px; border-radius: 12px; text-align: center;
+    border: 1px solid var(--line); background: #16202c;
+    transition: border-color .3s ease, box-shadow .3s ease;
+    min-width: 150px;
+  }
+  .opbox .f { font-size: 18px; font-weight: 700; color: var(--violet); }
+  .opbox .k { font-size: 11px; color: var(--dim); margin-top: 4px; }
+  .opbox.lit {
+    border-color: var(--violet);
+    box-shadow: 0 0 22px rgba(167,139,250,.35);
+  }
+  .arrow { color: var(--dim); font-size: 22px; }
+
+  button {
+    margin-top: 18px; padding: 8px 20px; border-radius: 9px; cursor: pointer;
+    border: 1px solid #2c4a63; background: #16232f; color: var(--cyan);
+    font-size: 14px; font-family: inherit;
+    transition: background .2s ease;
+  }
+  button:hover { background: #1d3040; }
+  button:disabled { opacity: .45; cursor: default; }
+
+  .status {
+    margin-top: 14px; font-size: 13px; color: var(--dim); min-height: 22px;
+  }
+  .status b { color: var(--text); }
+
+  /* ---------- 融合对比 ---------- */
+  .lanes { display: flex; flex-direction: column; gap: 18px; margin-top: 12px; }
+  .lane {
+    border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
+    background: #101822;
+  }
+  .lane h3 { font-size: 14px; margin-bottom: 2px; }
+  .lane h3 .chip {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px; margin-left: 8px; vertical-align: 2px;
+  }
+  .chip.bad { background: #3a2020; color: var(--red); }
+  .chip.good { background: #14321f; color: var(--green); }
+  .lane .flowline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .miniop {
+    padding: 8px 12px; border-radius: 9px; font-size: 14px; font-weight: 600;
+    border: 1px solid var(--line); background: #16202c; color: var(--dim);
+    transition: all .3s ease;
+  }
+  .miniop.lit {
+    border-color: var(--violet); color: var(--violet);
+    box-shadow: 0 0 16px rgba(167,139,250,.35);
+  }
+  .minicells { display: flex; gap: 4px; }
+  .mcell {
+    width: 34px; height: 34px; border-radius: 6px; font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    background: #16232f; border: 1px solid var(--line); color: var(--dim);
+    transition: all .3s ease;
+  }
+  .mcell.val { color: var(--cyan); }
+  .mcell.tmp { color: var(--amber); border-color: #57451b; }
+  .mcell.res { color: var(--green); border-color: #235741; background: #10231b; }
+  .mem {
+    font-size: 11px; color: var(--dim); margin-top: 8px;
+  }
+  .mem b { color: var(--red); }
+
+  /* kernel 计数器 */
+  .counter {
+    display: inline-flex; align-items: baseline; gap: 6px; margin-top: 14px;
+    padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line);
+    font-size: 13px; color: var(--dim); background: #101822;
+  }
+  .counter b { font-size: 18px; color: var(--amber); }
+
+  /* ---------- 矩阵乘法 ---------- */
+  .mm-stage { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
+  .mat { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #101822; }
+  #mm-A { grid-template-columns: repeat(3, 42px); }
+  #mm-B { grid-template-columns: repeat(2, 42px); }
+  #mm-C { grid-template-columns: repeat(2, 42px); }
+  .mcell.mm { width: 42px; height: 42px; font-size: 15px; }
+  .mcell.mm.hlA { border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 10px rgba(125,211,252,.3); }
+  .mcell.mm.hlB { border-color: var(--green); color: var(--green); box-shadow: 0 0 10px rgba(52,211,153,.3); }
+  .mcell.mm.calc { border-color: var(--violet); color: var(--violet); }
+  .op { font-size: 24px; color: var(--dim); }
+  .mat .shape { grid-column: 1 / -1; text-align: center; font-size: 11px; color: var(--dim); margin-top: 2px; }
+  .mm-formula { margin-top: 14px; font-size: 14px; color: var(--dim); min-height: 24px; }
+  .mm-formula b { color: var(--amber); }
+
+  /* ---------- 算子对比表 ---------- */
+  .tbl-wrap { overflow-x: auto; margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; }
+  table.ops { border-collapse: collapse; width: 100%; min-width: 960px; font-size: 13px; }
+  table.ops th, table.ops td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.ops thead th { background: #0f1720; color: var(--cyan); font-size: 12px; white-space: nowrap; }
+  table.ops tbody tr:last-child td { border-bottom: none; }
+  table.ops tbody tr:hover td { background: #101a24; }
+  table.ops td.op-name { color: var(--text); font-weight: 600; white-space: nowrap; }
+  table.ops .yes { color: var(--green); }
+  table.ops .no { color: var(--red); font-weight: 600; }
+  table.ops .rep { color: var(--amber); }
+  table.ops code { color: var(--violet); font-size: 12px; }
+  .legend { font-size: 12px; color: var(--dim); margin-top: 10px; }
+  .legend b.yes { color: var(--green); } .legend b.no { color: var(--red); } .legend b.rep { color: var(--amber); }
+
+  footer { color: var(--dim); font-size: 12px; margin-top: 8px; }
+  footer code { color: var(--cyan); }
+</style>
+</head>
+<body>
+<main>
+  <h1>张量与算子 —— 一次不可再分的计算</h1>
+  <div class="quote">
+    「<b>算子</b>指一次不可再分的张量计算单元：给定<b>输入张量</b>，执行一段<b>固定的数学运算</b>，产出<b>输出张量</b>。」
+    —— 本页把这句话拆成四张可以播放的动图。
+  </div>
+
+  <!-- ============ 1. 张量是什么 ============ -->
+  <section>
+    <h2>1. 张量是什么 <span class="tag">静态示意</span></h2>
+    <p class="note">
+      张量（tensor）说穿了就是「<b style="color:var(--text)">形状固定的多维数字数组</b>」：
+      先规定它是几层嵌套（shape），再往里填数。数一个嵌套层级，就是它的「阶」。
+    </p>
+    <div class="ranks">
+      <div class="rank">
+        <span class="cellx scalar hot">7</span>
+        <div class="label"><b>0 阶</b> 标量<br>一个数：温度 36.5</div>
+      </div>
+      <div class="rank">
+        <div class="row"><span class="cellx">1</span><span class="cellx">2</span><span class="cellx">3</span><span class="cellx">4</span></div>
+        <div class="label"><b>1 阶</b> 向量<br>一排数：一行 Excel</div>
+      </div>
+      <div class="rank">
+        <div class="grid">
+          <span class="cellx">1</span><span class="cellx">2</span><span class="cellx">3</span><span class="cellx">4</span>
+          <span class="cellx">5</span><span class="cellx">6</span><span class="cellx">7</span><span class="cellx">8</span>
+        </div>
+        <div class="label"><b>2 阶</b> 矩阵<br>一张表格：灰度图的像素</div>
+      </div>
+      <div class="rank">
+        <div class="stack">
+          <div class="grid">
+            <span class="cellx hot">R</span><span class="cellx hot">R</span><span class="cellx hot">R</span><span class="cellx hot">R</span>
+            <span class="cellx hot">R</span><span class="cellx hot">R</span><span class="cellx hot">R</span><span class="cellx hot">R</span>
+          </div>
+          <div class="grid">
+            <span class="cellx" style="border-color:#5a2626;color:var(--red)">G</span><span class="cellx" style="border-color:#5a2626;color:var(--red)">G</span><span class="cellx" style="border-color:#5a2626;color:var(--red)">G</span><span class="cellx" style="border-color:#5a2626;color:var(--red)">G</span>
+            <span class="cellx" style="border-color:#5a2626;color:var(--red)">G</span><span class="cellx" style="border-color:#5a2626;color:var(--red)">G</span><span class="cellx" style="border-color:#5a2626;color:var(--red)">G</span><span class="cellx" style="border-color:#5a2626;color:var(--red)">G</span>
+          </div>
+          <div class="grid">
+            <span class="cellx" style="border-color:#235741;color:var(--green)">B</span><span class="cellx" style="border-color:#235741;color:var(--green)">B</span><span class="cellx" style="border-color:#235741;color:var(--green)">B</span><span class="cellx" style="border-color:#235741;color:var(--green)">B</span>
+            <span class="cellx" style="border-color:#235741;color:var(--green)">B</span><span class="cellx" style="border-color:#235741;color:var(--green)">B</span><span class="cellx" style="border-color:#235741;color:var(--green)">B</span><span class="cellx" style="border-color:#235741;color:var(--green)">B</span>
+          </div>
+        </div>
+        <div class="label"><b>3 阶</b><br>一摞表格：彩色图 高×宽×3 通道</div>
+      </div>
+      <div class="rank">
+        <div class="cellx" style="width:auto;height:auto;padding:10px 14px;border-radius:8px;font-size:12px;text-align:left">
+          shape = (2, 4, 3)<br>dtype = float32
+        </div>
+        <div class="label"><b>张量 = 形状 + 类型 + 数</b><br>模型里流动的就是它</div>
+      </div>
+    </div>
+    <p class="note" style="margin-top:16px">
+      在 Kev 里：一批问题的 token id 是 2 阶张量 <code style="color:var(--cyan)">(batch, seq)</code>，
+      模型内部的隐藏状态是 3 阶张量 <code style="color:var(--cyan)">(batch, seq, hidden_dim)</code>。
+    </p>
+  </section>
+
+  <!-- ============ 2. 范例：ReLU 算子 ============ -->
+  <section>
+    <h2>2. 范例：ReLU —— 给定输入，固定运算，产出输出 <span class="tag">动图</span></h2>
+    <p class="note">
+      最便宜的算子：<b style="color:var(--text)">ReLU</b>，规则只有一个 —— 负数变 0，正数不动，即
+      <code style="color:var(--violet)">max(0, x)</code>。输入 4 个数，输出还是 4 个数，全程是<b style="color:var(--text)">一次</b> GPU kernel 启动。
+    </p>
+    <div class="stage">
+      <div class="tensor">
+        <div class="cells" id="relu-in">
+          <div class="tcell in">3</div><div class="tcell in">-1</div><div class="tcell in">2</div><div class="tcell in">0</div>
+        </div>
+        <div class="cap">输入张量 shape (4,)</div>
+      </div>
+      <div class="arrow">⟶</div>
+      <div class="opbox" id="relu-op">
+        <div class="f">max(0, x)</div>
+        <div class="k">1 次 kernel 启动</div>
+      </div>
+      <div class="arrow">⟶</div>
+      <div class="tensor">
+        <div class="cells" id="relu-out">
+          <div class="tcell out">3</div><div class="tcell out clamped">0</div><div class="tcell out">2</div><div class="tcell out">0</div>
+        </div>
+        <div class="cap">输出张量 shape (4,)</div>
+      </div>
+    </div>
+    <div class="status" id="relu-status">点击播放：看数据怎样「进去 → 运算 → 出来」。</div>
+    <br>
+    <button id="relu-btn">▶ 播放</button>
+  </section>
+
+  <!-- ============ 3. 什么叫不可再分 ============ -->
+  <section>
+    <h2>3. 「不可再分」是什么意思 —— 拆成两个 vs 融合成一个 <span class="tag">对比动图</span></h2>
+    <p class="note">
+      运算 <b style="color:var(--text)">y = 2x + 1</b>：可以写成「乘 2」和「加 1」<b style="color:var(--text)">两个</b>算子
+      （中间多出一个要写回显存的临时张量，两次 GPU 往返），也可以把它们<b style="color:var(--text)">融合</b>成
+      <b style="color:var(--text)">一个</b> kernel 一次做完 —— 融合之后才是定义里说的「不可再分的单元」。
+    </p>
+    <div class="lanes">
+      <div class="lane">
+        <h3>拆成两个算子 <span class="chip bad">2 次启动 · 1 个中间张量</span></h3>
+        <div class="flowline">
+          <div class="minicells" id="lane2-in"><div class="mcell val">1</div><div class="mcell val">2</div><div class="mcell val">3</div></div>
+          <div class="arrow">⟶</div><div class="miniop" id="lane2-op1">× 2</div>
+          <div class="arrow">⟶</div>
+          <div class="minicells" id="lane2-mid"><div class="mcell">?</div><div class="mcell">?</div><div class="mcell">?</div></div>
+          <div class="arrow">⟶</div><div class="miniop" id="lane2-op2">+ 1</div>
+          <div class="arrow">⟶</div>
+          <div class="minicells" id="lane2-out"><div class="mcell">?</div><div class="mcell">?</div><div class="mcell">?</div></div>
+        </div>
+        <div class="mem" id="lane2-mem">中间张量「写入显存 → 再读回来」：多一次往返。</div>
+      </div>
+      <div class="lane">
+        <h3>融合成一个算子 <span class="chip good">1 次启动 · 0 个中间张量</span></h3>
+        <div class="flowline">
+          <div class="minicells" id="lane1-in"><div class="mcell val">1</div><div class="mcell val">2</div><div class="mcell val">3</div></div>
+          <div class="arrow">⟶</div><div class="miniop" id="lane1-op">2x + 1</div>
+          <div class="arrow">⟶</div>
+          <div class="minicells" id="lane1-out"><div class="mcell">?</div><div class="mcell">?</div><div class="mcell">?</div></div>
+        </div>
+        <div class="mem" id="lane1-mem" style="color:var(--green)">乘和加在芯片里一气呵成，中间结果从不出门。</div>
+      </div>
+    </div>
+    <div class="status" id="fuse-status">点击播放：上下两条流水线先后跑一遍，对比「几次启动」。</div>
+    <br>
+    <button id="fuse-btn">▶ 对比播放</button>
+    <div class="counter">GPU kernel 启动次数：<b id="fuse-count">0</b></div>
+  </section>
+
+  <!-- ============ 4. 矩阵乘法 ============ -->
+  <section>
+    <h2>4. 稍复杂一点：矩阵乘法（GEMM） <span class="tag">动图</span></h2>
+    <p class="note">
+      真实 LLM 里最重的算子就是<b style="color:var(--text)">矩阵乘法</b>（GEMM）：注意力的 QKᵀ、加权求和、FFN、各种投影全是它。
+      规则只有一句 —— <b style="color:var(--text)">C 的第 i 行 j 列 = A 的第 i 行 · B 的第 j 列</b>（点积：对应位置相乘，再全部加起来）。
+      它吃<b style="color:var(--text)">两个</b>输入张量、吐<b style="color:var(--text)">一个</b>输出张量，但依然是<b style="color:var(--text)">一个</b>不可再分的算子。
+    </p>
+    <div class="mm-stage">
+      <div class="mat" id="mm-A"></div>
+      <div class="op">×</div>
+      <div class="mat" id="mm-B"></div>
+      <div class="op">=</div>
+      <div class="mat" id="mm-C"></div>
+    </div>
+    <div class="mm-formula" id="mm-formula">点击播放：逐个算出 C 的 4 个格子（看 A 的一行如何「扫过」B 的一列）。</div>
+    <br>
+    <button id="mm-btn">▶ 播放</button>
+  </section>
+
+  <!-- ============ 5. 常见 LLM 算子表 vs Kev vs Jev ============ -->
+  <section>
+    <h2>5. 常见 LLM 算子表 · 与 Kev / Jev 对比 <span class="tag">静态表</span></h2>
+    <p class="note">
+      横向是「一个生成式 LLM 推理栈里会碰到的算子」，纵向三个维度：<b style="color:var(--text)">存在性与替代</b>（常见 LLM / Kev / Jev 各列）、<b style="color:var(--text)">产出指标</b>、<b style="color:var(--text)">计算·访存开销</b>。
+      核心结论：<b style="color:var(--text)">Kev 是 prefill-only 决策模型</b>，砍掉了整个「词表投影 + 采样解码 + 自回归循环」，换成一个<b style="color:var(--violet)">指针读出</b>；
+      <b style="color:var(--text)">Jev 是完整生成式决策系统</b>，保留全套解码算子 —— 但它在本仓库是 <b style="color:var(--text)">API 黑盒</b>（经 Vercel AI Gateway，由 <code style="color:var(--violet)">kev.jev</code> 打分），算子内部不可见，指标是端到端的 JevBench 决策准确率而非逐 kernel。
+    </p>
+    <div class="tbl-wrap">
+    <table class="ops">
+      <thead>
+        <tr>
+          <th>算子（逻辑）</th>
+          <th>常见生成式 LLM</th>
+          <th>Kev（有 / 无 / 替代）</th>
+          <th>Jev（黑盒推断）</th>
+          <th>对应评测指标</th>
+          <th>计算 / 访存开销</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="op-name">Embedding</td>
+          <td>查表 token→向量</td>
+          <td class="yes">有（骨干自带，非自定义）</td>
+          <td class="yes">有（骨干）</td>
+          <td>—</td>
+          <td>访存（查表）</td>
+        </tr>
+        <tr>
+          <td class="op-name">RMSNorm / LayerNorm</td>
+          <td>每层归一</td>
+          <td class="rep">融合 <code>rms_norm</code> / <code>rms_norm_gated</code>（fused_qwen35）</td>
+          <td class="yes">有（内部）</td>
+          <td>—</td>
+          <td>访存 bound（已并入残差）</td>
+        </tr>
+        <tr>
+          <td class="op-name">Linear / GEMM</td>
+          <td>大量投影 + FFN</td>
+          <td class="rep">单 GEMM 投影 <code>_concat</code> / <code>attention_forward</code> / <code>mlp_forward</code></td>
+          <td class="yes">大量 GEMM</td>
+          <td>间接（决定 hidden 质量→accuracy）</td>
+          <td>计算 bound，FLOPs 主体 2·m·n·k</td>
+        </tr>
+        <tr>
+          <td class="op-name">RoPE 位置编码</td>
+          <td>有</td>
+          <td class="yes">有（<code>attention_forward</code> 内）</td>
+          <td class="yes">有</td>
+          <td>—</td>
+          <td>轻，逐元素</td>
+        </tr>
+        <tr>
+          <td class="op-name">注意力 Attention</td>
+          <td>标准因果 softmax(QKᵀ/√d)V</td>
+          <td class="rep">full_attention 层 SDPA + <b style="color:var(--amber)">块因果掩码</b> <code>branch_mask</code>；linear 层 DeltaNet <code>causal_conv1d</code>+<code>chunk_gated_delta_rule</code></td>
+          <td class="yes">标准注意力（黑盒）</td>
+          <td class="rep">isolation、permutation（掩码/隔离保证）</td>
+          <td>O(L²·d) 计算；flash 省显存</td>
+        </tr>
+        <tr>
+          <td class="op-name">激活 SwiGLU / GeGLU</td>
+          <td>有</td>
+          <td class="rep">融合 <code>swiglu</code> / <code>sigmoidglu</code></td>
+          <td class="yes">有</td>
+          <td>—</td>
+          <td>访存，已融合</td>
+        </tr>
+        <tr>
+          <td class="op-name">LM Head（词表投影）</td>
+          <td>hidden→vocab logits</td>
+          <td class="no">无 —— 不加载 vocab head，取 <code>last_hidden_state</code></td>
+          <td class="yes">有（生成文本）</td>
+          <td>—</td>
+          <td>大 GEMM（×vocab）</td>
+        </tr>
+        <tr>
+          <td class="op-name">采样 sample/top-k/top-p</td>
+          <td>逐 token 生成</td>
+          <td class="no">无解码采样；temperature 只做概率校准（PointerHead eval 除以 T）</td>
+          <td class="yes">有（自回归生成）</td>
+          <td class="rep">Kev 侧→ECE（校准）；Jev 侧→生成质量</td>
+          <td>每步一次 launch</td>
+        </tr>
+        <tr>
+          <td class="op-name">输出读出 Readout</td>
+          <td>argmax / next-token</td>
+          <td class="rep"><b style="color:var(--amber)">指针读出</b> <code>PointerHead.forward/many</code>：在选项边界 token 打分→softmax→选项概率</td>
+          <td class="yes">文本 / 决策输出</td>
+          <td class="rep">accuracy、NLL、ECE、Brier、AURC、coverage</td>
+          <td>极小（几个选项 token 的点积）</td>
+        </tr>
+        <tr>
+          <td class="op-name">KV Cache</td>
+          <td>自回归解码缓存，随 L 增长</td>
+          <td class="rep"><code>BufferKV</code> + <b style="color:var(--amber)">state-prefix 复用</b> <code>prefix/probs_and_prefix</code>（prefill 复用，非解码缓存）</td>
+          <td class="yes">标准解码 KV cache</td>
+          <td>正确性不变量（逐 fp32 位等价），不改指标</td>
+          <td>访存/显存，随 L 线性</td>
+        </tr>
+        <tr>
+          <td class="op-name">自回归解码步</td>
+          <td>循环 N 次生成</td>
+          <td class="no">无 —— prefill-only，一次前向</td>
+          <td class="yes">有</td>
+          <td>—</td>
+          <td>Kev 省掉整个解码循环</td>
+        </tr>
+        <tr>
+          <td class="op-name">训练损失 CE</td>
+          <td>next-token 交叉熵</td>
+          <td class="rep"><code>question_loss</code>（选项 CE / soft-target，可叠 brier/focal/label_smoothing/ord_w）+ <code>anchor_loss</code>（KL 锚定）+ <code>permuted_copy</code>（置换 KL）</td>
+          <td>未知（黑盒）</td>
+          <td class="rep">直接塑造 accuracy/ECE/Brier/RPS</td>
+          <td>训练期</td>
+        </tr>
+        <tr>
+          <td class="op-name">执行层 CUDA Graph</td>
+          <td>可选（推理框架）</td>
+          <td class="rep"><code>cuda_graphs</code>：<code>bucket/length_groups/CudaGraphs.states/rows</code>，把一次 pass 捕获成图重放</td>
+          <td>未知</td>
+          <td>不改数值（bf16 噪声级重结合）</td>
+          <td>省 launch 开销</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="legend">
+      图例：<b class="yes">有</b> 与常见 LLM 一致 · <b class="no">无</b> Kev 砍掉 · <b class="rep">替代/融合</b> Kev 用自定义或融合算子顶上。
+      指标名来自 <code>kev.benchmark</code> 的 <code>report.json</code>（accuracy / ECE / Brier / NLL / coverage / AURC / permutation / isolation）。
+    </div>
+  </section>
+
+  <footer>
+    对照 Kev：<code>docs/算子-list.md</code> 里 <code>fused_qwen35.py</code> 的融合 kernel（如
+    RMSNorm+Linear、SwiGLU）就是第 3 节这种「把一个 Linear 层拆出来的多步运算熔成一次启动」的工程做法。
+  </footer>
+</main>
+
+<script>
+// ---------- 工具 ----------
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const $ = id => document.getElementById(id);
+
+// ---------- 第 2 节：ReLU ----------
+(async function setupRelu() {
+  const btn = $('relu-btn');
+  const inCells = [...$('relu-in').children];
+  const outCells = [...$('relu-out').children];
+  const op = $('relu-op');
+  const status = $('relu-status');
+  const vals = [3, -1, 2, 0];
+
+  function reset() {
+    inCells.forEach(c => c.classList.remove('active'));
+    outCells.forEach(c => c.classList.remove('show'));
+    op.classList.remove('lit');
+  }
+
+  async function play() {
+    btn.disabled = true;
+    reset();
+    status.innerHTML = '① <b>给定输入张量</b>：4 个数 [3, -1, 2, 0] 排队等待……';
+    await sleep(1200);
+
+    status.innerHTML = '② <b>执行固定的数学运算</b>：kernel 启动，对每个数做 max(0, x)。';
+    for (let i = 0; i < inCells.length; i++) {
+      inCells[i].classList.add('active');
+      op.classList.add('lit');
+      await sleep(450);
+      outCells[i].classList.add('show');
+      inCells[i].classList.remove('active');
+      if (vals[i] < 0) {
+        status.innerHTML = `&nbsp;&nbsp;└ 元素 <b style="color:var(--red)">${vals[i]}</b> 是负数 → 被夹成 <b>0</b>`;
+      } else {
+        status.innerHTML = `&nbsp;&nbsp;└ 元素 <b style="color:var(--green)">${vals[i]}</b> ≥ 0 → 原样通过`;
+      }
+      await sleep(550);
+    }
+    op.classList.remove('lit');
+    status.innerHTML = '③ <b>产出输出张量</b>：[3, 0, 2, 0]。整个过程 = <b>一次</b>不可再分的计算（一个 kernel）。';
+    btn.disabled = false;
+  }
+  btn.addEventListener('click', play);
+  await sleep(600);
+  play();
+})();
+
+// ---------- 第 3 节：融合对比 ----------
+(async function setupFuse() {
+  const btn = $('fuse-btn');
+  const count = $('fuse-count');
+  const status = $('fuse-status');
+  const mid = [...$('lane2-mid').children];
+  const out2 = [...$('lane2-out').children];
+  const out1 = [...$('lane1-out').children];
+  const op1 = $('lane2-op1'), op2 = $('lane2-op2'), opF = $('lane1-op');
+  const vals = [1, 2, 3];
+
+  function reset() {
+    [...mid, ...out2, ...out1].forEach(c => { c.textContent = '?'; c.className = 'mcell'; });
+    [op1, op2, opF].forEach(o => o.classList.remove('lit'));
+    count.textContent = '0';
+  }
+
+  async function play() {
+    btn.disabled = true;
+    reset();
+
+    // 未融合：两步
+    status.innerHTML = '上行：<b>拆成两个算子</b>……';
+    await sleep(700);
+    op1.classList.add('lit'); count.textContent = '1';
+    status.innerHTML = '第 1 次 kernel：<b>× 2</b>，结果必须<b style="color:var(--amber)">写回显存</b>成为中间张量';
+    for (let i = 0; i < mid.length; i++) {
+      mid[i].textContent = vals[i] * 2; mid[i].className = 'mcell tmp';
+      await sleep(220);
+    }
+    await sleep(600);
+    op1.classList.remove('lit'); op2.classList.add('lit'); count.textContent = '2';
+    status.innerHTML = '第 2 次 kernel：<b>+ 1</b>，先把中间张量<b style="color:var(--amber)">从显存读回来</b>，再算、再写回';
+    for (let i = 0; i < out2.length; i++) {
+      out2[i].textContent = vals[i] * 2 + 1; out2[i].className = 'mcell res';
+      await sleep(220);
+    }
+    await sleep(900);
+
+    // 融合：一步
+    op2.classList.remove('lit');
+    status.innerHTML = '下行：<b>融合成一个算子</b>……';
+    await sleep(700);
+    opF.classList.add('lit'); count.textContent = '1';
+    for (let i = 0; i < out1.length; i++) {
+      out1[i].textContent = vals[i] * 2 + 1; out1[i].className = 'mcell res';
+      await sleep(220);
+    }
+    await sleep(500);
+    opF.classList.remove('lit');
+    status.innerHTML = '结论：同样一个 y = 2x + 1，拆开是 <b style="color:var(--red)">2 次启动 + 1 个中间张量</b>，' +
+      '融合是 <b style="color:var(--green)">1 次启动、0 个中间张量</b> —— 融合后的这一步才叫「不可再分」。';
+    btn.disabled = false;
+  }
+  btn.addEventListener('click', play);
+})();
+
+// ---------- 第 4 节：矩阵乘法 ----------
+(async function setupMatmul() {
+  const A = [[1, 2, 3], [4, 5, 6]];      // 2×3
+  const B = [[7, 8], [9, 10], [11, 12]]; // 3×2
+  const mA = $('mm-A'), mB = $('mm-B'), mC = $('mm-C');
+  const formula = $('mm-formula');
+  const btn = $('mm-btn');
+
+  function cell(v, cls) { const d = document.createElement('div'); d.className = 'mcell mm' + (cls || ''); d.textContent = v; return d; }
+  function shape(el, t) { const s = document.createElement('div'); s.className = 'shape'; s.textContent = t; el.appendChild(s); }
+
+  const aC = [], bC = [], cC = [];
+  for (let i = 0; i < 2; i++) { aC[i] = []; for (let k = 0; k < 3; k++) { const d = cell(A[i][k]); mA.appendChild(d); aC[i][k] = d; } } shape(mA, 'A  shape (2,3)');
+  for (let k = 0; k < 3; k++) { bC[k] = []; for (let j = 0; j < 2; j++) { const d = cell(B[k][j]); mB.appendChild(d); bC[k][j] = d; } } shape(mB, 'B  shape (3,2)');
+  for (let i = 0; i < 2; i++) { cC[i] = []; for (let j = 0; j < 2; j++) { const d = cell('?'); mC.appendChild(d); cC[i][j] = d; } } shape(mC, 'C  shape (2,2)');
+
+  function clearHL() {
+    aC.flat().forEach(c => c.classList.remove('hlA'));
+    bC.flat().forEach(c => c.classList.remove('hlB'));
+  }
+
+  async function play() {
+    btn.disabled = true;
+    cC.flat().forEach(c => { c.textContent = '?'; c.className = 'mcell mm'; });
+    await sleep(400);
+    for (let i = 0; i < 2; i++) {
+      for (let j = 0; j < 2; j++) {
+        clearHL();
+        for (let k = 0; k < 3; k++) { aC[i][k].classList.add('hlA'); bC[k][j].classList.add('hlB'); }
+        cC[i][j].classList.add('calc');
+        const terms = [];
+        let sum = 0;
+        for (let k = 0; k < 3; k++) { terms.push(`${A[i][k]}×${B[k][j]}`); sum += A[i][k] * B[k][j]; }
+        formula.innerHTML = `C[<b>${i}</b>][<b>${j}</b>] = ${terms.join(' + ')} = <b>${sum}</b>`;
+        await sleep(1500);
+        cC[i][j].classList.remove('calc');
+        cC[i][j].textContent = sum;
+        cC[i][j].style.borderColor = '#235741';
+        cC[i][j].style.color = 'var(--green)';
+        await sleep(200);
+      }
+    }
+    clearHL();
+    formula.innerHTML = '完成：C = [[58, 64], [139, 154]]。四个格子各自做一次点积，但在 GPU 上是<b>一个 GEMM kernel</b> 一次算完。';
+    btn.disabled = false;
+  }
+  btn.addEventListener('click', play);
+})();
+</script>
+</body>
+</html>

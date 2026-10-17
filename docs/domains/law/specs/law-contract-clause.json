@@ -1,0 +1,158 @@
+{
+  "_meta": {
+    "purpose": "合同条款识别与风险提示 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/law-contract-clause.yaml"
+  },
+  "name": "law-contract-clause",
+  "label_zh": "合同条款",
+  "label_en": "Contract Clauses",
+  "domain": "企业法务与合同管理系统的合同条款识别与风险提示。法务人员把一份合同（或其待审条款）提交给助手，助手判断目标条款是否存在于合同文本中、条款类型（责任限制/终止/保密/知识产权归属/赔偿/竞业限制等）、风险等级与是否需要律师复核。条款类型体系对齐 CUAD（Contract Understanding Atticus Dataset）的 41 类专家标注条款库中高频的七类，并保留 other/none 两类兜底；风险分档为示例口径。",
+  "state": "一份待审合同的结构化摘要：合同类型（采购/服务/租赁/劳动合同/软件开发/许可协议）、合同全文或关键条款节选（500-2000 字）、我方立场（甲方/乙方/承租方等）、交易金额档、是否有格式合同方、需识别的目标条款清单（如：责任限制、单方终止权、保密期限、知识产权归属、违约赔偿计算方式、竞业限制）。",
+  "state_example": {
+    "contract": "软件开发合同（委托方为乙方立场）",
+    "excerpt": "第八条：开发成果的知识产权自验收合格之日起归甲方所有，乙方保留将通用技术组件用于其他项目的权利……第九条：任一方可提前 30 日书面通知终止本合同，已完成部分费用据实结算……",
+    "our_side": "乙方",
+    "amount_tier": "50万-500万",
+    "template_party": "甲方（对方格式合同）",
+    "target_clauses": [
+      "知识产权归属",
+      "单方终止权",
+      "违约赔偿"
+    ]
+  },
+  "questions": {
+    "clause_present": {
+      "type": "noul",
+      "instructions": "目标条款清单中的条款是否在合同文本中实际存在（而不是缺失或被排除）？",
+      "criteria": {
+        "true": "目标条款在文本中有对应约定",
+        "false": "至少一项目标条款完全缺失（沉默即风险）"
+      }
+    },
+    "clause_type": {
+      "type": "choice",
+      "instructions": "文本中最突出的争议条款属于哪一类？",
+      "criteria": {
+        "liability_cap": "责任限制（赔偿上限、免责事由、责任排除）",
+        "termination": "终止条款（单方解除权、终止通知期、终止后果）",
+        "confidentiality": "保密条款（保密范围、期限、例外）",
+        "ip_ownership": "知识产权归属（成果归属、许可、背景知识产权）",
+        "indemnification": "赔偿与补偿（第三方索赔承担、赔偿触发条件）",
+        "non_compete": "竞业限制与排他（同业禁止、客户限制、最惠待遇）",
+        "payment": "付款条款（账期、验收挂钩付款、逾期利息）",
+        "none": "无突出争议条款"
+      }
+    },
+    "risk_tier": {
+      "type": "score",
+      "instructions": "该合同对我方立场的整体风险等级？",
+      "criteria": [
+        "0：高风险——存在对我方不利的重大失衡条款或关键条款缺失",
+        "1：中风险——条款存在但边界对我方不利，需谈判修改",
+        "2：低风险——条款基本平衡，仅措辞需微调",
+        "3：无显著风险（条款平衡或风险已由其他机制覆盖）"
+      ]
+    },
+    "needs_lawyer": {
+      "type": "noul",
+      "instructions": "该合同是否需要执业律师复核（而不是法务岗自查通过）？",
+      "criteria": {
+        "true": "高风险条款、金额超过授权上限、或涉及非标准法律安排",
+        "false": "低风险标准合同，法务岗按清单自查即可"
+      }
+    }
+  },
+  "guidance": "条款识别与风险提示是法务辅助，不是法律意见——输出仅为条款存在性、类型与风险分档，最终合同定稿与法律判断由执业律师作出。clause_present 的关键陷阱是沉默条款：合同未约定知识产权归属时，法定归属规则因合同类型与司法辖区而异，模型只输出「条款缺失」这一事实，不得推断法定归属结果。clause_type 按条款的主要功能归类，一个条文同时含责任限制与赔偿计算的，按其对我方风险的主要来源归类。risk_tier 的判定基准是「条款对我方立场的失衡程度」：单方解除权只给对方、责任上限为合同金额 10% 以下、竞业限制无补偿约定，均属高风险（tier 0）；对我方不利但可谈判的（如验收期过长）属中风险（tier 1）。needs_lawyer=true 的判据：risk_tier=0、交易金额超过机构法务授权上限（示例 500 万，需专家复核）、涉及股权/涉外/数据跨境等非标准安排。格式合同（template_party 为对方）的免责条款按 GB/T 消费合同口径从高评估风险——格式条款提供方免除自身责任的条款在示例口径下直接 tier 0。evidence 不足（节选不含关键条款、文本为摘要）时，clause_present 不得判 false（未见到不等于不存在），必须输出「文本不完整，需调取全文」。",
+  "variety": [
+    "合同类型（每类须专门生成）：采购合同、服务外包、房屋租赁、劳动合同（含竞业限制）、软件开发、软件许可（SaaS/本地部署）、经销协议",
+    "条款类型（clause_type 八选项逐一覆盖）：责任限制（上限 10%/50%/100% 三档）、终止（单方解除/30 日通知/即时解除）、保密（期限 2/5 年、范围宽窄）、知识产权（归甲方/归乙方/共有/背景 IP 保留）、赔偿（第三方索赔/互相赔偿/上限挂钩）、竞业（有补偿/无补偿/期限 2 年）、付款（验收后 30 日/里程碑/账期 90 日）、none",
+    "风险档位（risk_tier 四档全覆盖）：0 高风险（对方单方解除权、免责条款、竞业无补偿）、1 中风险（边界不利可谈判）、2 低风险（措辞问题）、3 无显著风险",
+    "条款缺失场景（clause_present=false 专门生成）：未约定违约责任、未约定争议解决、未约定保密、未约定知识产权归属——沉默条款是核心训练信号",
+    "我方立场翻转（同一条款双视角生成）：同一知识产权条款在甲方立场为低风险、乙方立场为中/高风险——立场一致性是易错点",
+    "格式合同场景：对方模板的免责条款、我方模板的标准条款、第三方撮合模板",
+    "金额档：<10 万、10-50 万、50-500 万、>500 万（授权上限触发 needs_lawyer）",
+    "文本形态：合同全文、关键条款节选（标注节选范围）、条款清单核对表、扫描件 OCR 转写（含识别噪声）",
+    "文本风格：法条式严谨条文、商务口语化条款、中英双语合同、含修订痕迹的 negotiation draft（红线条款式）",
+    "易错陷阱：条款缺失不等于法定结果缺失（只报事实）、节选文本不得判 clause_present=false、立场翻转风险同条款不同档、格式合同免责条款直接高风险、输出不构成法律意见"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "needs_lawyer",
+    "note": "输出仅为条款识别与风险分档参考，不构成法律意见；合同定稿、谈判立场与法律判断由执业律师作出。疑似重大失衡或非标准安排一律转律师。"
+  },
+  "smoke_probe": {
+    "state": {
+      "contract": "劳动合同（我方为用人单位立场）",
+      "excerpt": "第十二条：乙方离职后二年内不得从事与甲方相同或类似的业务，违约金为年薪三倍……（全文未约定竞业限制经济补偿）",
+      "our_side": "用人单位（甲方）",
+      "amount_tier": "10万-50万",
+      "template_party": "我方格式合同",
+      "target_clauses": [
+        "竞业限制"
+      ]
+    },
+    "questions": [
+      {
+        "qid": "risk_tier",
+        "type": "score",
+        "instructions": "该合同对我方立场的整体风险等级？"
+      }
+    ],
+    "expected_label": {
+      "risk_tier": "0"
+    }
+  },
+  "sampling": {
+    "n": 700,
+    "notes": "蒸馏轨样本分布建议：clause_type 八类中 none 占 20%，其余七类各约 11%；risk_tier 四档中 0 档与 1 档合计 ≥55%（风险分级是核心判别任务）；clause_present=false 的沉默条款样本单独 18%；needs_lawyer=true 占比 25%。立场翻转对（同条款甲方/乙方两份样本）单独 12%，训练双视角。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 clause_type 七类中至少五类与 risk_tier 四档）作为 --examples 输入；few-shot 范例必须保留 our_side 与 template_party 字段——缺我方立场的范例会教出「条款本身决定风险」而不看立场的漂移；范例的风险判断必须引用具体条款原文短句作依据，禁止只给档位不给定位。沉默条款（clause_present=false）的范例必须写明「未约定 + 不推断法定结果」。",
+  "compliance": [
+    "合同文本属商业秘密，训练数据须去除当事人名称、金额精确值（保留金额档）、联系人信息与可识别的商业安排",
+    "输出仅为条款识别与风险分档参考，不得作为法律意见使用，样本与系统提示中均须保留该免责边界",
+    "竞业限制、劳动报酬等条款的合法性判断（如无补偿的竞业限制在部分地区不生效）属法律适用问题，模型只输出条款事实与风险提示，不输出效力认定（需专家复核口径）",
+    "涉外合同样本中的域外法条款只做类型识别，不做域外法适用判断"
+  ],
+  "acceptance": [
+    "clause_type 八类 macro-F1 ≥0.88（CUAD 类别体系的细粒度判别）",
+    "clause_present accuracy ≥0.95，缺失条款（false）的召回 ≥0.97（沉默条款漏检的合同风险远高于误报）",
+    "risk_tier 四档与律师标注的有序一致性（QWK）≥0.75",
+    "needs_lawyer 召回 ≥0.98（漏转律师的风险远高于过转）",
+    "立场翻转一致性：同条款双视角样本的风险分档符合方向预期 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "clause_type 向 liability_cap 塌缩 → 蒸馏数据配比失衡，检查 sampling 与 topics 对七类的覆盖",
+    "节选文本被误判 clause_present=false → guidance 的「未见到不等于不存在」规则未在 few-shot 体现，补充节选样本范例",
+    "立场翻转方向错误 → sidecar 标注时未按 our_side 区分，检查标注规范",
+    "格式合同免责条款未触发 tier 0 → guidance 的格式条款从高口径未进 few-shot，补足",
+    "output 输出了效力认定或法定归属推断 → 违反硬边界，检查蒸馏 few-shot 是否混入了含推断的范例"
+  ],
+  "expert_review": [
+    "clause_type 八类与 CUAD 41 类条款体系的映射及本机构合同台账的类目对应（需法务负责人复核）",
+    "risk_tier 四档的分档标准（责任上限比例、通知期长短、补偿有无的具体门槛）",
+    "needs_lawyer 的金额授权上限（示例 500 万）与机构法务授权制度",
+    "格式合同免责条款的从高评估口径与消费合同监管规则的边界",
+    "沉默条款的处理口径（只报缺失、不推断法定结果）是否符合法务工作习惯"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；条款语义识别与风险分档无法用数值区间规则表达，标签由律师/法务标注 sidecar 提供。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是一位严谨的合同条款识别与风险提示助手。你的回答要体现审查逻辑：先核对目标条款在文本中的存在性（注意沉默条款只报缺失、不推断法定结果），\n  再对突出的争议条款归类（责任限制/终止/保密/知识产权/赔偿/竞业/付款），按「对我方立场的失衡程度」给出风险分档，并判断是否需要执业律师复核。\n  每项判断必须引用条款原文短句作依据。文本不完整时必须说明并要求调取全文。不输出法律意见，不推断条款效力。",
+      "en": "You are a rigorous contract clause identification and risk-flagging assistant. Your reply must reflect review logic: check the presence of target clauses first (silent clauses are reported as missing, never resolved to a presumed statutory outcome),\n  then classify the most contentious clause (liability cap/termination/confidentiality/IP ownership/indemnification/non-compete/payment), rate overall risk by imbalance against our side, and decide whether attorney review is required.\n  Every judgment must cite a short quote from the clause text. If the text is an excerpt, say so and request the full document. No legal advice, no validity determinations."
+    },
+    "ask_template": "请基于以下合同审查材料给出条款识别与风险提示：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "合同目标条款的存在性识别与沉默条款处理",
+      "争议条款的类型归类（对齐 CUAD 高频条款类）",
+      "按我方立场的风险分档与律师复核转介判断"
+    ],
+    "kev_track": false
+  }
+}

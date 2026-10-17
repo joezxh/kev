@@ -240,7 +240,7 @@
     ],
     "rules": [
       {
-        "when": "state['粗产物质量'] / state['理论产量'] * 100 >= 70 and state['纯度'] >= 95",
+        "when": "state['粗产物质量'] / state['理论产量'] * 100 >= 70 and state['纯度'] >= '95.0 %'",
         "then": [
           {
             "label": "optimize",

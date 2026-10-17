@@ -1,0 +1,241 @@
+{
+  "name": "fin-aml-alert",
+  "domain": "银行与支付机构的反洗钱监测预警复核。输入为一条待复核交易预警的结构化摘要：单笔或当日累计金额、当日交易笔数、现金收付占比、当日交易对手数、跨境交易占比、账户开户天数、交易规模与其经营规模的偏离度。法规基线为《金融机构大额交易和可疑交易报告管理办法》（中国人民银行令〔2016〕第 3 号）：现金收支 ≥5 万元、非自然人账户划转 ≥200 万元、自然人境内划转 ≥50 万元、跨境划转 ≥20 万元应提交大额交易报告；可疑交易不论金额均应报告。阈值为示例口径，实际以本机构交易监测标准为准。",
+  "state": "一条反洗钱监测预警的结构化摘要：客户类型（个人/对公/个体工商户）、单笔或当日累计交易金额（万元）、当日交易笔数、现金收付占比（%）、当日交易对手数（个）、跨境交易占比（%）、账户开户天数（天）、交易金额相对经营规模的偏离度（倍）。字段值为中文叙述夹数字，金额单位统一为万元。",
+  "state_example": {
+    "customer": "male 34, 个体工商户",
+    "context": "餐饮店主，开户 45 天，连续 3 日收款后集中转出",
+    "indicators": {
+      "单笔交易金额": "52.0 万元",
+      "当日交易笔数": "35.0 次",
+      "现金收付占比": "12.0 %",
+      "当日交易对手数": "8.0 个",
+      "跨境交易占比": "0.0 %",
+      "账户开户天数": "45.0 天",
+      "交易偏离度": "6.5 倍"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "is_reportable": {
+      "type": "noul",
+      "instructions": "该预警是否应当提交可疑交易报告线索（而不是直接关闭）？",
+      "criteria": {
+        "true": "至少一项监测指标超出阈值，或存在拆分交易、休眠激活、快进快出等结构异常",
+        "false": "全部指标在阈值内，交易背景与客户画像一致"
+      }
+    },
+    "escalate_tier": {
+      "type": "score",
+      "instructions": "该预警的处置时限档位是什么？",
+      "criteria": [
+        "立即处置并上报（24 小时内）",
+        "48 小时内上报可疑交易线索",
+        "纳入月度批量审查",
+        "无需上报（全部指标未触及阈值）"
+      ]
+    },
+    "trigger_category": {
+      "type": "choice",
+      "instructions": "触发预警的指标属于哪一类？",
+      "criteria": {
+        "none": "无（全部指标正常）",
+        "amount": "金额类：单笔或当日累计触及大额交易报告标准",
+        "structure": "结构类：拆分交易、对手数异常、快进快出",
+        "border": "跨境类：跨境资金占比或跨境金额异常",
+        "duration": "账龄类：新开户即大额、休眠账户突然激活",
+        "behavior": "行为类：交易规模与经营规模明显不符"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "预警是否提供了判定所需的全部要素（指标名称、数值、单位、阈值口径）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照监测标准判定",
+        "false": "缺少单位、阈值口径或指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "is_reportable 的唯一判据是任一监测指标超出本表阈值或存在结构异常。阈值（示例口径，实际以本机构交易监测标准与人民银行令〔2016〕第 3 号为准，需专家复核）：单笔交易金额 ≥20 万元（跨境）或 ≥50 万元（境内自然人）为触及大额标准，≥100 万元进入立即处置档；当日交易笔数 ≥30 为拆分交易特征，≥100 立即处置；当日交易对手数 ≥12 异常、≥50 立即处置；现金收付占比 ≥50% 异常、≥80% 立即处置；跨境交易占比 ≥40% 异常、≥80% 立即处置；开户天数 ≤30 天且伴随大额为账龄风险，≤7 天立即处置；交易偏离度 ≥5 倍异常、≥20 倍立即处置。escalate_tier 由最快触发的指标决定，等级从 0（立即）到 3（无需上报）：多个指标同时触发时取最快一档，trigger_category 取最快档中的指标类别。结构异常（拆分交易 = 单笔均低于 5 万元但当日累计显著、对手数异常、快进快出）即使单笔金额未达大额标准也判 is_reportable=true，因为可疑交易报告不以金额为前提。evidence_sufficient 为 false 时（缺单位、缺阈值口径、缺指标名），is_reportable 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 trigger_category 不得凭猜测填写——证据不足即无把握。客户为对公账户时金额阈值按 200 万元口径上浮，生成对公样本时金额档需相应提高。交易背景与经营规模一致（如工资、房款、理财赎回）且全部指标正常时，is_reportable 必须为 false——上报不等于认定违规，反之正常背景不得因金额大就判可疑。",
+  "variety": [
+    "客户类型：个人、对公、个体工商户、新市民、老年客户、外籍客户（跨境占比高）",
+    "触发类别（trigger_category 六选项逐一覆盖）：amount（单笔 20/50/100 万元以上三档）、structure（当日 30/100 笔拆分、对手数 12/50 个）、border（跨境占比 40/80%）、duration（开户 7/30 天内大额）、behavior（偏离度 5/20 倍）、none（全部正常）",
+    "处置时限档（escalate_tier 四档全覆盖）：0 立即（金额 ≥100 万、笔数 ≥100、对手数 ≥50、账龄 ≤7 天、偏离度 ≥20 倍、现金或跨境占比 ≥80%）、1（48 小时档）、2（月末批量档）、3 无需上报（is_reportable=false 时必须为 3）",
+    "典型洗钱手法场景（须逐类生成）：拆分交易规避阈值、休眠账户突然激活、快进快出（当日转入即转出）、与经营规模明显不符、代收代付集中归集、跨境分拆购付汇",
+    "合法大额场景（is_reportable=false 的对照，须专门生成）：工资奖金发放、房产出售款、理财赎回、对公货款结算、保险理赔款——背景与金额匹配、指标正常",
+    "交易渠道：柜面、手机银行、第三方支付、跨境汇款、ATM 现金、对公网银",
+    "指标完整度（对应 evidence_sufficient）：齐全、缺金额单位、缺阈值口径、缺指标名、缺当日累计口径、两项以上同时缺失；evidence_sufficient=false 时 is_reportable 用软标签且 trigger_category 不猜",
+    "预警来源：系统规则命中、名单关联、人工举报线索、监管协查、模型评分预警",
+    "文本风格：一线柜员口语记录、系统字段导出风格、中英混排（KYC/CDD/AML）、含方言的客服转述",
+    "易错陷阱：对公账户阈值按 200 万口径、可疑交易不以金额为前提（结构异常即使金额小也须上报）、正常背景的大额不得判可疑、多指标同时触发取最快档且 trigger_category 与之一致"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "漏报可疑交易 ≫ 误报：低置信必须升级复核并强制转人工，不取 argmax 自动上报。模型输出仅为预警复核建议，可疑交易报告由反洗钱岗人工确认后提交。"
+  },
+  "smoke_probe": {
+    "state": {
+      "customer": "male 28",
+      "context": "新开户个人客户，无稳定职业记录",
+      "indicators": "单笔交易金额 120.0 万元, 当日交易笔数 42.0 次, 账户开户天数 5.0 天",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "is_reportable", "type": "noul",
+       "instructions": "该预警是否应当提交可疑交易报告线索？"}
+    ],
+    "expected_label": {"is_reportable": "true"}
+  },
+  "sampling": {
+    "n": 787,
+    "notes": "plan_targets 保留 35% 触发预警样本（tier 0-2 约 2:2:1），其余为正常对照；正常样本中至少 20% 为合法大额背景（工资/房款/理财），防止模型把金额大当作可疑特征。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 escalate_tier 四档与 trigger_category 六类）作为 --examples 输入；few-shot 范例必须保留指标单位与阈值口径字段，缺单位的范例会教出 evidence_sufficient 漂移。",
+  "compliance": [
+    "输出仅为内部预警复核建议，可疑交易报告须由反洗钱合规岗确认后经机构总部报送中国反洗钱监测分析中心，模型不得自动报送（需专家复核报送口径）",
+    "训练数据须按 JR/T 0171-2020 脱敏：剔除账号、证件号、手机号（C3/C2 类信息一律不得进入 state），仅保留脱敏后的交易统计特征",
+    "不得输出「客户涉嫌洗钱」等定性结论，只输出指标是否超阈与处置时限建议",
+    "跨境与制裁名单关联场景（OFAC/联合国名单）不得由本模型判定，一律转人工"
+  ],
+  "acceptance": [
+    "is_reportable accuracy ≥0.97，漏报率（false negative）≤0.5%（漏报代价远高于误报）",
+    "escalate_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05，配对 bootstrap 区间不劣于基线",
+    "evidence_sufficient=false 子集上 is_reportable 置信度显著下降（软标签生效的验证）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: escalate_tier 无 2 档记录 → tier_windows[\"2\"] 的区间与 fields.critical 不相交，检查 realize_tier 是否返回 None",
+    "正常样本被判 is_reportable=true → 检查 rules 第一条 not any_outside_critical 的 when 是否被 later 规则抢先（first-match wins）",
+    "record 被拒「no label for evidence_sufficient」→ 规则 then 列表必须覆盖 spec.questions 的全部四个 qid",
+    "distill 轨 label 漂移 → guidance 中的阈值口径必须与 generator.tier_windows 完全一致，两处不一致时以 generator 为准"
+  ],
+  "expert_review": [
+    "单笔金额 20/50/100 万三档与结构异常 30/100 笔的分层口径（依据人民银行令〔2016〕第 3 号，但机构监测标准各有不同）",
+    "现金/跨境占比 50%/80% 的档位、新开户 ≤7/≤30 天的账龄档",
+    "处置时限四档（24 小时/48 小时/月度批量）与机构内部 SLA 的对应",
+    "对公账户 200 万元口径在样本生成中的映射方式"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "单笔交易金额", "unit": "万元", "decimals": 1, "normal": [0.1, 18.0],
+       "critical": {"high": [[20.0, 1000000000.0]]}, "category": "amount"},
+      {"name": "当日交易笔数", "unit": "次", "decimals": 0, "normal": [1.0, 10.0],
+       "critical": {"high": [[30.0, 1000000000.0]]}, "category": "structure"},
+      {"name": "现金收付占比", "unit": "%", "decimals": 1, "normal": [0.0, 30.0],
+       "critical": {"high": [[50.0, 100.0]]}, "category": "structure"},
+      {"name": "当日交易对手数", "unit": "个", "decimals": 0, "normal": [1.0, 5.0],
+       "critical": {"high": [[12.0, 1000000000.0]]}, "category": "structure"},
+      {"name": "跨境交易占比", "unit": "%", "decimals": 1, "normal": [0.0, 20.0],
+       "critical": {"high": [[40.0, 100.0]]}, "category": "border"},
+      {"name": "账户开户天数", "unit": "天", "decimals": 0, "normal": [90.0, 3650.0],
+       "critical": {"low": [[0.0, 30.0]]}, "category": "duration"},
+      {"name": "交易偏离度", "unit": "倍", "decimals": 1, "normal": [0.2, 3.0],
+       "critical": {"high": [[5.0, 1000000000.0]]}, "category": "behavior"}
+    ],
+    "selectors": [{"min": 3, "max": 7}],
+    "tier_windows": {
+      "0": {
+        "单笔交易金额": [[100.0, 1000000000.0]],
+        "当日交易笔数": [[100.0, 1000000000.0]],
+        "现金收付占比": [[80.0, 100.0]],
+        "当日交易对手数": [[50.0, 1000000000.0]],
+        "跨境交易占比": [[80.0, 100.0]],
+        "账户开户天数": [[0.0, 6.0]],
+        "交易偏离度": [[20.0, 1000000000.0]]
+      },
+      "1": {
+        "单笔交易金额": [[50.0, 100.0]],
+        "当日交易笔数": [[50.0, 100.0]],
+        "现金收付占比": [[65.0, 80.0]],
+        "当日交易对手数": [[20.0, 50.0]],
+        "跨境交易占比": [[60.0, 80.0]],
+        "账户开户天数": [[7.0, 14.0]],
+        "交易偏离度": [[10.0, 20.0]]
+      },
+      "2": {
+        "单笔交易金额": [[20.0, 50.0]],
+        "当日交易笔数": [[30.0, 50.0]],
+        "现金收付占比": [[50.0, 65.0]],
+        "当日交易对手数": [[12.0, 20.0]],
+        "跨境交易占比": [[40.0, 60.0]],
+        "账户开户天数": [[15.0, 30.0]],
+        "交易偏离度": [[5.0, 10.0]]
+      }
+    },
+    "contexts": [
+      "餐饮店主，收款后集中转出给同一对手",
+      "退休人员，账户长期闲置后突然启用",
+      "跨境留学缴费，背景材料齐全",
+      "工资奖金发放，资金来源清晰",
+      "房产出售尾款到账，次日偿还房贷",
+      "对公货款结算，与合同金额一致",
+      "新开户客户，柜面办理大额现金存入",
+      "第三方支付提现，笔数多而金额小",
+      "理财赎回至本人同名账户",
+      "无明确背景说明，指标多项异常"
+    ],
+    "patients": [
+      "male 34 个体工商户", "female 67 退休", "male 28 新开户",
+      "female 45 对公财务", "male 52 对公法人", "female 23 学生",
+      "male 60 自由职业", "female 38 公司职员"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "is_reportable", "value": false},
+          {"label": "escalate_tier", "value": 3},
+          {"label": "trigger_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "is_reportable", "value": true},
+          {"label": "escalate_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "trigger_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "is_reportable",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"amount": 0.3, "structure": 0.25, "border": 0.2, "duration": 0.15, "behavior": 0.1},
+          "tier_split": {
+            "amount": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "structure": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "border": [[0, 0.3], [1, 0.3], [2, 0.4]],
+            "duration": [[0, 0.4], [1, 0.3], [2, 0.3]],
+            "behavior": [[0, 0.3], [1, 0.3], [2, 0.4]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "单笔交易金额": "amount",
+      "当日交易笔数": "structure",
+      "现金收付占比": "structure",
+      "当日交易对手数": "structure",
+      "跨境交易占比": "border",
+      "账户开户天数": "duration",
+      "交易偏离度": "behavior"
+    }
+  }
+}

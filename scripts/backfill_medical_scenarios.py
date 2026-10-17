@@ -5,7 +5,7 @@ but were not seeded into the DB, so `make_seeds config --scenario <slug>` failed
 line 858 requires the rendered config to be byte-equal (modulo inline comments) to the legacy yaml.
 
 This script:
-  1. Calls Store().seed_scenarios() so docs/medical/specs/<slug>.json are picked up by the glob.
+  1. Calls Store().seed_scenarios() so docs/domains/medical/specs/<slug>.json are picked up by the glob.
   2. Calls Store().write_spec_file(<slug>, content) on each so the on-disk spec (with the
      generator / distill / routing / smoke_probe sub-fields) is in scenarios.spec_json. _backfill_specs
      only fills empty rows; this is the explicit overwrite.

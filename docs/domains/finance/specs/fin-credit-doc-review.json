@@ -1,0 +1,243 @@
+{
+  "name": "fin-credit-doc-review",
+  "domain": "银行零售信贷与小微企业贷款的贷前资料审查。信贷员收到的申请材料包需要逐项核对完整性与达标性：证件与证明文件份数、负债收入比、月供收入比（DSR）、征信评分、近两年逾期次数、申请贷款金额、收入证明时效。监管基线为《征信业务管理办法》（中国人民银行令〔2021〕第 4 号）与《商业银行互联网贷款管理暂行办法》对贷前调查完整性的要求。阈值为示例口径，实际以本机构信贷政策为准。",
+  "state": "一份待审信贷申请材料包的结构化摘要：申请人身份（个人/小微企业主/个体工商户）、证件与证明文件缺失份数（份）、负债收入比（%）、月供收入比（%）、征信评分（分）、近两年逾期次数（次）、申请贷款金额（万元）、收入证明距今天数（天）。字段值为中文叙述夹数字，金额单位统一为万元。",
+  "state_example": {
+    "customer": "male 41, 小微企业主",
+    "context": "申请经营贷 80 万元，提供近 6 个月流水",
+    "materials": {
+      "证明文件缺失份数": "0.0 份",
+      "负债收入比": "48.0 %",
+      "月供收入比": "38.0 %",
+      "征信评分": "668.0 分",
+      "近两年逾期次数": "1.0 次",
+      "贷款金额": "80.0 万元",
+      "收入证明时效": "30.0 天"
+    },
+    "ref_policy_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "is_complete": {
+      "type": "noul",
+      "instructions": "该申请材料包是否齐全且达标，可以进入正常审批流程（而不是退回补充）？",
+      "criteria": {
+        "true": "全部材料齐全，各项指标均在信贷政策阈值内",
+        "false": "存在材料缺失，或至少一项指标超出政策阈值"
+      }
+    },
+    "return_tier": {
+      "type": "score",
+      "instructions": "资料应在多长时间内退回补充或复审？",
+      "criteria": [
+        "当日退回，重大缺失或严重超标",
+        "三个工作日内补齐，中度缺失或超标",
+        "纳入下轮集中复审，轻度越界",
+        "无需退回（材料齐全且全部指标达标）"
+      ]
+    },
+    "blocker_category": {
+      "type": "choice",
+      "instructions": "触发退回的主要问题属于哪一类？",
+      "criteria": {
+        "none": "无（材料齐全且全部达标）",
+        "income": "收入类：证明文件缺失或收入证明过期",
+        "leverage": "杠杆类：负债收入比或月供收入比超标",
+        "credit": "征信类：征信评分过低",
+        "behavior": "行为类：近两年逾期次数过多",
+        "amount": "金额类：申请金额超出本产品授权上限",
+        "duration": "时效类：收入证明超出有效期限"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "材料包是否提供了判定所需的全部要素（指标名称、数值、单位、政策阈值口径）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照信贷政策判定",
+        "false": "缺少单位、阈值口径或指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "is_complete 的唯一判据是材料齐全且任一指标均未超出本表阈值。阈值（示例口径，实际以本机构信贷政策为准，需专家复核）：证明文件缺失 ≥1 份即为缺失；负债收入比 ≥80% 超标、≥110% 严重超标；月供收入比 ≥60% 超标、≥85% 严重超标（监管常用 DSR 上限 50% 的口径在样本中体现为正常区间上界 45% 与超标线之间的过渡带）；征信评分 <580 低分、<300 严重低分；近两年逾期 ≥6 次超标、≥15 次严重；贷款金额 ≥500 万元超出零售产品授权、≥1000 万元远超；收入证明 >180 天过期、>365 天严重过期。return_tier 由最快触发的问题决定，等级从 0（当日退回）到 3（无需退回）：多个问题同时触发时取最快一档，blocker_category 取最快档中的问题类别。材料齐全但仅一项轻度越界时 is_complete 仍为 false——退回不等于拒贷，guidance 与 routing 均不得出现「拒绝」类结论。evidence_sufficient 为 false 时（缺单位、缺政策口径、缺指标名），is_complete 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 blocker_category 不得凭猜测填写。小微企业主样本的负债收入比与贷款金额天然偏高，判定阈值应按其 state 中声明的产品口径而非零售口径——生成对公/经营贷样本时金额档需相应提高，且 context 必须写明产品类型。",
+  "variety": [
+    "申请人类型：工薪个人、个体工商户、小微企业主、新市民、公积金缴存职工、无固定收入者",
+    "触发类别（blocker_category 七选项逐一覆盖）：income（缺失 1/2/5 份、证明过期 180/365 天）、leverage（负债 80/110%、DSR 60/85%）、credit（征信 580/300 分）、behavior（逾期 6/15 次）、amount（金额 500/1000 万元）、duration、none（全部达标）",
+    "退回时限档（return_tier 四档全覆盖）：0 当日退回（缺失 ≥5 份、负债 ≥110%、DSR ≥85%、征信 <300、逾期 ≥15、金额 ≥1000 万、证明 >365 天）、1 三个工作日、2 下轮复审、3 无需退回（is_complete=true 时必须为 3）",
+    "材料完整度谱系（对应 evidence_sufficient）：齐全、缺收入证明、缺征信授权书、缺流水、缺阈值口径、缺指标单位、多项同时缺失；evidence_sufficient=false 时 is_complete 用软标签且 blocker_category 不猜",
+    "产品类型：个人消费贷、经营贷、房贷按揭、车贷、信用贷、抵押贷——不同产品的正常区间在 context 中写明",
+    "合法对照场景（is_complete=true 须专门生成）：材料齐全、指标贴边但未越界（负债 78%、DSR 58%、征信 600、逾期 2 次）",
+    "材料呈现风格：信贷员批注体、系统核对清单体、扫描件目录体、中英混排（DSR/LTV/KYC）",
+    "易错陷阱：经营贷与消费贷阈值口径不同、贴边但未越界必须判 true、多问题同时触发取最快档且 blocker_category 与之一致、收入证明时效只对 income 类触发，不得与缺失份数混淆"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为资料完整性与退回时限建议，审批决定由信贷审批岗作出。不输出拒贷结论；低置信转人工复核。"
+  },
+  "smoke_probe": {
+    "state": {
+      "customer": "male 35, 个体工商户",
+      "context": "申请经营贷 120 万元，部分材料待补",
+      "materials": "证明文件缺失份数 2.0 份, 负债收入比 92.0 %, 征信评分 545.0 分",
+      "ref_policy_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "is_complete", "type": "noul",
+       "instructions": "该申请材料包是否齐全且达标，可以进入正常审批流程？"}
+    ],
+    "expected_label": {"is_complete": "false"}
+  },
+  "sampling": {
+    "n": 760,
+    "notes": "plan_targets 保留 35% 触发退回样本（tier 0-2 约 2:2:1），其余为齐全达标对照；对照中至少 20% 为贴边未越界样本（负债 75-80%、DSR 55-60%、征信 580-600），防止模型把接近阈值当作超标。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 return_tier 四档与 blocker_category 七类中至少六类）作为 --examples 输入；few-shot 范例必须保留指标单位与产品类型字段，缺产品类型的范例会教出跨产品阈值混淆。",
+  "compliance": [
+    "输出仅为资料完整性核对与退回时限建议，贷款审批决定由信贷审批岗作出，模型不得输出授信额度、利率或拒贷结论",
+    "训练数据按《征信业务管理办法》与 JR/T 0171-2020 脱敏：剔除证件号、账号、手机号与精确收入额，仅保留比率与档位特征",
+    "征信查询须有客户授权方可进入流程，state 不得包含未经授权查询的明细记录（需专家复核授权口径）",
+    "不得输出「申请人信用不良」等定性标签，只输出指标是否超阈与退回时限建议"
+  ],
+  "acceptance": [
+    "is_complete accuracy ≥0.97，误退率（false positive）与漏退率（false negative）均 ≤2%",
+    "return_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05，配对 bootstrap 区间不劣于基线",
+    "evidence_sufficient=false 子集上 is_complete 置信度显著下降（软标签生效的验证）",
+    "贴边未越界子集（指标在阈值 95%-100% 区间）is_complete=true 比例 ≥0.9（边界敏感度验收）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: return_tier 无 2 档记录 → tier_windows[\"2\"] 的区间与 fields.critical 不相交，检查 realize_tier 是否返回 None",
+    "贴边样本被判退回 → 检查 fields.normal 上界与 critical 下界之间是否留出过渡带（如负债收入比 normal 上界 60 与 critical 80 之间）",
+    "record 被拒「no label for evidence_sufficient」→ 规则 then 列表必须覆盖 spec.questions 的全部四个 qid",
+    "distill 轨 label 漂移 → guidance 中的阈值口径必须与 generator.tier_windows 完全一致，两处不一致时以 generator 为准"
+  ],
+  "expert_review": [
+    "负债收入比 80%/110% 与 DSR 60%/85% 的档位（监管对 DSR 有 50% 上限的常用口径，机构政策各异）",
+    "征信评分 580/300 分档对应的评分模型版本（不同征信分体系不可直接换算）",
+    "逾期次数 6/15 次档与「连三累六」等行业惯例的对应关系",
+    "贷款金额 500/1000 万元授权上限与零售/经营贷产品线的划分",
+    "收入证明 180/365 天时效口径"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "证明文件缺失份数", "unit": "份", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "income"},
+      {"name": "负债收入比", "unit": "%", "decimals": 1, "normal": [20.0, 60.0],
+       "critical": {"high": [[80.0, 1000000000.0]]}, "category": "leverage"},
+      {"name": "月供收入比", "unit": "%", "decimals": 1, "normal": [20.0, 45.0],
+       "critical": {"high": [[60.0, 1000000000.0]]}, "category": "leverage"},
+      {"name": "征信评分", "unit": "分", "decimals": 0, "normal": [600.0, 750.0],
+       "critical": {"low": [[0.0, 580.0]]}, "category": "credit"},
+      {"name": "近两年逾期次数", "unit": "次", "decimals": 0, "normal": [0.0, 2.0],
+       "critical": {"high": [[6.0, 1000000000.0]]}, "category": "behavior"},
+      {"name": "贷款金额", "unit": "万元", "decimals": 1, "normal": [10.0, 200.0],
+       "critical": {"high": [[500.0, 1000000000.0]]}, "category": "amount"},
+      {"name": "收入证明时效", "unit": "天", "decimals": 0, "normal": [0.0, 90.0],
+       "critical": {"high": [[180.0, 1000000000.0]]}, "category": "duration"}
+    ],
+    "selectors": [{"min": 3, "max": 7}],
+    "tier_windows": {
+      "0": {
+        "证明文件缺失份数": [[5.0, 1000000000.0]],
+        "负债收入比": [[110.0, 1000000000.0]],
+        "月供收入比": [[85.0, 1000000000.0]],
+        "征信评分": [[0.0, 300.0]],
+        "近两年逾期次数": [[15.0, 1000000000.0]],
+        "贷款金额": [[1000.0, 1000000000.0]],
+        "收入证明时效": [[365.0, 1000000000.0]]
+      },
+      "1": {
+        "证明文件缺失份数": [[2.0, 5.0]],
+        "负债收入比": [[80.0, 110.0]],
+        "月供收入比": [[60.0, 85.0]],
+        "征信评分": [[300.0, 580.0]],
+        "近两年逾期次数": [[6.0, 15.0]],
+        "贷款金额": [[500.0, 1000.0]],
+        "收入证明时效": [[180.0, 365.0]]
+      },
+      "2": {
+        "证明文件缺失份数": [[1.0, 2.0]],
+        "负债收入比": [[76.0, 80.0]],
+        "月供收入比": [[55.0, 60.0]],
+        "征信评分": [[560.0, 580.0]],
+        "近两年逾期次数": [[3.0, 6.0]],
+        "贷款金额": [[200.0, 550.0]],
+        "收入证明时效": [[100.0, 200.0]]
+      }
+    },
+    "contexts": [
+      "申请经营贷 80 万元，提供近 6 个月对公流水",
+      "申请个人消费贷 20 万元，公积金缴存稳定",
+      "申请房贷按揭，首付比例 35%，收入证明 20 天",
+      "申请车贷 15 万元，征信近两年无逾期",
+      "材料清单缺征信授权书与最近一期流水",
+      "申请人自述月收入 4 万元，无纳税记录佐证",
+      "小微企业主申请 300 万元，抵押物评估已完成",
+      "新市民申请信用贷，社保缴纳 8 个月",
+      "收入证明为 200 天前的单位盖章件",
+      "材料齐全但负债收入比贴近阈值上沿"
+    ],
+    "patients": [
+      "male 35 个体工商户", "female 28 工薪职员", "male 47 小微企业主",
+      "female 52 公积金职工", "male 26 新市民", "female 39 自由职业",
+      "male 58 退休返聘", "female 33 公司中层"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "is_complete", "value": true},
+          {"label": "return_tier", "value": 3},
+          {"label": "blocker_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "is_complete", "value": false},
+          {"label": "return_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "blocker_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "is_complete",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"income": 0.2, "leverage": 0.3, "credit": 0.15, "behavior": 0.15, "amount": 0.1, "duration": 0.1},
+          "tier_split": {
+            "income": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "leverage": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "credit": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "behavior": [[0, 0.3], [1, 0.3], [2, 0.4]],
+            "amount": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "duration": [[0, 0.3], [1, 0.35], [2, 0.35]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "证明文件缺失份数": "income",
+      "负债收入比": "leverage",
+      "月供收入比": "leverage",
+      "征信评分": "credit",
+      "近两年逾期次数": "behavior",
+      "贷款金额": "amount",
+      "收入证明时效": "duration"
+    }
+  }
+}

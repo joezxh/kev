@@ -1,0 +1,149 @@
+{
+  "_meta": {
+    "purpose": "实验记录数据质量检查 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/sci-data-quality.yaml"
+  },
+  "name": "sci-data-quality",
+  "label_zh": "数据质量",
+  "label_en": "Data Quality",
+  "domain": "科研实验室与数据团队的实验记录与数据集质量检查。数据管理员或实验室主管把一份实验记录（或数据集条目）提交给助手，助手判断缺陷类型（参数缺失、缺对照、单位不一致、来源信息缺失、日期冲突、无缺陷）、判断是否阻塞下游分析或入库、是否需要重做实验（而非仅补记录），并检查记录本身是否要素齐全。检查框架对齐 FAIR 数据原则的可重用性要求（R1.1 元数据、R1.2 出处）与《科学数据管理办法》对数据汇交完整性的要求，缺陷定义为示例口径。",
+  "state": "一份实验记录或数据集条目的结构化摘要：实验类型（理化测定/生物学实验/计算仿真/问卷调查）、记录内容简述（1-3 句）、关键实验参数记录情况（仪器型号/试剂批号/环境条件/软件版本）、是否设置对照与重复、数据单位与量纲一致性、数据来源与操作人记录（provenance）、采样日期与记录日期、是否已有同名条目入库。",
+  "state_example": {
+    "dataset": "理化测定（水质样本）",
+    "entry": "2026-09 批次 12 个水样的重金属含量测定，仪器 ICP-MS，10 月 3 日录入。",
+    "parameters": "记录了仪器型号与环境温度，未记录试剂批号与校准曲线",
+    "controls": "设了平行样 3 个，未设空白对照",
+    "units": "统一以 ug/L 记录，1 个样本以 mg/L 记录未注明换算",
+    "provenance": "操作人与仪器使用登记齐全",
+    "dates": "采样 9 月 28 日，测定 9 月 30 日，录入 10 月 3 日",
+    "duplicate_entry": false
+  },
+  "questions": {
+    "record_defect": {
+      "type": "choice",
+      "instructions": "该记录的主要缺陷属于哪一类？",
+      "criteria": {
+        "none": "无缺陷（要素齐全、口径一致）",
+        "missing_parameters": "参数缺失：仪器/试剂/环境/软件版本等关键参数未记录",
+        "missing_controls": "缺对照或重复：无空白对照、无平行样、重复数不足以估计误差",
+        "units_inconsistent": "单位不一致：同批数据混用量纲且未注明换算",
+        "provenance_missing": "来源缺失：操作人、仪器登记、样本流转记录不全",
+        "dates_conflict": "日期冲突：采样/测定/录入时间矛盾或倒置"
+      }
+    },
+    "blocking": {
+      "type": "noul",
+      "instructions": "该缺陷是否阻塞数据入库或下游分析（而不是仅降低记录质量）？",
+      "criteria": {
+        "true": "缺陷使数据不可信或不可解释，入库后会污染下游结果",
+        "false": "缺陷可事后补录或备注，数据本身仍可用"
+      }
+    },
+    "needs_retest": {
+      "type": "noul",
+      "instructions": "是否需要重做实验（而不是仅补记录）？",
+      "criteria": {
+        "true": "缺对照/重复导致误差不可估计，或日期矛盾使样本归属存疑",
+        "false": "补录参数、统一单位、补登记即可修复"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "提交的记录是否要素齐全，足以可靠判定缺陷？",
+      "criteria": {
+        "true": "记录内容、参数清单、日期三要素齐全",
+        "false": "记录为摘要或截图转写，缺少判定所需的原始字段"
+      }
+    }
+  },
+  "guidance": "数据质量检查只做缺陷分类、阻塞判断与重测建议，不修改数据本身。record_defect 按缺陷的最高危害归类，多缺陷并存时优先级：dates_conflict > provenance_missing > units_inconsistent > missing_controls > missing_parameters——日期矛盾最先暴露（影响样本归属），参数缺失最易补录。blocking=true 的判据：units_inconsistent 且无换算说明（数值不可比）、dates_conflict（时间线不可信）、duplicate_entry 为真（重复入库风险）；仅缺参数或来源可由备注补录，不阻塞。needs_retest=true 的判据：missing_controls（误差不可估计）或 dates_conflict 无法用元数据澄清——补记录解决不了的才重做，重做成本高，判定必须保守。provenance_missing 单独出现时既不阻塞也不触发重测，但连续两个批次同类缺失要升级为流程问题并在回答中提示。evidence_sufficient=false 时（摘要转写、缺参数清单、缺日期字段），record_defect 不得给出确定标签，必须用软标签 target {\"missing_parameters\":0.2,\"missing_controls\":0.2,\"units_inconsistent\":0.2,\"provenance_missing\":0.2,\"dates_conflict\":0.2} 并建议调取原始记录——检查工具不下无依据的结论。计算仿真研究的「对照」含义是基线与随机种子重复，问卷调查的「参数」含义是问卷版本与抽样框——按实验类型套用对应口径，不跨类型错判。",
+  "variety": [
+    "实验类型（每类须专门生成）：理化测定、生物学实验（细胞/动物）、计算仿真、问卷调查、临床样本检测、现场采样",
+    "缺陷类型（record_defect 六选项逐一覆盖）：参数缺失（无试剂批号/无软件版本/无环境温湿度）、缺对照（无空白对照/无平行样/仿真无基线）、单位不一致（ug/L 与 mg/L 混用、kPa 与 mmHg 混用、单位对但小数位暗示量级错误）、来源缺失（无操作人/无仪器登记/无样本流转单）、日期冲突（测定早于采样、录入早于测定、批次日期跨越停机检修）、none（全部合规）",
+    "阻塞判断（blocking 两态逐一覆盖）：单位混用无换算说明→true、日期矛盾→true、重复条目→true、仅缺参数→false、仅缺来源→false",
+    "重测判断（needs_retest 两态）：无对照且重复不足→true、日期矛盾无法澄清→true、可补录的参数与来源→false——重测建议必须保守",
+    "缺陷组合：单缺陷、双缺陷（阻塞与不阻塞组合）、三缺陷并存（危害优先级排序是易错点）、形式合规但数值可疑（超出物理合理范围）",
+    "记录形态：电子实验记录本（ELN）导出、纸质记录扫描转写、仪器自带日志、LIMS 系统条目、手抄汇总表",
+    "证据完整度（evidence_sufficient）：原始字段齐全、摘要转写、截图无参数清单、日期字段缺失、三项齐缺",
+    "易错陷阱：参数缺失是危害最低的缺陷但最常见、重做实验的建议必须保守（补记录解决不了才重做）、计算仿真的对照是基线+种子重复、单位一致但量级异常要提示而不改判缺陷类型"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "检查结果供数据管理员与实验室主管参考，入库拦截与重测决定由人工作出；模型不修改数据、不删除条目。证据不足时先调原始记录。"
+  },
+  "smoke_probe": {
+    "state": {
+      "dataset": "生物学实验（细胞活力测定）",
+      "entry": "2026-08 批次药物处理 96 孔板实验，9 月 2 日录入。",
+      "parameters": "记录了药物浓度与处理时间，未记录细胞代次与培养基批号",
+      "controls": "未设阴性对照，每浓度 2 个复孔",
+      "units": "活力值统一为百分比",
+      "provenance": "操作人已登记，仪器使用记录缺失",
+      "dates": "处理 8 月 20 日，测定 8 月 19 日（倒置），录入 9 月 2 日",
+      "duplicate_entry": false
+    },
+    "questions": [
+      {
+        "qid": "record_defect",
+        "type": "choice",
+        "instructions": "该记录的主要缺陷属于哪一类？"
+      }
+    ],
+    "expected_label": {
+      "record_defect": "dates_conflict"
+    }
+  },
+  "sampling": {
+    "n": 660,
+    "notes": "蒸馏轨样本分布建议：record_defect 六类中 none 占 30%（真实数据大多合规，防止模型见什么都判缺陷），其余五类各占约 14%；blocking=true 占比 25%；needs_retest=true 占比 18%；evidence_sufficient=false 占比 20%。危害优先级排序的三缺陷并存样本单独 8%。按实验类型分层：理化/生物/仿真/问卷各 ≥20%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 record_defect 六类中至少五类与 needs_retest 两态）作为 --examples 输入；few-shot 范例必须保留实验类型与完整参数清单字段——缺实验类型的范例会教出跨类型错判口径（如对仿真数据要求生物对照）；needs_retest=true 的范例必须写明「为什么补记录解决不了」，防止模型轻易建议重做。",
+  "compliance": [
+    "实验记录与数据集条目按机构数据管理制度脱敏：去除样本编号中的可识别信息、操作人实名改为角色（操作员A），保留记录结构",
+    "未发表数据与在研项目的记录属保密信息，训练数据不得含课题编号、资助号与可识别的研究内容",
+    "模型输出仅为质量检查建议，不得自动修改、删除或覆盖任何数据条目",
+    "涉及人体样本的记录，伦理批件信息只保留有无状态，不保留批件号与受试者信息"
+  ],
+  "acceptance": [
+    "record_defect 六类 macro-F1 ≥0.85，none 类精度 ≥0.92（误报合规记录的排查成本高）",
+    "blocking accuracy ≥0.90，漏报（该阻塞未阻塞）≤5%",
+    "needs_retest 精度 ≥0.9（重做成本高，过报比漏报代价大）",
+    "危害优先级排序准确率 ≥0.9（三缺陷并存样本上 record_defect 与危害最高类一致）",
+    "evidence_sufficient=false 子集上确定性标签率 =0（证据不足必须拒判或软标签）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "none 类样本被大量误判 → sampling 中 none 占比 30% 未生效或 topics 未生成合规样本，检查蒸馏数据配比",
+    "needs_retest 过报 → few-shot 缺少「补记录可修复」对照，补充参数补录后合格的范例",
+    "跨实验类型口径错判（对仿真要求生物对照）→ few-shot 范例缺实验类型字段，补足",
+    "多缺陷并存时类型漂移 → sidecar 的危害优先级标注口径与 guidance 不一致，以 sidecar 为准修 guidance",
+    "evidence_sufficient=false 仍出确定标签 → 软标签注入路径失效，检查 sidecar 是否保留了分布标签"
+  ],
+  "expert_review": [
+    "缺陷危害优先级（dates_conflict > provenance > units > controls > parameters）与机构数据管理制度的对应（需数据管理负责人复核）",
+    "blocking 与 needs_retest 的判定边界（哪些缺陷允许补录修复）",
+    "计算仿真与问卷调查场景中「对照」「参数」「来源」的对应口径",
+    "数据可用性评分与 FAIR 四原则的映射（如与 sci-reproducibility 的评分量表统一）"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；记录缺陷分类无法用数值区间规则完整表达，标签由数据管理员标注 sidecar 提供。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是一位严谨的科研数据质量检查助手。你的回答要体现检查逻辑：先核对日期与来源（影响样本归属与可信度），再查单位一致性，再查对照与重复，最后查参数完整度；\n  多缺陷并存时按危害优先级归类并逐一列出；给出是否阻塞入库、是否需要重做实验的建议——重做建议必须保守，补记录可修复的不重做。\n  记录要素不全时必须显式说明证据不足并建议调取原始记录。不修改数据，不下研究结论。",
+      "en": "You are a rigorous research data-quality assistant. Your reply must reflect checking logic: verify dates and provenance first (they affect sample attribution and trustworthiness), then unit consistency, then controls and replicates, then parameter completeness;\n  when multiple defects coexist, classify by highest harm and list each; advise on blocking and whether retesting is needed — retesting advice must be conservative, never when back-filling records would fix it.\n  When the record is incomplete you must state that evidence is insufficient and request the original record. Never modify data or draw scientific conclusions."
+    },
+    "ask_template": "请基于以下实验记录给出数据质量检查建议：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "实验记录与数据集条目的缺陷分类（参数缺失/缺对照/单位不一致/来源缺失/日期冲突）",
+      "入库阻塞判断与重做实验的保守建议",
+      "FAIR 可重用性视角的元数据完整性检查"
+    ],
+    "kev_track": false
+  }
+}

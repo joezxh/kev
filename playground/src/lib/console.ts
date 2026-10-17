@@ -203,7 +203,7 @@ export const api = {
     call<Artifact & { lineage: unknown[] }>(`datasets/${encodeURIComponent(id)}`),
   exportUrl: (id: string) => `/api/console/datasets/${encodeURIComponent(id)}/export`,
 
-  jobs: (filter?: { status?: JobStatus; stage?: string; scenario?: string }) => {
+  jobs: (filter?: { status?: JobStatus; stage?: string; scenario?: string; project?: string }) => {
     const query = new URLSearchParams(
       Object.entries(filter ?? {}).filter(([, value]) => value) as [string, string][],
     ).toString();
@@ -216,7 +216,7 @@ export const api = {
     call<{ argv: string[]; env: Record<string, string>; outcome: string }>("jobs/preview", {
       method: "POST", body: JSON.stringify(payload),
     }),
-  submit: (payload: { kind: string; scenario: string; run_name: string;
+  submit: (payload: { kind: string; scenario: string; run_name: string; project_id: string;
                       params: Record<string, unknown>; template_id?: string }) =>
     call<Job>("jobs", { method: "POST", body: JSON.stringify(payload) }),
 
@@ -364,9 +364,13 @@ export const api = {
 
   // ---- ch6 管理面：projects / members / quota / webhooks / invoices ----
   projects: () => call<Project[]>("projects"),
-  createProject: (p: { slug: string; name: string; description?: string }) =>
+  createProject: (p: { slug: string; name: string; description?: string;
+                       scenario: string; goal?: string }) =>
     call<Project>("projects", { method: "POST", body: JSON.stringify(p) }),
-  project: (id: string) => call<Project>(`projects/${id}`),
+  project: (id: string) => call<ProjectSummary>(`projects/${id}`),
+  projectArtifacts: (id: string) => call<Artifact[]>(`projects/${id}/artifacts`),
+  projectEvents: (id: string, afterId?: number) =>
+    call<Event[]>(`projects/${id}/events${afterId ? `?after_id=${afterId}` : ""}`),
   updateProject: (id: string, p: { name?: string; slug?: string; description?: string }) =>
     call<Project>(`projects/${id}`, { method: "PUT", body: JSON.stringify(p) }),
   deleteProject: (id: string) => call<{ deleted: boolean }>(`projects/${id}`, { method: "DELETE" }),
@@ -419,7 +423,18 @@ export type ScenarioTree = ScenarioDomain;
 // ---- ch6 管理面资源 ----------------------------------------------------
 export type Project = {
   id: string; slug: string; name: string; description: string;
+  status: string; scenario: string; goal: string; archived_at: string | null;
+  freeze_min_records: number; freeze_min_review_ratio: number;
   created_at: string; updated_at: string;
+};
+/** 项目事件流的一行（events 表经 jobs.project_id 归属，D10）。 */
+export type Event = {
+  id: number; job_id: string; ts: string; stream: string; line: string;
+};
+/** GET /projects/{id} 的响应：Project 原始列 + 派生计数/阶段/最近事件（Task 5 project_summary）。 */
+export type ProjectSummary = Project & {
+  jobs: number; artifacts: number;
+  recent_events: Event[]; stages: Record<string, JobStatus>;
 };
 export type Member = {
   id: string; project_id: string; email: string; name: string;

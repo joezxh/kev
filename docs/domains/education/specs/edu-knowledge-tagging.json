@@ -1,0 +1,162 @@
+{
+  "_meta": {
+    "purpose": "错题知识点标注与掌握度诊断 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/edu-knowledge-tagging.yaml"
+  },
+  "name": "edu-knowledge-tagging",
+  "label_zh": "知识点标注",
+  "label_en": "Knowledge Tagging",
+  "domain": "K12 与高校的错题知识点标注与掌握度诊断。教研助理把一道学生错题的结构化摘要（学段学科、题型、题干、学生作答、得分点得分情况）交给助手，助手判断错误归属的一级知识域（primary_domain 六选一）、该知识点的掌握程度（mastery_level 四档）、是否属于课标主干知识点（is_core_kp），以及题面信息是否足以标注（tag_confident）。知识点域划分为示例口径，实际以本校使用的课程标准与教材版本为准，需学科教研员复核。",
+  "state": "一道学生错题的结构化摘要：学段学科、题型（选择/填空/解答）、题干（含设问）、学生作答（原样，含错误）、得分点得分情况（哪些得分点得满分、哪些零分）、该生前测同域正确率（%）、本次考试距上次同类错题天数。",
+  "state_example": {
+    "item": "female 15, 初三数学",
+    "context": "月考第 21 题，二次函数与几何综合，得分点 2/4",
+    "subject": "初三数学",
+    "question_type": "解答",
+    "stem": "抛物线 y=ax²+bx+3 过点 (2,3)，求……",
+    "student_answer": "学生把顶点坐标公式写反，后续两问连锁失分",
+    "scoring": "得分点1 满、得分点2 零、得分点3 零、得分点4 满",
+    "prior_accuracy": "62.0 %",
+    "days_since_last": "9.0 天"
+  },
+  "questions": {
+    "primary_domain": {
+      "type": "choice",
+      "instructions": "该错误的根源属于哪个一级知识域？",
+      "criteria": {
+        "number_algebra": "数与代数：运算、方程、函数与不等式",
+        "geometry": "图形与几何：性质、变换、证明与作图",
+        "statistics_prob": "统计与概率：数据整理、随机事件与概率计算",
+        "reading_writing": "阅读与写作：文本理解、表达与篇章组织",
+        "language_basics": "语言基础：字词、语法与标点（文科）/ 概念辨析（理科）",
+        "inquiry_method": "方法与探究：审题、建模、实验设计与检验策略"
+      }
+    },
+    "mastery_level": {
+      "type": "score",
+      "instructions": "该知识点的掌握程度属于哪一档？",
+      "criteria": [
+        "未掌握：核心步骤缺失或概念错误，需重新讲授",
+        "概念模糊：思路方向正确但关键概念用错",
+        "会而不熟：方法正确，计算或表述失分",
+        "掌握：仅笔误，知识点本身无问题"
+      ]
+    },
+    "is_core_kp": {
+      "type": "noul",
+      "instructions": "失分知识点是否属于课标主干知识点（而不是边缘拓展内容）？",
+      "criteria": {
+        "true": "主干知识点，纳入常规复习计划",
+        "false": "边缘或拓展内容，个别辅导即可"
+      }
+    },
+    "tag_confident": {
+      "type": "noul",
+      "instructions": "题面与作答信息是否足以做出可靠的错误归因？",
+      "criteria": {
+        "true": "作答与得分点信息完整，可归因",
+        "false": "作答缺失或得分点不明，归因需谨慎标注"
+      }
+    }
+  },
+  "guidance": "primary_domain 按错误的「根源」而非「最终失分步骤」归类：二次函数综合题里顶点公式写反归 number_algebra，即使失分发生在几何计算——错因追问一层；无法再追问一层时（审题偏差、抄错数字）归 inquiry_method。mastery_level 按作答证据定档：核心步骤整体缺失或概念反向使用是档 0；方法对但概念用错（公式记混、条件漏乘）是档 1；方法与概念都对、仅计算或书写失分是档 2；只有笔误是档 3。得分点得分情况是定档的第一证据：首个失分得分点的性质决定档位，后续连锁失分不升级档位。is_core_kp 按课标主干口径判（示例口径，需教研员复核）：函数、方程、平面几何证明、阅读理解与写作属主干；数学文化背景、竞赛拓展、赏析性内容属边缘。综合题跨域时按失分占比最大的域取 primary_domain，同占比取更基础的域。tag_confident=false 时（作答空白、得分点不明、题干不全），primary_domain 仍可按题面给初步归类但必须标注「待面批后修正」，mastery_level 按保守口径（就低不就高）处理——错因工具宁可低估掌握、不可高估掌握导致漏辅导。prior_accuracy 只用于辅助判断熟练度，不得替代作答证据定档。",
+  "variety": [
+    "知识域（primary_domain 六选项逐一覆盖）：number_algebra（运算错/公式反向）、geometry（定理误用/辅助线无从下手）、statistics_prob（样本概念混/概率加乘错）、reading_writing（主旨偏/论据脱节）、language_basics（字词/单位换算/术语混用）、inquiry_method（审题漏条件/建模错方向）",
+    "掌握度（mastery_level 四档全覆盖）：0 未掌握（核心步骤缺失/概念反向）、1 概念模糊（公式记混/条件漏用）、2 会而不熟（计算失误/书写不规范）、3 掌握（仅笔误）",
+    "主干判定（is_core_kp）：函数与方程、平面几何、阅读写作等主干；数学文化、竞赛拓展、赏析性内容等边缘",
+    "错因形态：概念性错误、程序性错误、计算性错误、审题性错误、抄写性错误——概念性与程序性错误按失分得分点性质区分档 0 与档 1",
+    "题型：选择、填空、解答；解答题的得分点得分情况是定档第一证据，选择填空无得分点时按作答内容定档",
+    "信息完整度（tag_confident）：齐全、作答空白、得分点不明、题干不全、多项缺失",
+    "文本风格：教师批改体、学生原卷转写体（含涂改）、系统扫描 OCR 体（含识别噪声）、学情报告体",
+    "易错陷阱：根源归因追问一层、连锁失分不升级档位、综合题按失分占比最大的域、prior_accuracy 不替代作答证据、空白作答保守归因并标注待面批"
+  ],
+  "routing": {
+    "risk": "low",
+    "human_review": true,
+    "evidence_question": "tag_confident",
+    "note": "模型输出仅为错题归因与掌握度参考，个别辅导与复习计划由任课教师作出；空白作答的归因必须经面批确认，模型不直接生成给家长的学情反馈。"
+  },
+  "smoke_probe": {
+    "state": {
+      "item": "male 17, 高二数学",
+      "context": "期中第 19 题，数列求和，得分点 1/3",
+      "subject": "高二数学",
+      "question_type": "解答",
+      "stem": "已知数列 {aₙ} 满足 a₁=1，aₙ₊₁=2aₙ+1，求通项与前 n 项和。",
+      "student_answer": "学生直接对递推式两边求和，得到 aₙ=2ⁿ⁻¹（漏掉常数项处理）",
+      "scoring": "得分点1 零、得分点2 零、得分点3 满",
+      "prior_accuracy": "55.0 %",
+      "days_since_last": "12.0 天"
+    },
+    "questions": [
+      {
+        "qid": "primary_domain",
+        "type": "choice",
+        "instructions": "该错误的根源属于哪个一级知识域？"
+      },
+      {
+        "qid": "mastery_level",
+        "type": "score",
+        "instructions": "该知识点的掌握程度属于哪一档？"
+      }
+    ],
+    "expected_label": {
+      "primary_domain": "number_algebra",
+      "mastery_level": "0"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：primary_domain 六类均衡（每类 ≥13%，inquiry_method 保底 15% 因审题类最易被误归入学科域）；mastery_level 四档 20/30/35/15；is_core_kp=true 占比 65%；tag_confident=false 占比 18%。「根源 vs 失分步骤」最小对照对（同题两种归因表述）单独 10%；空白作答样本单独 6% 并强制「待面批后修正」标注。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 primary_domain 六类中至少五类与 mastery_level 四档中三档）作为 --examples 输入；few-shot 范例必须保留得分点得分情况字段——解答题范例缺得分点会教出跳过定档证据直接按题面归类；「根源 vs 失分步骤」的对照范例必须成对出现并标注追问一层的推理，训练根源归因纪律；空白作答范例需带保守归因标注。",
+  "compliance": [
+    "学生作答属教育数据，训练数据须去标识：剔除姓名、班级与学号，仅保留学段学科与作答内容",
+    "学生原卷转写保留涂改痕迹的结构特征，不保留可识别个人书写习惯的高清描述",
+    "输出仅为错题归因参考，不构成对学生学习能力的评价，不生成给家长的反馈文本",
+    "special education（随班就读）样本的学情特征做泛化处理，不保留诊断信息"
+  ],
+  "acceptance": [
+    "primary_domain 六类 macro-F1 ≥0.85，inquiry_method 与学科域的混淆率 ≤8%（核心失败模式）",
+    "mastery_level 四档 QWK ≥0.75（有序档位一致性）",
+    "is_core_kp accuracy ≥0.90",
+    "空白作答子集上「待面批后修正」标注率 =1.0（硬规则验收）",
+    "mastery_level 与首个失分得分点性质的一致率 ≥0.9（证据依赖验收）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "inquiry_method 被吞并进学科域 → few-shot 缺少「根源 vs 失分步骤」对照，补充同题双归因样本并核对 sidecar 的追问一层标注",
+    "mastery_level 与得分点证据脱节 → 检查蒸馏数据中 scoring 字段是否被截断，定档依赖首个失分得分点性质",
+    "空白作答被硬归类 → 「待面批后修正」标注路径失效，检查 sidecar 是否保留不确定样本",
+    "综合题归域漂移 → sidecar 未标注失分占比，检查各得分点域归属是否保留",
+    "OCR 噪声被当作笔误 → 识别噪声与真实笔误的样本未分开，核对 few_shot 是否区分 OCR 体与原卷体"
+  ],
+  "expert_review": [
+    "primary_domain 六分类与课标一级主题的映射（分版本教材的域划分有差异，需学科教研员复核）",
+    "mastery_level 四档与校本学情量表的对应",
+    "主干知识点的清单口径（函数、方程、平面几何、阅读写作为主干的示例是否完整）",
+    "「根源归因追问一层」在非数学学科的适用边界",
+    "空白作答保守归因的表述方式与面批流程衔接"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；错题归因依赖对作答文本的语义理解，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是教研组的错题归因助手。基于错题摘要输出：错误根源的知识域（number_algebra/geometry/statistics_prob/reading_writing/language_basics/inquiry_method 六选一）、知识点掌握程度（0-3 档）、是否课标主干知识点、归因证据是否充分。归因按错误的根源而非最终失分步骤，追问一层；掌握度以首个失分得分点的性质为第一证据，连锁失分不升级档位；综合题按失分占比最大的域归类。信息不足时给初步归类并标注「待面批后修正」，掌握度按保守口径就低。输出为归因参考，不评价学生能力，不生成家长反馈。",
+      "en": "You are a teaching-research error-analysis assistant. From a wrong-answer summary, output: the root knowledge domain (one of number_algebra/geometry/statistics_prob/reading_writing/language_basics/inquiry_method), mastery level (0-3), whether the knowledge point is core-curriculum, and whether the evidence suffices. Attribute to the ROOT error one level deeper than the final lost step; use the first lost scoring point as primary evidence for mastery; classify multi-topic items by the domain losing the most points. Mark blank or ambiguous answers as provisional and grade mastery conservatively. Output is analysis reference only — never evaluate the student or draft parent feedback."
+    },
+    "ask_template": "请基于以下错题摘要输出归因判断：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "K12 错题的知识点归因与掌握度诊断",
+      "知识域六分类（数与代数/图形几何/统计概率/读写/语言基础/方法探究）",
+      "掌握度四档与得分点证据",
+      "根源归因与失分步骤的区分",
+      "信息不足时的保守归因口径"
+    ],
+    "kev_track": false
+  }
+}

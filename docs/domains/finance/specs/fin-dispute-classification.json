@@ -1,0 +1,164 @@
+{
+  "_meta": {
+    "purpose": "交易争议分类与拒付处置分级 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/fin-dispute-classification.yaml"
+  },
+  "name": "fin-dispute-classification",
+  "label_zh": "交易争议分类",
+  "label_en": "Transaction Dispute Classification",
+  "domain": "银行与支付机构的交易争议（拒付/欺诈/服务纠纷）工单分类与处置分级。争议处理专员把一笔争议交易的结构化摘要（持卡人陈述、商户信息、交易特征、历史争议记录、单据留存情况）交给助手，助手判断争议类型（dispute_type 六选一）、拒付处置时限档（chargeback_tier 四档）、是否需要同步报案（needs_police），以及摘要信息是否足以分类（info_sufficient）。处置口径参考《银行卡业务管理办法》与卡组织拒付规则（Visa compelling evidence / Mastercard fraud 计划）的示例映射，需争议处理专家复核。",
+  "state": "一笔争议交易的结构化摘要：持卡人身份（个人/商户）、交易渠道（线上/线下 POS/ATM/代扣）、争议金额（元）、持卡人陈述要点（未授权/未收到货/货不对板/重复扣款/计费错误）、商户所在地（境内/境外）、距交易发生天数、近 12 月同商户争议次数、 OTP/3DS 验证情况（通过/未启用/失败）、商户是否提供凭证。",
+  "state_example": {
+    "case": "male 39, 线上交易",
+    "our_side": "个人持卡人",
+    "context": "境外电商购物，物流显示妥投但客户称未收到，地址与常用收货地址不符",
+    "交易渠道": "线上",
+    "争议金额": "2,480.00 元",
+    "持卡人陈述要点": "未收到货",
+    "距交易发生天数": "45.0 天",
+    "近12月同商户争议次数": "1.0 次",
+    "OTP验证情况": "3DS 通过",
+    "商户凭证情况": "已提供签收单"
+  },
+  "questions": {
+    "dispute_type": {
+      "type": "choice",
+      "instructions": "该争议属于哪一类？",
+      "criteria": {
+        "unauthorized_fraud": "未授权欺诈：非本人交易，卡被盗刷或信息泄露",
+        "goods_not_received": "未收到货：已扣款但商品/服务未交付",
+        "not_as_described": "货不对板：收到的商品/服务与约定明显不符",
+        "duplicate_charge": "重复扣款：同一笔交易被扣款两次或以上",
+        "billing_error": "计费错误：金额、币种、订阅周期与约定不符",
+        "friendly_fraud": "善意欺诈：持卡人本人交易但拒绝承认（家人使用、忘记订阅等）"
+      }
+    },
+    "chargeback_tier": {
+      "type": "score",
+      "instructions": "该争议应在多长时间内进入处置动作？",
+      "criteria": [
+        "立即冻结相关账户/交易并启动欺诈调查",
+        "48 小时内完成反欺诈复核并发起拒付",
+        "5 个工作日内按常规争议流程处理",
+        "非争议类诉求，转咨询/投诉流程"
+      ]
+    },
+    "needs_police": {
+      "type": "noul",
+      "instructions": "该争议是否需要同步向公安机关报案（或建议持卡人报案）？",
+      "criteria": {
+        "true": "有未授权欺诈证据、涉组织化特征或金额达到报案标准",
+        "false": "普通商务争议或证据不足以支持报案"
+      }
+    },
+    "info_sufficient": {
+      "type": "noul",
+      "instructions": "摘要是否提供了分类与处置分级所需的全部要素（陈述要点、验证情况、商户凭证）？",
+      "criteria": {
+        "true": "要素齐全，可直接分类并定档",
+        "false": "缺关键要素（陈述含糊、缺验证情况），需先向持卡人补录"
+      }
+    }
+  },
+  "guidance": "dispute_type 按持卡人陈述要点与交易证据归类：陈述「非本人交易」且 OTP 失败或未启用归 unauthorized_fraud；OTP 通过且商户有签收凭证但持卡人否认交易，是 friendly_fraud 的典型形态——验证记录与凭证同持卡人陈述的矛盾指向善意欺诈而非盗刷。goods_not_received 与 not_as_described 的区分点是交易是否已交付：物流未妥投归前者，已妥投但品质争议归后者。chargeback_tier 由争议类型与欺诈证据决定：unauthorized_fraud 一律档 0 或 1（有组织特征或大额走 0，单笔走 1）；friendly_fraud 若证据充分走档 1 发起拒付抗辩，证据不足走档 2；goods_not_received / not_as_described / billing_error 常规走档 2；duplicate_charge 若为系统重复扣款且商户可退走档 2，无商户配合走档 1。needs_police 的判据：unauthorized_fraud 且（争议金额 ≥2,000 元或近 12 月同账户争议 ≥3 次——后者是组织化测试信号）报 true；friendly_fraud 不报案，由发卡行内部处理。info_sufficient=false 时（陈述含糊、缺 OTP 情况），dispute_type 仍可按现有要素给初步归类但必须标注「待补录后修正」，chargeback_tier 按保守口径（就高不就低）处理——争议工具宁可先按高优先级走查证，不可按低优先级压单。",
+  "variety": [
+    "争议类型（dispute_type 六选项逐一覆盖）：盗刷（OTP 失败/境外消费）、未收到货（物流停滞/代扣服务未提供）、货不对板（假货/规格不符）、重复扣款（系统重试/双提交）、计费错误（汇率/订阅续费争议）、善意欺诈（家人用卡/忘记订阅/拒认交易）",
+    "处置档（chargeback_tier 四档全覆盖）：0 立即冻结+欺诈调查（组织化特征、大额盗刷）、1 48 小时反欺诈复核（单笔盗刷、证据充分的善意欺诈）、2 常规争议流程（商务争议）、3 转咨询（陈述无争议实质）",
+    "报案判定（needs_police）：金额达标盗刷、同账户多次争议的组织化信号须为 true；friendly_fraud、小额商务争议为 false",
+    "验证情况谱系：3DS 通过+商户凭证齐全、未启用 OTP、验证失败、代扣无验证；每种验证形态与 dispute_type 的组合单独覆盖",
+    "商户侧：境内/境外、有无凭证（签收单/物流轨迹/聊天记录）、商户是否配合退款",
+    "信息完整度（info_sufficient）：齐全、陈述含糊、缺 OTP 情况、缺凭证信息、多项缺失",
+    "文本风格：客服工单记录体、持卡人口述转写体、商户抗辩函引用体",
+    "易错陷阱：OTP 通过+有签收凭证+否认交易是 friendly_fraud 不是盗刷、未收到货与货不对板以是否交付区分、善意欺诈不报案、验证情况缺失时按保守档处理"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "info_sufficient",
+    "note": "模型输出仅为争议分类与处置时限建议，拒付发起、资金追偿与报案决定由争议处理岗按授权作出；涉账户冻结的资金处置动作转风险条线复核，模型不生成拒付函或报案材料。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "female 29, 线上交易",
+      "our_side": "个人持卡人",
+      "context": "近 30 日同账户第 4 笔境外盗刷争议，金额逐笔递增",
+      "交易渠道": "线上",
+      "争议金额": "8,900.00 元",
+      "持卡人陈述要点": "非本人交易",
+      "距交易发生天数": "2.0 天",
+      "近12月同商户争议次数": "0.0 次",
+      "OTP验证情况": "验证失败",
+      "商户凭证情况": "未提供"
+    },
+    "questions": [
+      {
+        "qid": "dispute_type",
+        "type": "choice",
+        "instructions": "该争议属于哪一类？"
+      },
+      {
+        "qid": "needs_police",
+        "type": "noul",
+        "instructions": "该争议是否需要同步报案？"
+      }
+    ],
+    "expected_label": {
+      "dispute_type": "unauthorized_fraud",
+      "needs_police": "true"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：dispute_type 六类均衡（每类 ≥12%，friendly_fraud 保底 16% 因其与 unauthorized_fraud 最易混淆）；chargeback_tier 四档 10/22/50/18；needs_police=true 占比 20%；info_sufficient=false 占比 18%。「OTP 通过+否认交易」最小对照对（friendly_fraud vs unauthorized_fraud 的同一证据形态两种陈述）单独 10%；组织化信号样本（同账户多次争议）单独 6% 并强制 needs_police=true。境外商户样本占比 25%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 dispute_type 六类中至少五类与 chargeback_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 OTP验证情况与商户凭证情况字段——缺验证情况的范例会教出对验证证据矛盾的漏判；「OTP 通过+否认交易」的 friendly_fraud 范例必须与 OTP 失败的盗刷范例成对出现，训练「验证记录 vs 持卡人陈述」的证据权重纪律。",
+  "compliance": [
+    "争议工单样本须脱敏：剔除卡号、持卡人姓名、精确地址与商户全称，保留交易结构与证据形态",
+    "输出仅为争议分类与处置时限建议，不构成对持卡人陈述真伪的最终认定，不生成拒付函或报案材料",
+    "friendly_fraud 判定仅基于交易证据的矛盾性，样本与输出不得包含对持卡人诚信的人格化评价",
+    "涉反洗钱、涉诈资金链的样本转安全条线，不进入本场景训练集"
+  ],
+  "acceptance": [
+    "dispute_type 六类 macro-F1 ≥0.85，friendly_fraud 与 unauthorized_fraud 的混淆率 ≤6%（核心失败模式）",
+    "chargeback_tier 四档 QWK ≥0.75（有序档位一致性）",
+    "needs_police 召回 ≥0.95（漏报案的欺诈风险远高于多报案打扰）",
+    "unauthorized_fraud 子集 chargeback_tier ∈ {0,1} 比例 =1.0（硬规则验收）",
+    "info_sufficient=false 子集上「待补录后修正」标注率 =1.0（硬规则验收）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "friendly_fraud 被误判为 unauthorized_fraud → few-shot 缺少「OTP 通过+否认交易」对照范例，补充同证据形态双陈述样本并核对 sidecar 的证据权重标注",
+    "needs_police 漏报 → 检查蒸馏数据中争议金额与同账户争议次数是否被脱敏误删（报案判据依赖两者）",
+    "chargeback_tier 档位与 dispute_type 矛盾 → sidecar 标注不一致，检查 unauthorized_fraud 是否强制档 0/1",
+    "goods_not_received 与 not_as_described 混淆 → sidecar 未标注交付状态，检查物流妥投字段是否保留",
+    "缺 OTP 的样本被硬分类 → 「待补录后修正」标注路径失效，检查 sidecar 是否保留不确定样本"
+  ],
+  "expert_review": [
+    "dispute_type 六分类与卡组织拒付 reason code 的映射（Visa/Mastercard 口径不同，需争议处理专家复核）",
+    "chargeback_tier 四档时限与《银行卡业务管理办法》异议处理时限的对应",
+    "needs_police 报案金额标准（2,000 元为示例值，需与当地公安机关立案标准核对）",
+    "组织化特征判据（同账户多次争议阈值）与反欺诈团队的风控规则一致性",
+    "friendly_fraud 证据权重规则（OTP/签收凭证/历史消费习惯）在边界案例中的应用"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；争议分类依赖陈述与证据的语义矛盾判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是银行争议处理团队的工单分类助手。基于争议交易摘要输出：争议类型（unauthorized_fraud/goods_not_received/not_as_described/duplicate_charge/billing_error/friendly_fraud 六选一）、处置时限档（0-3 档）、是否需要同步报案、摘要信息是否足以分类。分类以交易证据与持卡人陈述的一致性为准：验证通过且有商户凭证但持卡人否认交易的归善意欺诈；未授权欺诈一律按档 0 或 1 处置，金额达标或呈组织化特征时建议报案。信息不足时给初步归类并标注「待补录后修正」，处置档按保守口径就高。输出为分类建议，不认定陈述真伪，不生成拒付函或报案材料。",
+      "en": "You are a dispute-classification assistant for a card issuer. From a dispute summary, output: dispute type (one of unauthorized_fraud/goods_not_received/not_as_described/duplicate_charge/billing_error/friendly_fraud), handling tier (0-3), whether to file a police report, and whether the summary suffices. Classify by the consistency of transaction evidence with the cardholder's claim: verified transaction plus merchant proof plus denial means friendly fraud, not theft. Unauthorized fraud is always tier 0-1; recommend a police report when amounts qualify or a testing pattern appears. Mark insufficient evidence as provisional with a conservative tier. Output is classification advice only — never adjudicate truthfulness or generate chargeback letters."
+    },
+    "ask_template": "请基于以下争议交易摘要输出分类判断：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "银行卡交易争议工单的分类与处置分级",
+      "争议六分类（盗刷/未收货/货不对板/重复扣款/计费错误/善意欺诈）",
+      "交易验证证据与持卡人陈述的权重判断",
+      "报案判据与组织化欺诈信号",
+      "信息不足时的保守处置口径"
+    ],
+    "kev_track": false
+  }
+}

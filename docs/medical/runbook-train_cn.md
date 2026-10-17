@@ -107,12 +107,12 @@ $env:HF_ENDPOINT="https://hf-mirror.com"
 ### 步骤 1 · 算记录数 ✅
 
 - **目的**：用 McNemar 配对公式确定「多久数据才能让微调 vs 基线差异在统计上显著」。
-- **输入**：场景 spec（`docs/medical/specs/critical-value.json`，内含 4 个问题）。
+- **输入**：场景 spec（`docs/domains/medical/specs/critical-value.json`，内含 4 个问题）。
 - **环境**：纯标准库，无需 torch / 网络。
 - **命令**：
 
 ```bash
-python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-value.json --baseline-acc 0.75
+python skills/kev-finetune/scripts/plan_size.py docs/domains/medical/specs/critical-value.json --baseline-acc 0.75
 ```
 
 - **预期输出**：
@@ -530,7 +530,7 @@ uv run python -m kev.publish \
 | 5 CLI | `kev.train --help` | ⚠️ 首跑 `No module named 'resource'` | 已打补丁（`kev/train.py`/`kev/suite.py` 可选导入），重跑通过 |
 | 5 CLI | `kev.benchmark/evaluate/publish --help` | ✅ 均正常 | 补丁对整套包生效 |
 | 7 训练 | `kev.train --data ... --base Qwen/Qwen3.5-0.8B-Base` | ✅ 直连 `OSError: couldn't connect`；设 `HF_ENDPOINT=https://hf-mirror.com` 后 0.6B 基座 310/310 权重加载成功，3 条数据 1 epoch CPU 冒烟跑通：`trainable 5.6M`、生成 `adapter_model.safetensors`+`head.pt`+分词器快照，**无报错**（仅 Windows symlink 无害警告） | 训练半链路完全打通；0.8B 走相同 LoRA+head+保存代码路径，仅基座更大/真实训练需 GPU（`--device cuda --dtype bf16`） |
-| 8 LLM 蒸馏（百灵） | `generate_data.py docs/medical/specs/triage.json --n 40 --batch 10 --concurrency 3 --model Ling-3.0-flash`（`KEV_GEN_BASE_URL=https://api.ant-ling.com/v1`） | ✅ 4 次调用 197s、40 条 **0 rejected**；`split_data` 校验 40 valid / 0 冲突，划分 train 28 / cal 6 / dev 6 | 百灵 `Ling-3.0-flash` 蒸馏链路打通；推理模型先出 reasoning 再出 content；40 条仅验证链路（温度拟合需 ≥25 条），正式蒸馏按 `plan_size` 量 |
+| 8 LLM 蒸馏（百灵） | `generate_data.py docs/domains/medical/specs/triage.json --n 40 --batch 10 --concurrency 3 --model Ling-3.0-flash`（`KEV_GEN_BASE_URL=https://api.ant-ling.com/v1`） | ✅ 4 次调用 197s、40 条 **0 rejected**；`split_data` 校验 40 valid / 0 冲突，划分 train 28 / cal 6 / dev 6 | 百灵 `Ling-3.0-flash` 蒸馏链路打通；推理模型先出 reasoning 再出 content；40 条仅验证链路（温度拟合需 ≥25 条），正式蒸馏按 `plan_size` 量 |
 | 8b 蒸馏脚本改造（多 key / 每日 50w / 调度） | `generate_data.py --category triage --n 3 --model Ling-3.0-tiny --api-keys $K`；另测 `--daily-limit 1`（当日额度耗尽→退出码 2）、`--api-keys bogus-a,bogus-b`（双 key 401→mark_dead→轮换耗尽） | ✅ 单 key 3 条落盘 `data/cv/triage.jsonl`、`.distill/usage_<日期>.json` 记账 1925 token；`--daily-limit 1` 跨进程续算当日额度即刻停；双假 key 轮换后退出码 2 | 6 大类 `--category`、多 key 每日 50w 软上限、每日增量+调度（`--schedule`/cron/任务计划程序）三档能力实测可用 |
 
 **结论**：数据半链路（生成→核算→划分→CLI 校验）在本机完全跑通；训练/评估半链路因（1）原生 Windows 缺 Unix 模块
@@ -549,7 +549,7 @@ HF 的 Linux/WSL2 机器上，按第二节步骤 7–12 即可复现。
 export HF_ENDPOINT=https://hf-mirror.com      # PowerShell: $env:HF_ENDPOINT="https://hf-mirror.com"
 uv sync
 # 1. 算量
-python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-value.json --baseline-acc 0.75
+python skills/kev-finetune/scripts/plan_size.py docs/domains/medical/specs/critical-value.json --baseline-acc 0.75
 # 2. 生成（程序化规则合成 / 可选 LLM 蒸馏生成式轨）
 python kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
 # 2b. LLM 蒸馏某一大类（6 类用 --category；多 key 每日 50w、--schedule 守护或交 cron/任务计划程序）
@@ -673,9 +673,11 @@ export KEV_CONSOLE_DB_NAME=kev_console
 uv run python -m kev.console
 ```
 
-- 场景 spec 配置（7 个 `docs/medical/specs/*.json` 的内容与历史版本）**全部存数据库**，运行时不再依赖本地 spec 文件；`scenarios.spec_json` 存当前内容，`scenario_spec_history` 存最近 20 版。
-- 初始化数据库（建表 + 初始数据，含 spec 内容）：`uv run python -m kev.console initdb`。它会按当前后端执行 `deploy/console/schema.<backend>.sql`（sqlite / postgresql 两套由 `scripts/gen_console_schema.py` 单源生成）；文件缺失时回退到 `Store()` 的建库 + 种子逻辑。
-- 改了表结构后重新生成初始化 SQL：`uv run python scripts/gen_console_schema.py`（改了 `kev/console/db.py` 的 `_ddl` 也应重跑，避免两份 DDL 漂移）。
+- 场景 spec 配置（`docs/domains/<领域>/specs/*.json`，当前五领域 61 个场景的内容与历史版本）**全部存数据库**，运行时不再依赖本地 spec 文件；`scenarios.spec_json` 存当前内容，`scenario_spec_history` 存最近 20 版。
+- 初始化数据库（建表 + 领域/场景清单）：`uv run python -m kev.console initdb`。它会按当前后端执行 `deploy/console/schema.<backend>.sql`（sqlite / postgresql 两套由 `scripts/gen_console_schema.py` 单源生成）；文件缺失时回退到 `Store()` 的建库 + 种子逻辑。
+- 生成 SQL 不再内联 spec 内容（61 份 spec 会让两套 SQL 各膨胀 ~780 KB）：`spec_json` 由种子补齐。启动服务时 `Store()` 会自动播种（只填为空的行，不覆盖已编辑的内容），也可显式跑 `uv run python scripts/import_domain_specs.py`（`--check` 只读对账不写库，`--force` 以文件为准覆盖并把旧内容归档）。清单的单一真相源是 `kev/console/scenario_specs.py`，语义与轨制列见 `docs/domains/README.md` 第一节末。
+- 表结构版本 `schema_version=8`：v8 给 `scenario_domains` 补 `spec_dir`（该域由哪个 `docs/domains` 目录供数），给 `scenarios` 补 `track` / `generator_kind` / `distill_yaml` / `origin`；旧库首次打开即幂等迁移（补列后由种子重算值）。
+- 改了表结构后重新生成初始化 SQL：`uv run python scripts/gen_console_schema.py`（改了 `kev/console/db.py` 的 `_ddl` 或 `scenario_specs.py` 的清单也应重跑，避免两份 DDL 漂移）。
 
 > 兼容旧变量 `KEV_CONSOLE_DB`（仅 sqlite，作为路径兜底）；sqlite 旧库首次打开会做一次性迁移（补 `spec_json` 列并回填本地 spec 内容）。
 
@@ -709,7 +711,7 @@ uv run python -m kev.console
 
 - **手动命令**
   ```bash
-python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-value.json --baseline-acc 0.75
+python skills/kev-finetune/scripts/plan_size.py docs/domains/medical/specs/critical-value.json --baseline-acc 0.75
   ```
 - **控制台执行**：Data 标签页 → 「算记录数」(`plan_size`)。表单只填 **场景**（`critical-value` 等下拉）。
   后端拼出：`python plan_size.py <spec>.json --baseline-acc 0.75 --json`（多 `--json`，结果结构化回显 `total_records`）。

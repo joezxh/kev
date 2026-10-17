@@ -1,0 +1,158 @@
+{
+  "_meta": {
+    "purpose": "企业法务部的合同争议解决条款审查 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/law-adr-clause.yaml"
+  },
+  "name": "law-adr-clause",
+  "label_zh": "争议条款审查",
+  "label_en": "Dispute Resolution Clause Review",
+  "domain": "企业法务部的合同争议解决条款审查。合同审核员把一份条款审查要素单交给助手：合同类型、条款原文、约定管辖/仲裁机构、适用法律、格式条款与否、相对方情形。助手判断条款是否有效可执行（clause_valid）、修改档（revision_tier 四档）、缺陷类别（defect_category 七选一），以及条款要素是否足以判定（clause_evidence）。口径以《民事诉讼法》协议管辖/仲裁法与《民法典》格式条款规则为基线，阈值为示例口径，需法务负责人与外部律师复核。",
+  "state": "一份争议解决条款审查要素单：合同编号、合同类型（买卖/服务/租赁/建设工程/劳动合同/涉外贸易）、条款原文摘录、约定管辖或仲裁机构描述、适用法律约定、是否格式条款（是/否/不明）、相对方情形（消费者/中小企业/大型企业/涉外主体）。",
+  "state_example": {
+    "desk": "female 审核员 A, 合同审核组",
+    "context": "标准采购合同修订，相对方为中小企业",
+    "contract": "合同号 CT-2026-0228",
+    "contract_type": "买卖合同",
+    "clause_text": "「争议由甲方所在地有管辖权的法院管辖」",
+    "forum": "甲方住所地法院（原告住所地乙方为相对方）",
+    "governing_law": "中华人民共和国法律",
+    "standard_form": "是（甲方提供的格式合同）",
+    "counterpart": "中小企业"
+  },
+  "questions": {
+    "clause_valid": {
+      "type": "noul",
+      "instructions": "该争议解决条款是否有效可执行（而不是无效或不可执行）？",
+      "criteria": {
+        "true": "管辖/仲裁约定不违反强制规定，表述可确定",
+        "false": "违反级别/专属管辖、仲裁约定不明或不属于可仲裁事项"
+      }
+    },
+    "revision_tier": {
+      "type": "score",
+      "instructions": "条款修改应在什么层级与时限完成？",
+      "criteria": [
+        "条款无效，签约前必须重写（违反强制规定/格式条款无效情形）",
+        "修改后可用（约定不明需澄清）",
+        "建议性优化（可执行但有风险点）",
+        "通过，无需修改"
+      ]
+    },
+    "defect_category": {
+      "type": "choice",
+      "instructions": "触发修改的主要缺陷属于哪一类？",
+      "criteria": {
+        "none": "无（通过）",
+        "jurisdiction_illegal": "管辖类：违反级别/专属管辖或协议管辖要件",
+        "vagueness": "不明类：管辖或仲裁机构约定不确定",
+        "asymmetry": "失衡类：格式条款排除对方主要权利（单方管辖选择权）",
+        "foreign_validity": "涉外类：域外管辖/适用法约定存在执行障碍",
+        "arbitration_defect": "仲裁类：仲裁意思表示不明、机构不存在或或裁或审",
+        "conflict_law": "冲突类：与合同其他条款或主协议的争议条款冲突"
+      }
+    },
+    "clause_evidence": {
+      "type": "noul",
+      "instructions": "审查要素单是否提供了判定所需的全部要素（条款原文、相对方情形、格式与否）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照管辖与格式条款规则判定",
+        "false": "缺条款原文、缺相对方情形或缺格式条款状态，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "clause_valid 的唯一判据是约定不违反强制规定且可确定（示例口径，需法务负责人复核）：协议管辖不违反级别管辖与专属管辖、连接点与争议有实际联系 → true；仲裁约定明确的机构名称且或裁或审未并存 → true；约定「甲方所在地法院」对格式合同相对方未合理提示 → 有效但涉失衡缺陷；违反专属管辖（不动产/港口作业）→ false；仲裁机构名称不准确（「某某市仲裁委员会」实际不存在）或未选定仲裁（或裁或审）→ false 或不可执行。revision_tier：jurisdiction_illegal 与 arbitration_defect → 档 0（签约前必须重写，无效条款等于没有争议安排）；asymmetry（格式条款单方管辖选择权）→ 档 0 或 1——对消费者情形无效必须重写，对中小企业可提示后改为共同管辖；vagueness → 档 1（补全机构全称/连接点）；foreign_validity → 档 1（涉外条款需外部律师复核）；conflict_law → 档 1；表述可执行但有优化空间（如选定不利己法院）→ 档 2。revision_tier=3 时 clause_valid 必须为 true 且 defect_category 为 none。defect_category 按「最先导致不可执行」取类，优先级：jurisdiction_illegal > arbitration_defect > asymmetry > vagueness > foreign_validity > conflict_law。clause_evidence=false 时（缺条款原文、缺相对方情形、缺格式状态），clause_valid 与 revision_tier 不得凭猜测填写，标记待补并按档 1 暂存。",
+  "variety": [
+    "合同类型谱系：买卖（协议管辖常见）、服务（格式条款高发）、租赁（不动产专属管辖陷阱）、建设工程（专属管辖）、劳动合同（劳动仲裁前置）、涉外贸易（域外管辖与适用法）——不同类型的强制规则不同",
+    "缺陷类别（defect_category 七选项逐一覆盖）：jurisdiction_illegal（约定基层法院审理专属管辖不动产纠纷）、arbitration_defect（「提交仲裁解决」未指明机构）、asymmetry（格式条款「甲方所在地法院管辖」对消费者）、vagueness（「由守约方所在地法院管辖」）、foreign_validity（约定境外法院管辖但财产均在境内）、conflict_law（框架协议与订单条款管辖冲突）、none",
+    "修改档（revision_tier 四档全覆盖）：0 重写（无效/对消费者失衡）、1 修改后可用（约定不明/涉外复核）、2 建议优化、3 通过（clause_valid=true 必须为 3）",
+    "格式条款对照（专门生成）：对消费者格式条款排除诉权的无效样本与对等协商条款的对照——《民法典》第 496/497 条",
+    "专属管辖对照（专门生成）：不动产租赁约定异地法院的无效样本与合规约定的对照",
+    "要素完整度（clause_evidence）：齐全、缺条款原文、缺相对方情形、缺格式状态、多项缺失",
+    "呈现风格：条款原文摘录体、审核员批注体、外部律师意见体、合同评审记录体",
+    "易错陷阱：专属管辖不可协议排除、或裁或审无效、仲裁机构名称要全、格式条款对消费者无效、涉外条款先查执行地"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "clause_evidence",
+    "note": "模型输出仅为条款审查建议，签约决定与条款最终文本由法务负责人与业务负责人作出；条款效力的司法认定属裁判范围，模型不给出确定性法律意见；涉仲裁与诉讼的实体策略转外部律师通道。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 审核员 B, 合同审核组",
+      "context": "租赁合同审查，标的为仓储不动产",
+      "contract": "合同号 CT-2026-0310",
+      "contract_type": "租赁合同（仓储不动产）",
+      "clause_text": "「因本合同发生争议，提交北京仲裁委员会仲裁；任何一方也可直接向人民法院起诉」",
+      "forum": "北京仲裁委员会与法院并存",
+      "governing_law": "中华人民共和国法律",
+      "standard_form": "否",
+      "counterpart": "大型企业"
+    },
+    "questions": [
+      {"qid": "clause_valid", "type": "noul",
+       "instructions": "该争议解决条款是否有效可执行？"},
+      {"qid": "revision_tier", "type": "score",
+       "instructions": "条款修改应在什么层级与时限完成？"}
+    ],
+    "expected_label": {"clause_valid": "false", "revision_tier": "0"}
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：defect_category 七类中 none 22%、jurisdiction_illegal 14%、vagueness 16%、asymmetry 14%、foreign_validity 10%、arbitration_defect 14%、conflict_law 10%；revision_tier 四档 18/40/16/26；clause_valid=false 56%、true 44%；clause_evidence=false 占比 15%。「或裁或审 vs 单一仲裁」对照对单独 6%；「格式条款对消费者 vs 对企业」对照对单独 6%；专属管辖陷阱样本单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 defect_category 七类中至少五类与 revision_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 clause_text 字段——缺原文的范例会教出凭合同类型猜缺陷；「或裁或审无效 vs 单一仲裁有效」对照范例必须成对出现并标注意思表示判据；asymmetry 范例需写出相对方情形与格式提示义务的推理。",
+  "compliance": [
+    "条款样本须去标识：剔除公司名称、合同金额与经办人姓名，仅保留条款结构与相对方类型",
+    "条款原文只保留争议解决部分，不保留商业条款细节",
+    "输出仅为审查建议，不构成法律意见，不给出条款效力的确定性结论",
+    "涉仲裁程序与诉讼实体策略的样本转外部律师通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "clause_valid accuracy ≥0.96，误放行率（无效条款判有效）≤1.5%（无效条款等于没有争议安排）",
+    "revision_tier 四档 QWK ≥0.75",
+    "defect_category 七类 macro-F1 ≥0.85",
+    "jurisdiction_illegal 与 arbitration_defect 子集 revision_tier=0 比例 =1.0（硬规则验收）",
+    "asymmetry 对消费者子集 revision_tier=0 比例 ≥0.95",
+    "clause_evidence=false 子集上不强行判定率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "arbitration_defect 被归 vagueness → 「或裁或审」与「机构不明」的区分在 sidecar 缺失，检查条款原文完整性",
+    "asymmetry 未档 0 → 相对方为消费者的语境缺失，检查 counterpart 字段",
+    "jurisdiction_illegal 被归 none → 专属管辖陷阱对照缺失，检查对照样本",
+    "foreign_validity 被归 vagueness → 涉外执行障碍的语境缺失，检查 contract_type",
+    "clause_evidence=false 仍判定 → 违反软标签纪律，检查待补标注"
+  ],
+  "expert_review": [
+    "协议管辖连接点（实际联系）的认定口径与现行《民诉法》条文的对应",
+    "仲裁机构名称准确性审查清单与仲裁委员会名录的衔接",
+    "格式条款提示义务（加粗/单独确认）的合规标准与判例口径",
+    "涉外条款的域外执行可行性评估流程与外部律师分工",
+    "框架协议与订单/附录条款冲突的优先级规则"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；条款效力判定依赖管辖规则与格式条款规则的语义判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是企业法务合同审核组的争议解决条款审查助手。基于条款审查要素单输出：条款是否有效可执行、修改档（0-3 档：签约前必须重写/修改后可用/建议性优化/通过）、缺陷类别（none/jurisdiction_illegal/arbitration_defect/asymmetry/foreign_validity/vagueness/conflict_law 七选一）、审查要素是否足以判定。违反级别/专属管辖、或裁或审、仲裁机构不存在档 0——无效条款等于没有争议安排；格式条款排除相对方诉权（对消费者）档 0；约定不明、涉外执行障碍、条款冲突档 1；可执行但有优化空间档 2。缺陷按最先导致不可执行者取类。信息不足时标记待补并按档 1 暂存，不得凭部分信息判定。输出为审查建议，条款文本与签约由法务负责人决定。",
+      "en": "You are a corporate legal contract-clause reviewer. From a clause review sheet, output: whether the dispute-resolution clause is valid and enforceable, the revision tier (0-3: must rewrite before signing / revise then use / suggested optimisation / pass), the defect category (none/jurisdiction_illegal/arbitration_defect/asymmetry/foreign_validity/vagueness/conflict_law), and whether the evidence suffices. Level/exclusive-jurisdiction violations, arb-or-litigate wording, and non-existent arbitral institutions are tier 0; standard-form clauses stripping counterparties of forum rights (consumers) are tier 0; vagueness, foreign-enforcement obstacles, and internal conflicts are tier 1. Classify by the first defect that makes the clause unenforceable. Mark missing elements and hold rather than guessing. Output is review advice; final text and signing rest with legal leadership."
+    },
+    "ask_template": "请根据以下争议解决条款审查要素单完成审查：\n\n审查要素单：\n{{ state }}\n\n请逐项输出：\n1. clause_valid：条款是否有效可执行（true/false），注明管辖/仲裁规则的对应推理。\n2. revision_tier：修改档（0-3），列明缺陷依据与阻断逻辑。\n3. defect_category：主要缺陷类别（七选一），说明取类优先级推理。\n4. clause_evidence：审查要素是否足以判定（true/false），false 时列出缺失要素与暂存处置。",
+    "topics": [
+      "协议管辖的要件与实际联系",
+      "专属管辖不可协议排除",
+      "或裁或审条款的效力",
+      "仲裁机构名称与仲裁意思表示",
+      "格式条款与相对方保护",
+      "涉外管辖与适用法执行",
+      "框架协议条款冲突",
+      "可执行条款的优化建议"
+    ],
+    "kev_track": false
+  }
+}

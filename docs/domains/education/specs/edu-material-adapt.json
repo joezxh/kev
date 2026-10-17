@@ -1,0 +1,160 @@
+{
+  "_meta": {
+    "purpose": "教学材料难度适配审查 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/edu-material-adapt.yaml"
+  },
+  "name": "edu-material-adapt",
+  "label_zh": "材料难度适配",
+  "label_en": "Material Adaptation",
+  "domain": "中小学分层教学与融合教育中的教学材料适配审查。资源教师或备课组长把一份面向特定班级的待用材料摘要（学段学科、班级画像、材料节选、生词密度、篇幅）交给助手，助手判断适配处理方式（adapt_action 四选一：直接使用/简化改写/拓展加深/搭建支架）、材料可读性档位（readability 四档）、是否需要补充可视化辅助（needs_visual），以及内容适龄性与安全性（content_appropriate）。适配口径为示例分类，需特教与学科教师复核。",
+  "state": "一份待用教学材料的适配审查摘要：学段学科、班级画像（随班就读学生数、阅读水平分布）、材料节选（3-8 句，含术语与长句样本）、生词密度（生词数/百字）、平均句长（字）、篇幅（字）、材料是否有图表辅助。",
+  "state_example": {
+    "material": "female 教师 W, 初二英语",
+    "context": "随班就读 2 名学生，班级阅读水平两极分化",
+    "grade_subject": "初二英语",
+    "class_profile": "42 人，2 名随班就读，阅读水平分布 15%-70%-15%",
+    "excerpt": "「The ecosystem demonstrates remarkable resilience following disturbances; nevertheless, trophic cascades may precipitate unexpected fluctuations in population dynamics」……",
+    "vocab_density": "8.0 生词/百字",
+    "avg_sentence_len": "28.0 字",
+    "length": "1,200.0 字",
+    "has_visuals": false
+  },
+  "questions": {
+    "adapt_action": {
+      "type": "choice",
+      "instructions": "该材料应采取哪种适配处理方式？",
+      "criteria": {
+        "keep": "直接使用：材料与班级水平匹配，无需处理",
+        "simplify": "简化改写：降低生词密度与句长，保留核心概念",
+        "enrich": "拓展加深：材料偏易，补充延伸问题或高阶任务",
+        "scaffold": "搭建支架：内容适中但需加注释、导图或分段导读"
+      }
+    },
+    "readability": {
+      "type": "score",
+      "instructions": "该材料对本班的可读性属于哪一档？",
+      "criteria": [
+        "显著超班：多数学生独立阅读困难",
+        "部分超班：中上水平可读，中下需要支持",
+        "基本匹配：绝大多数学生可独立阅读",
+        "明显偏易：全班均可轻松完成，缺乏挑战"
+      ]
+    },
+    "needs_visual": {
+      "type": "noul",
+      "instructions": "是否需要为该材料补充可视化辅助（图示/流程图/导图）？",
+      "criteria": {
+        "true": "概念抽象或多步过程且材料无图表",
+        "false": "材料已有图表或内容无需可视化"
+      }
+    },
+    "content_appropriate": {
+      "type": "noul",
+      "instructions": "材料内容是否适龄且无安全顾虑（可直接面向学生）？",
+      "criteria": {
+        "true": "内容适龄，无惊悚、歧视或不当表述",
+        "false": "存在不适龄表述或安全顾虑，需处理后再用"
+      }
+    }
+  },
+  "guidance": "adapt_action 由可读性档与班级画像共同决定：readability=0（显著超班）或=1 且班内有随班就读/阅读困难学生时走 simplify 或 scaffold——概念密度高但结构清晰走 scaffold（加注释与导图），术语堆叠且句式冗长走 simplify（改写降密度）；readability=3（偏易）走 enrich；readability=2 且画像匹配走 keep。simplify 必须保留核心概念——删生词不能删概念，删概念就是把教学目标一起删了。readability 按生词密度与平均句长定档（示例口径，需教师复核）：生词 ≥8/百字或平均句长 ≥30 字通常是档 0-1；生词 ≤3/百字且句长 ≤15 字且篇幅短的通常是档 3——但语文文本的「易」要看理解任务深度，浅字深意（如寓言）不算偏易。needs_visual 的判据是内容含抽象概念或多步过程且 has_visuals=false；说明文与实验流程类默认倾向 true，叙事类默认 false。content_appropriate=false 的典型形态：材料含暴力细节、刻板印象表述或与学段不符的成人主题——此类样本 adapt_action 必须先处理内容（simplify 不覆盖内容安全，回答中需单独指出）。readability 判定只用材料本身的指标与节选，班级画像只影响 adapt_action 的选择，不改变可读性档位——可读性是材料属性，适配是决策。",
+  "variety": [
+    "适配方式（adapt_action 四选项逐一覆盖）：keep（画像匹配的中等材料）、simplify（术语堆叠/长句冗长）、enrich（偏易的说明文）、scaffold（概念抽象但结构清晰，需注释与导图）",
+    "可读性（readability 四档全覆盖）：0 显著超班（生词 12/百字、句长 40 字）、1 部分超班（生词 8/百字）、2 基本匹配（生词 4/百字）、3 偏易（生词 2/百字、句长 12 字）",
+    "可视化判定（needs_visual）：实验流程、多步推理、生态系统等抽象内容缺图表 → true；已有图表/叙事文本 → false",
+    "内容适龄（content_appropriate）：正常样本为主；专门生成暴力细节、刻板印象、成人主题等 false 样本并单独指出处理要求",
+    "学科覆盖：语文（寓言浅字深意的陷阱样本）、英语（原版材料句长陷阱）、科学（术语密度）、历史（评价性表述）、数学（符号文本）",
+    "班级画像：随班就读 0-3 名、阅读水平集中/两极、城乡差异、年级跨度（小高/初中/高中）",
+    "文本风格：教材原文体、公众号改编体（夹 emoji 与网络语）、试卷阅读文体、双语对照体",
+    "易错陷阱：简化不能删核心概念、可读性只看材料与画像无关、浅字深意不算偏易、内容安全问题不归 simplify 处理、needs_visual 看图表有无与内容类型而非篇幅"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "content_appropriate",
+    "note": "模型输出仅为材料适配建议，最终采用与改写由备课组与资源教师作出；content_appropriate=false 的材料一律先人工复审再决定是否使用，模型不直接生成面向学生的改写成品。"
+  },
+  "smoke_probe": {
+    "state": {
+      "material": "male 教师 Z, 小五科学",
+      "context": "随班就读 1 名学生，班级阅读水平中下为主",
+      "grade_subject": "小学五年级科学",
+      "class_profile": "38 人，1 名随班就读，阅读水平分布 10%-55%-35%",
+      "excerpt": "「光合作用是绿色植物利用光能，把二氧化碳和水合成有机物并释放氧气的复杂生化过程，其能量转化效率受光反应与暗反应协同调控……」",
+      "vocab_density": "9.0 生词/百字",
+      "avg_sentence_len": "32.0 字",
+      "length": "800.0 字",
+      "has_visuals": false
+    },
+    "questions": [
+      {
+        "qid": "adapt_action",
+        "type": "choice",
+        "instructions": "该材料应采取哪种适配处理方式？"
+      },
+      {
+        "qid": "readability",
+        "type": "score",
+        "instructions": "该材料对本班的可读性属于哪一档？"
+      }
+    ],
+    "expected_label": {
+      "adapt_action": "scaffold",
+      "readability": "0"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：adapt_action 四类均衡（每类 ≥20%，scaffold 保底 25% 因其与 simplify 最易混淆）；readability 四档 15/30/35/20；needs_visual=true 占比 45%；content_appropriate=false 占比 8%。「scaffold vs simplify」最小对照对（同为超班材料、结构清晰 vs 术语堆叠）单独 12%；「浅字深意」陷阱样本（语文寓言被判偏易）单独 6%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 adapt_action 四类与 readability 四档中至少三档）作为 --examples 输入；few-shot 范例必须保留 class_profile 与 has_visuals 字段——缺班级画像的范例会教出脱离班级判适配，缺图表字段会教出漏判 needs_visual；「scaffold vs simplify」对照范例必须成对出现并标注区分点（结构清晰 vs 术语堆叠）；浅字深意范例需标注「可读性不看字面难度」的推理。",
+  "compliance": [
+    "班级画像须去标识：不保留可识别特定学校、班级与学生的描述，随班就读信息只保留人数与阅读分布",
+    "材料节选涉版权的只保留要素指标与改写结构示例，不保留完整原文",
+    "content_appropriate=false 样本中的不当表述只保留类别标记，原文做遮蔽处理",
+    "输出仅为适配建议，不生成可直接投放学生的改写成品，不评价教师备课水平"
+  ],
+  "acceptance": [
+    "adapt_action 四类 macro-F1 ≥0.85，scaffold 与 simplify 的混淆率 ≤8%（核心失败模式）",
+    "readability 四档 QWK ≥0.75（有序档位一致性）",
+    "needs_visual accuracy ≥0.88（依赖 has_visuals 与内容类型的判据一致性）",
+    "content_appropriate=false 子集上单独指出内容处理要求 =1.0（硬规则验收）",
+    "readability 判定不受班级画像影响的稳定率 ≥0.95（材料属性一致性验收）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "scaffold 吞并 simplify → few-shot 缺少「结构清晰 vs 术语堆叠」对照，补充同档双材料样本并核对 sidecar 的区分点标注",
+    "readability 随班级画像漂移 → sidecar 标注不一致，检查可读性判定是否误用画像信息",
+    "语文寓言被判 enrich → 「浅字深意」陷阱未覆盖，补充理解任务深度样本",
+    "content_appropriate=false 但回答未单独指出 → 内容安全处理要求未成独立输出路径，检查 sidecar 标注结构",
+    "needs_visual 漏判 → 检查蒸馏数据中 has_visuals 字段是否被删除，该判据依赖图表现状"
+  ],
+  "expert_review": [
+    "readability 四档的生词密度与句长阈值（8/30 字为示例值，需分学段校准，需教师复核）",
+    "scaffold 与 simplify 的区分口径在真实备课流程中的可操作性",
+    "content_appropriate 的适龄性参照（参照《未成年人保护法》与本校读物审核制度）",
+    "班级画像在适配决策中的权重边界（画像影响方式选择但不影响可读性判定）",
+    "随班就读学生的个性化适配是否需要独立于本场景的专门流程"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；材料适配依赖文本可读性与班级匹配的综合判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是备课组的材料适配审查助手。基于材料摘要输出：适配处理方式（keep/simplify/enrich/scaffold 四选一）、对本班可读性档位（0-3 档）、是否需补充可视化辅助、内容是否适龄安全。可读性只依据材料本身的生词密度、句长与文本性质（浅字深意不算偏易），班级画像只影响适配方式的选择；simplify 保留核心概念，内容安全顾虑（暴力、刻板印象、不适龄主题）必须单独指出并要求人工复审，不并入 simplify 处理。输出为适配建议，不生成面向学生的改写成品。",
+      "en": "You are a lesson-prep material adaptation reviewer. From a material summary, output: adaptation action (keep/simplify/enrich/scaffold), readability band for the class (0-3), whether visual aids are needed, and whether the content is age-appropriate and safe. Readability depends only on the material (vocab density, sentence length, text nature — deceptively simple texts are not easy); the class profile only informs the action choice. Simplify must preserve core concepts; safety concerns (violence, stereotypes, adult themes) must be flagged separately for human review, never folded into simplification. Output is advisory — never produce student-facing rewritten material."
+    },
+    "ask_template": "请基于以下材料摘要输出适配判断：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "分层教学与融合教育的材料适配审查",
+      "适配方式四分类（直接使用/简化改写/拓展加深/搭建支架）",
+      "可读性四档与文本指标",
+      "可视化辅助与内容适龄性判定",
+      "内容安全顾虑的单独处理口径"
+    ],
+    "kev_track": false
+  }
+}

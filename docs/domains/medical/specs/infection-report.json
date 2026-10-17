@@ -1,0 +1,246 @@
+{
+  "name": "infection-report",
+  "domain": "医院感染管理科的院感监测与上报分诊。院感专职人员把一份监测预警条目交给助手：体温、白细胞计数、感染部位培养阳性数、上报剩余时限、院内聚集病例数、侵入性操作天数。阈值为示例口径（以《医院感染管理办法》与院感聚集事件 2 小时上报的通行口径为基线），实际以本院院感制度与属地疾控要求为准。",
+  "state": "一份院感监测预警条目：病区、感染部位大类（呼吸道/血流/导尿/手术部位/消化道/皮肤软组织）、体温（℃）、白细胞计数（×10⁹/L）、感染部位培养阳性数（份）、上报剩余时限（小时）、院内聚集病例数（例）、侵入性操作天数（天）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "case": "female 院感专职员 A, 重症监护室",
+    "context": "中心静脉导管留置 14 天，同病区已有 2 例血流感染",
+    "ward": "重症监护室",
+    "site": "血流感染",
+    "indicators": {
+      "体温": "38.6 ℃",
+      "白细胞计数": "16.0 ×10⁹/L",
+      "感染部位培养阳性数": "1.0 份",
+      "上报剩余时限": "10.0 小时",
+      "院内聚集病例数": "2.0 例",
+      "侵入性操作天数": "14.0 天"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "report_required": {
+      "type": "noul",
+      "instructions": "该条目是否需要启动上报（而不是维持常规监测）？",
+      "criteria": {
+        "true": "至少一项监测指标超出上报阈值",
+        "false": "全部指标在阈值内，维持常规监测"
+      }
+    },
+    "report_tier": {
+      "type": "score",
+      "instructions": "上报应在多长时间内完成？",
+      "criteria": [
+        "2 小时内电话上报并启动应急处置（聚集事件/危重）",
+        "24 小时内完成书面上报",
+        "48 小时内完成系统登记",
+        "无需上报，维持常规监测"
+      ]
+    },
+    "pathogen_category": {
+      "type": "choice",
+      "instructions": "触发上报的主要信号属于哪一类？",
+      "criteria": {
+        "none": "无（常规监测）",
+        "fever": "发热类：体温超阈值",
+        "wbc": "炎症指标类：白细胞计数超限",
+        "culture": "病原学类：感染部位培养阳性",
+        "deadline": "时限类：上报剩余时限临近",
+        "cluster": "聚集类：院内聚集病例数超限",
+        "invasive": "侵入性操作类：操作天数超限"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "监测条目是否提供了判定所需的全部要素（指标名、数值、时限）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照阈值判定",
+        "false": "缺时限、缺数值或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "report_required 的唯一判据是任一监测指标超出本表阈值（示例口径，实际以本院院感制度为准，需专家复核）：体温 ≥38.0℃ 触发、≥39.5℃ 最高档；白细胞 ≥12 触发、≥20 最高档；感染部位培养阳性 ≥1 份触发、≥3 份最高档；上报剩余时限 ≤24 小时触发、≤4 小时最高档；院内聚集 ≥3 例触发、≥8 例最高档；侵入性操作 ≥7 天触发、≥21 天最高档。report_tier 由最快触发的信号决定，等级从 0（2 小时内）到 3（常规监测）：聚集类按例数分档——≥8 例（或聚集快速播散、同源病原跨病区，context 注明）为档 0（2 小时电话上报并启动应急）、5-7 例为档 1（24 小时书面上报）、3-4 例为档 2（48 小时系统登记并现场核查）；任一档聚集均需上报，聚集子集的响应时限（真实口径可能要求更急）需专家复核；deadline 与任一感染征象（fever/wbc/culture）并存时升档 0——时限压力叠加感染证据是漏报前兆；invasive 单独触发通常档 2（加强监测登记），但导管相关血流感染征象并存（culture 触发）按 culture 取档。pathogen_category 取最快档中的信号类别，cluster 与其他类同档并存时按 cluster 取——聚集事件的上报义务优先于个体征象。report_required=false 时 report_tier 必须为 3 且 pathogen_category 为 none。evidence_sufficient 为 false 时（缺时限、缺单位、缺指标名），report_required 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 pathogen_category 不得凭猜测填写。",
+  "variety": [
+    "病区与感染部位：重症监护室（血流）、呼吸科（呼吸道）、泌尿外科（导尿）、骨科（手术部位）、消化科（消化道）、烧伤科（皮肤软组织）——不同部位的阈值语境在 state 中带出",
+    "信号类别（pathogen_category 七选项逐一覆盖）：fever（体温 39.6/38.3℃）、wbc（白细胞 21/13）、culture（阳性 3/1 份）、deadline（剩余 2/20 小时）、cluster（聚集 8/3 例）、invasive（操作 22/8 天）、none（全部达标）",
+    "上报档（report_tier 四档全覆盖）：0 两小时（聚集 ≥8 例、deadline+感染征象并存）、1 24 小时、2 48 小时、3 常规（report_required=false 时必须为 3）",
+    "组合形态：单信号、双信号同档、多信号跨档、信号互相掩盖（体温正常但培养阳性——按最快档判）",
+    "聚集例数谱系（专门生成）：8 例（档 0）、5-7 例（档 1）、3-4 例（档 2）与 2 例同症状未达聚集阈值的对照样本",
+    "贴边未触发对照（report_required=false 须专门生成）：体温 37.6-37.9℃、白细胞 10-11.5、操作 5-6 天",
+    "要素完整度（evidence_sufficient）：齐全、缺时限、缺病区、缺指标名、多项缺失",
+    "呈现风格：院感监测导出体、专职员批注体、微生物报告摘要体、病区巡查记录体",
+    "易错陷阱：聚集按例数分档且任一档均需上报、deadline+感染征象升档 0、聚集优先于个体征象、invasive 单独只档 2、体温贴线不报"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为院感上报分派建议，上报决定与流行病学调查由院感专职人员与医务部门作出；涉传染病法定报告（甲乙类传染病）的情形按疾控上报通道另行执行，模型不替代法定报告流程；聚集事件的病例隔离与病区管控措施由现场医护按制度即时处置。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "male 院感专职员 B, 呼吸科",
+      "context": "同病区一周内累计 8 例同源病原感染，启动应急处置",
+      "ward": "呼吸科",
+      "site": "呼吸道感染",
+      "indicators": "体温 37.2 ℃, 院内聚集病例数 8.0 例, 上报剩余时限 48.0 小时",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "report_tier", "type": "score",
+       "instructions": "上报应在多长时间内完成？"},
+      {"qid": "pathogen_category", "type": "choice",
+       "instructions": "触发上报的主要信号属于哪一类？"}
+    ],
+    "expected_label": {"report_tier": "0", "pathogen_category": "cluster"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触发上报样本（tier 0-2 约 2:2:1），其余为常规监测对照；对照中至少 15% 为贴边未触发样本（体温 37.6-37.9℃、白细胞 10-11.5、操作 5-6 天）。聚集事件样本单独 8%（8/5-7/3-4 例按 2:3:3 分布）；deadline+感染征象并存样本单独 6% 并强制档 0；聚集与其他类同档并存按 cluster 取类的样本单独 6%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 report_tier 四档与 pathogen_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留聚集病例数与剩余时限——缺聚集数的范例会教不出聚集分档口径；聚集范例需与「2 例同症状未达阈值」对照成对出现；deadline 并存范例需写出升档 0 的推理。",
+  "compliance": [
+    "监测样本须去标识：剔除患者姓名、住院号与病原菌株编号，仅保留病区、部位大类与监测数值",
+    "聚集事件描述只保留例数与时间窗，不保留病例的临床细节",
+    "输出仅为上报分派建议，不构成诊断结论，不生成隔离与用药方案",
+    "涉法定传染病报告的样本按疾控通道另行执行，不在本场景范围"
+  ],
+  "acceptance": [
+    "report_required accuracy ≥0.96，漏报率（应上报判监测）≤1.5%（院感漏报的聚集风险高于误报打扰）",
+    "report_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "pathogen_category 七类 macro-F1 ≥0.88",
+    "聚集子集 report_required=true 比例 =1.0（聚集即报的硬规则验收）；聚集 ≥8 例子集 report_tier=0 比例 =1.0",
+    "deadline+感染征象并存子集 report_tier=0 比例 ≥0.95",
+    "贴边未触发子集 report_required=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: report_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "聚集样本档位漂移 → 聚集类按例数分档（3-4 例档 2、5-7 例档 1、≥8 例档 0），检查 tier_windows 与蒸馏标签一致",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "聚集与其他信号并存取类漂移 → rules 分支顺序必须聚集优先",
+    "体温贴线样本被误报 → 检查蒸馏标签与 guidance 阈值一致"
+  ],
+  "expert_review": [
+    "体温 38.0/39.5℃、白细胞 12/20、聚集 3/8 例的档位与本院院感制度的对应",
+    "聚集事件 2 小时上报口径与属地疾控要求的匹配",
+    "侵入性操作 7/21 天的档位与导管相关感染监测定义的一致性",
+    "上报剩余时限的起点（检出时点 vs 临床发现时点）与信息系统口径的对应",
+    "培养阳性数与污染/定植的区分口径（是否参与触发）"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "体温", "unit": "℃", "decimals": 1, "normal": [36.0, 37.9],
+       "critical": {"high": [[38.0, 42.0]]}, "category": "fever"},
+      {"name": "白细胞计数", "unit": "×10⁹/L", "decimals": 1, "normal": [4.0, 11.9],
+       "critical": {"high": [[12.0, 60.0]]}, "category": "wbc"},
+      {"name": "感染部位培养阳性数", "unit": "份", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "culture"},
+      {"name": "上报剩余时限", "unit": "小时", "decimals": 0, "normal": [25.0, 720.0],
+       "critical": {"low": [[0.0, 24.0]]}, "category": "deadline"},
+      {"name": "院内聚集病例数", "unit": "例", "decimals": 0, "normal": [0.0, 2.0],
+       "critical": {"high": [[3.0, 1000000000.0]]}, "category": "cluster"},
+      {"name": "侵入性操作天数", "unit": "天", "decimals": 0, "normal": [0.0, 6.0],
+       "critical": {"high": [[7.0, 60.0]]}, "category": "invasive"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "体温": [[39.5, 42.0]],
+        "白细胞计数": [[20.0, 60.0]],
+        "感染部位培养阳性数": [[3.0, 1000000000.0]],
+        "上报剩余时限": [[0.0, 4.0]],
+        "院内聚集病例数": [[8.0, 1000000000.0]],
+        "侵入性操作天数": [[21.0, 60.0]]
+      },
+      "1": {
+        "体温": [[38.8, 39.4]],
+        "白细胞计数": [[15.0, 19.9]],
+        "感染部位培养阳性数": [[2.0, 2.0]],
+        "上报剩余时限": [[5.0, 12.0]],
+        "院内聚集病例数": [[5.0, 7.0]],
+        "侵入性操作天数": [[14.0, 20.9]]
+      },
+      "2": {
+        "体温": [[38.0, 38.7]],
+        "白细胞计数": [[12.0, 14.9]],
+        "感染部位培养阳性数": [[1.0, 1.0]],
+        "上报剩余时限": [[13.0, 24.0]],
+        "院内聚集病例数": [[3.0, 4.0]],
+        "侵入性操作天数": [[7.0, 13.9]]
+      }
+    },
+    "contexts": [
+      "中心静脉导管留置 14 天，同病区已有 2 例血流感染",
+      "同病区 72 小时内出现第 3 例下呼吸道感染，病原学同源",
+      "术后第 5 天切口渗液，培养 pending",
+      "导尿管留置 10 天，尿常规异常待复核",
+      "常规病区巡查，全部指标平稳",
+      "上月上报纸面病例的追踪复评",
+      "细菌耐药率预警发布后的专项筛查",
+      "无背景说明，仅一项指标贴线",
+      "季节性流感高发期，病区发热病例增多",
+      "年度院感监测台账复盘"
+    ],
+    "patients": [
+      "male 院感专职员 A, 重症监护室", "female 院感专职员 B, 呼吸科", "male 院感专职员 C, 泌尿外科",
+      "female 院感专职员 D, 骨科", "male 院感专职员 E, 消化科", "female 院感专职员 F, 烧伤科",
+      "male 院感专职员 G, 血液科", "female 院感专职员 H, 神经外科"
+    ],
+    "rules": [
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "report_required", "value": true},
+          {"label": "report_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "pathogen_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "report_required", "value": false},
+          {"label": "report_tier", "value": 3},
+          {"label": "pathogen_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "report_required",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"fever": 0.14, "wbc": 0.12, "culture": 0.16, "deadline": 0.14, "cluster": 0.2, "invasive": 0.24},
+          "tier_split": {
+            "fever": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "wbc": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "culture": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "deadline": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "cluster": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "invasive": [[0, 0.1], [1, 0.4], [2, 0.5]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "体温": "fever",
+      "白细胞计数": "wbc",
+      "感染部位培养阳性数": "culture",
+      "上报剩余时限": "deadline",
+      "院内聚集病例数": "cluster",
+      "侵入性操作天数": "invasive"
+    }
+  }
+}

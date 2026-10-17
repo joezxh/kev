@@ -1,0 +1,53 @@
+# law-contract-clause — 生成式 SFT 蒸馏轨（law 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/law/specs/law-contract-clause.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/law-contract-clause.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/law-contract-clause.seed.jsonl
+  output_dir: data/sft/law-contract-clause
+
+system_prompt: >-
+  你是一位严谨的合同条款识别与风险提示助手。你的回答要体现审查逻辑：先核对目标条款在文本中的存在性（注意沉默条款只报缺失、不推断法定结果），
+    再对突出的争议条款归类（责任限制/终止/保密/知识产权/赔偿/竞业/付款），按「对我方立场的失衡程度」给出风险分档，并判断是否需要执业律师复核。
+    每项判断必须引用条款原文短句作依据。文本不完整时必须说明并要求调取全文。不输出法律意见，不推断条款效力。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/law-contract-clause/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/law-contract-clause/generated.jsonl
+  - stage: judge
+    output: data/sft/law-contract-clause/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/law-contract-clause/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/law-contract-clause/law-contract-clause.sft.jsonl
+
+resume: true

@@ -1,0 +1,229 @@
+{
+  "name": "edu-early-warning",
+  "domain": "中学与高校的学业预警复核。教务系统汇总学生的学业与行为指标，辅导员或班主任复核预警名单：30 日出勤率、近 30 日作业提交率、期中相对期初的成绩下滑幅度、月迟到次数、教学平台 30 日登录天数、作业平均逾期天数。阈值为示例口径，实际以本校学籍管理与预警办法为准。",
+  "state": "一名学生的学业预警名单条目：年级与学段、30 日出勤率（%）、30 日作业提交率（%）、成绩下滑幅度（%）、月迟到次数（次）、教学平台 30 日登录天数（天）、作业平均逾期天数（天）。字段值为中文叙述夹数字，比率统一为百分数。",
+  "state_example": {
+    "student": "male 16, 高二",
+    "context": "期中后两次月考连续下滑，家长已被告知一次",
+    "indicators": {
+      "出勤率": "72.0 %",
+      "作业提交率": "55.0 %",
+      "成绩下滑幅度": "18.0 %",
+      "月迟到次数": "5.0 次",
+      "平台30日登录天数": "3.0 天",
+      "作业平均逾期天数": "6.0 天"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "needs_intervention": {
+      "type": "noul",
+      "instructions": "该学生是否需要触发学业预警干预（而不是留在常规观察）？",
+      "criteria": {
+        "true": "至少一项监测指标超出预警阈值",
+        "false": "全部指标在阈值内，维持常规观察"
+      }
+    },
+    "intervene_tier": {
+      "type": "score",
+      "instructions": "干预应在多长时间内启动？",
+      "criteria": [
+        "当日约谈并通知监护人",
+        "三个工作日内启动帮扶计划",
+        "纳入月度重点关注名单",
+        "无需干预（全部指标正常）"
+      ]
+    },
+    "signal_category": {
+      "type": "choice",
+      "instructions": "触发预警的指标属于哪一类？",
+      "criteria": {
+        "none": "无（全部指标正常）",
+        "attendance": "出勤类：出勤率过低、迟到频繁",
+        "homework": "作业类：提交率过低、长期逾期",
+        "grade": "成绩类：成绩下滑幅度过大",
+        "engagement": "投入类：平台活跃度断崖式下降"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "名单条目是否提供了判定所需的全部要素（指标名、数值、单位、统计窗口）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照预警阈值判定",
+        "false": "缺少统计窗口、单位或指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "needs_intervention 的唯一判据是任一监测指标超出本表阈值。阈值（示例口径，实际以本校预警办法为准，需专家复核）：出勤率 <60% 触警、<30% 最高档；作业提交率 <40% 触警、<20% 最高档；成绩下滑幅度 >25% 触警、>45% 最高档；月迟到 >8 次触警、>15 次最高档；平台 30 日登录 <8 天触警、<2 天最高档；作业平均逾期 >14 天触警、>25 天最高档。intervene_tier 由最快触发的指标决定，等级从 0（当日约谈）到 3（无需干预）：多个指标同时触发时取最快一档，signal_category 取最快档中的指标类别。假期与网课期间平台登录阈值需按校历调整——样本生成时 context 必须写明统计窗口所在时段，网课周的登录天数不得按常规口径判警。evidence_sufficient 为 false 时（缺统计窗口、缺单位、缺指标名），needs_intervention 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 signal_category 不得凭猜测填写。单亲、转学、大病初愈等背景信息只能作为 context 叙述，不得改变数值判定的阈值——判定依据只有指标本身，背景信息用于干预方式建议而非预警触发。",
+  "variety": [
+    "学段与年级：初一至高三、高职、本科大一大二、研究生课程班",
+    "触发类别（signal_category 五选项逐一覆盖）：attendance（出勤率 30/55%、迟到 8/15 次）、homework（提交率 20/36%、逾期 14/25 天）、grade（下滑 25/45%）、engagement（登录 2/6 天）、none（全部正常）",
+    "干预时限档（intervene_tier 四档全覆盖）：0 当日约谈（出勤 <30%、提交率 <20%、下滑 >45%、迟到 >15 次、登录 <2 天、逾期 >25 天）、1 三个工作日、2 月度名单、3 无需干预（needs_intervention=false 时必须为 3）",
+    "指标组合形态：单指标触发、两项同档、多项跨档、指标间互相矛盾（出勤满勤但作业全缺）——矛盾形态是易错样本，signal_category 必须取最快档",
+    "背景场景（context 专用，不改阈值）：大病复学、家庭变故、转学适应期、社团与竞赛冲击、网课与假期、亲子冲突",
+    "名单条目完整度（evidence_sufficient）：齐全、缺统计窗口、缺单位、缺指标名、缺统计时段（是否含假期）、两项以上缺失",
+    "数据呈现风格：教务系统导出体、班主任批注体、家长会汇报体、中英混排（GPA/考勤/LO）"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为预警复核与干预时限建议，约谈、帮扶与家长沟通由班主任与辅导员执行。涉及心理危机的条目一律立即转专职心理教师，不进入本模型的建议范围。"
+  },
+  "smoke_probe": {
+    "state": {
+      "student": "male 17, 高三",
+      "context": "连续两周未到校，平台账号 20 天无登录",
+      "indicators": "出勤率 12.0 %, 作业提交率 8.0 %, 平台30日登录天数 1.0 天",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "needs_intervention", "type": "noul",
+       "instructions": "该学生是否需要触发学业预警干预？"}
+    ],
+    "expected_label": {"needs_intervention": "true"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触警样本（tier 0-2 约 2:2:1），其余为常规观察对照；对照中至少 15% 为贴边未触警样本（出勤 60-65%、提交率 40-45%、下滑 20-25%）。假期与网课样本单独 8%，context 必须注明时段。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 intervene_tier 四档与 signal_category 五类）作为 --examples 输入；few-shot 范例必须保留统计窗口与时段字段，缺统计窗口的范例会教出假期/网课误判。",
+  "compliance": [
+    "学生数据属未成年人个人信息（《个人信息保护法》第 28、31 条），训练数据须去标识：剔除姓名、学号、身份证号与家庭住址，仅保留性别年龄段与指标数值（需专家复核去标识口径）",
+    "不得输出「差生」「问题学生」等定性标签，只输出指标是否超阈与干预时限建议",
+    "心理危机信号（自伤表述、极端言行）不在本场景处理范围，样本中此类条目的处理方式是「立即转心理教师」，不得作为普通预警样本",
+    "向监护人通报的范围与方式遵循本校学籍管理与未成年人保护制度，模型不生成家长通报文本"
+  ],
+  "acceptance": [
+    "needs_intervention accuracy ≥0.97，漏警率 ≤1%（漏警的干预延迟代价高于误警）",
+    "intervene_tier 在触警样本上的 ECE ≤0.02、Brier ≤0.05",
+    "signal_category 五类 macro-F1 ≥0.90",
+    "evidence_sufficient=false 子集上 needs_intervention 置信度显著下降",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: intervene_tier 无 2 档记录 → tier_windows[\"2\"] 区间与 fields.critical 不相交或区间内整数点过少，检查 realize_tier 命中率",
+    "假期样本被误判 → 检查 context 是否写明网课/假期时段，guidance 的时段豁免口径与 generator 阈值是否一致",
+    "矛盾指标样本 signal_category 漂移 → 多指标同时触发时必须取最快档，检查 rules 的 min_tier 与 fastest_tier_critical_item 表达式",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid"
+  ],
+  "expert_review": [
+    "出勤率 60/30%、提交率 40/20%、下滑 25/45% 的档位与本校/本地区预警办法的对应",
+    "平台登录天数阈值在常规教学周、网课周、假期三种口径下的差异",
+    "当日约谈与通知监护人的触发条件（是否需要家长知情同意程序）",
+    "心理危机转介的触发口径与保密边界"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "出勤率", "unit": "%", "decimals": 1, "normal": [80.0, 100.0],
+       "critical": {"low": [[0.0, 60.0]]}, "category": "attendance"},
+      {"name": "作业提交率", "unit": "%", "decimals": 1, "normal": [70.0, 100.0],
+       "critical": {"low": [[0.0, 40.0]]}, "category": "homework"},
+      {"name": "成绩下滑幅度", "unit": "%", "decimals": 1, "normal": [0.0, 10.0],
+       "critical": {"high": [[25.0, 1000000000.0]]}, "category": "grade"},
+      {"name": "月迟到次数", "unit": "次", "decimals": 0, "normal": [0.0, 2.0],
+       "critical": {"high": [[8.0, 1000000000.0]]}, "category": "attendance"},
+      {"name": "平台30日登录天数", "unit": "天", "decimals": 0, "normal": [10.0, 30.0],
+       "critical": {"low": [[0.0, 8.0]]}, "category": "engagement"},
+      {"name": "作业平均逾期天数", "unit": "天", "decimals": 0, "normal": [0.0, 3.0],
+       "critical": {"high": [[14.0, 1000000000.0]]}, "category": "homework"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "出勤率": [[0.0, 30.0]],
+        "作业提交率": [[0.0, 20.0]],
+        "成绩下滑幅度": [[45.0, 1000000000.0]],
+        "月迟到次数": [[15.0, 1000000000.0]],
+        "平台30日登录天数": [[0.0, 2.0]],
+        "作业平均逾期天数": [[25.0, 1000000000.0]]
+      },
+      "1": {
+        "出勤率": [[35.0, 50.0]],
+        "作业提交率": [[25.0, 32.0]],
+        "成绩下滑幅度": [[35.0, 45.0]],
+        "月迟到次数": [[10.0, 15.0]],
+        "平台30日登录天数": [[3.0, 5.0]],
+        "作业平均逾期天数": [[18.0, 25.0]]
+      },
+      "2": {
+        "出勤率": [[55.0, 60.0]],
+        "作业提交率": [[36.0, 40.0]],
+        "成绩下滑幅度": [[25.0, 35.0]],
+        "月迟到次数": [[8.0, 10.0]],
+        "平台30日登录天数": [[6.0, 8.0]],
+        "作业平均逾期天数": [[14.0, 18.0]]
+      }
+    },
+    "contexts": [
+      "期中后两次月考连续下滑，家长已被告知一次",
+      "大病休学复学第一个月，指标波动大",
+      "家庭变故（父母离异）后作业提交骤降",
+      "网课周，平台在线但线下出勤为零",
+      "竞赛集训期，常规课程出勤由教练批假",
+      "转学适应期第二周，前校成绩不可比",
+      "常规月份，全部指标平稳",
+      "社团招新季，迟到次数短暂上升",
+      "毕业班冲刺期，平台登录与提交双高",
+      "无背景说明，仅一项指标贴线"
+    ],
+    "patients": [
+      "male 16 高二", "female 15 初三", "male 17 高三", "female 18 高职",
+      "male 19 本科大一", "female 14 初二", "male 20 本科大二", "female 16 高一"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "needs_intervention", "value": false},
+          {"label": "intervene_tier", "value": 3},
+          {"label": "signal_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "needs_intervention", "value": true},
+          {"label": "intervene_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "signal_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "needs_intervention",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"attendance": 0.3, "homework": 0.3, "grade": 0.25, "engagement": 0.15},
+          "tier_split": {
+            "attendance": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "homework": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "grade": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "engagement": [[0, 0.35], [1, 0.3], [2, 0.35]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "出勤率": "attendance",
+      "作业提交率": "homework",
+      "成绩下滑幅度": "grade",
+      "月迟到次数": "attendance",
+      "平台30日登录天数": "engagement",
+      "作业平均逾期天数": "homework"
+    }
+  }
+}

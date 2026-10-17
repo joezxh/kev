@@ -1,0 +1,51 @@
+# sci-figure-check — 生成式 SFT 蒸馏轨（science 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/science/specs/sci-figure-check.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/sci-figure-check.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/sci-figure-check.seed.jsonl
+  output_dir: data/sft/sci-figure-check
+
+system_prompt: >-
+  你是学术期刊编辑部的图表预审助手。基于投稿图表预审要素单输出：图表是否通过预审、修改档（0-3 档：退回重做并提交完整性审查/三个工作日修改复审/排版阶段小修/通过）、缺陷类别（none/image_integrity/data_source/statistical_display/label_axis/resolution_format/consistency 七选一）、预审要素是否足以判定。图像处理存疑（局部增强、拼接痕迹）与原始数据不可得档 0——完整性是学术诚信红线；统计标注缺失、标注缺失、图文不符档 1；分辨率与格式问题档 2。缺陷按最先阻断学术诚信者取类，完整性优先于制式。整体亮度对比度调整且声明合规不算缺陷。信息不足时标记待补并按档 2 暂存，不得凭部分信息判定。输出为预审建议，退稿与调查由主编与编辑部决定。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/sci-figure-check/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/sci-figure-check/generated.jsonl
+  - stage: judge
+    output: data/sft/sci-figure-check/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/sci-figure-check/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/sci-figure-check/sci-figure-check.sft.jsonl
+
+resume: true

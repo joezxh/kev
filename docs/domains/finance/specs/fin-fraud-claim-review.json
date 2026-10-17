@@ -1,0 +1,244 @@
+{
+  "name": "fin-fraud-claim-review",
+  "domain": "保险理赔部门的欺诈风险复核。理赔审核员把一份理赔案件要素清单交给助手：报案距出险天数、单证缺失数、单笔理赔金额偏离度、近 24 个月理赔次数、投保后首赔天数、关联风险标记数。阈值为示例口径（以反欺诈筛查的通行评分维度为基线），实际以本机构理赔管理制度与反欺诈模型为准。",
+  "state": "一份理赔案件要素清单：险种（车险/健康险/意外险/财产险）、报案距出险天数（天）、单证缺失数（份）、单笔理赔金额偏离度（%，相对同类案件均值）、近 24 个月理赔次数（次）、投保后首赔天数（天）、关联风险标记数（项，多方关联/黑名单触点）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "case": "female 理核员 A, 车险理赔",
+    "context": "小额单方事故，报案及时",
+    "insurance_type": "车险",
+    "indicators": {
+      "报案距出险天数": "2.0 天",
+      "单证缺失数": "1.0 份",
+      "单笔理赔金额偏离度": "12.0 %",
+      "近 24 个月理赔次数": "1.0 次",
+      "投保后首赔天数": "180.0 天",
+      "关联风险标记数": "0.0 项"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "fraud_review": {
+      "type": "noul",
+      "instructions": "该案件是否需要进入欺诈复核（而不是按常规流程快赔）？",
+      "criteria": {
+        "true": "至少一项要素超出复核阈值",
+        "false": "全部要素在阈值内，按常规流程处理"
+      }
+    },
+    "action_tier": {
+      "type": "score",
+      "instructions": "复核处置应在多长时间内启动？",
+      "criteria": [
+        "立即暂停赔付并转反欺诈专班（多重风险叠加）",
+        "三个工作日内完成人工复核",
+        "纳入批次抽查，轻度越界",
+        "常规流程处理，无需复核"
+      ]
+    },
+    "risk_category": {
+      "type": "choice",
+      "instructions": "触发复核的主要风险属于哪一类？",
+      "criteria": {
+        "none": "无（常规流程）",
+        "reporting_delay": "报案迟报类：报案距出险时间过长",
+        "doc_gap": "单证类：理赔单证缺失",
+        "amount_dev": "金额偏离类：理赔金额显著高于同类均值",
+        "frequency": "频发类：短期理赔次数超限",
+        "early_claim": "刚投保类：投保后极短时间即申请首赔",
+        "linkage": "关联类：多方关联或黑名单触点"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "案件清单是否提供了判定所需的全部要素（指标名、数值、统计窗口）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照阈值判定",
+        "false": "缺统计窗口、缺数值或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "fraud_review 的唯一判据是任一要素超出本表阈值（示例口径，实际以本机构反欺诈制度为准，需专家复核）：报案距出险 ≥30 天触发、≥90 天最高档；单证缺失 ≥1 份触发、≥3 份最高档；金额偏离 ≥30% 触发、≥80% 最高档；近 24 个月理赔 ≥4 次触发、≥8 次最高档；投保后首赔 ≤30 天触发、≤7 天最高档；关联风险标记 ≥1 项触发、≥3 项最高档。action_tier 由最快触发的风险决定，等级从 0（暂停赔付）到 3（常规快赔）：linkage 任一档即 action_tier ≤1——黑名单触点不容批量处理；early_claim 与 amount_dev 并存时升档 0——刚投保即高额索赔是典型欺诈组合；reporting_delay 单独触发通常档 2（时效问题另案处理），但伴随金额偏离升档 1；单证缺失可补交，单独触发档 2。risk_category 取最快档中的风险类别，linkage 与其他类并存按 linkage 取——关联触点的优先级高于单案特征。fraud_review=false 时 action_tier 必须为 3 且 risk_category 为 none。evidence_sufficient 为 false 时（缺统计窗口、缺单位、缺指标名），fraud_review 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 risk_category 不得凭猜测填写。",
+  "variety": [
+    "险种与场景：车险（单方/双方事故）、健康险（住院/门诊）、意外险（自伤疑云）、财产险（水灾/火灾）——不同险种的偏离度基准不同",
+    "风险类别（risk_category 七选项逐一覆盖）：reporting_delay（报案 95/35 天）、doc_gap（缺失 3/1 份）、amount_dev（偏离 85/35%）、frequency（理赔 9/4 次）、early_claim（首赔 5/25 天）、linkage（标记 3/1 项）、none（全部达标）",
+    "处置档（action_tier 四档全覆盖）：0 暂停赔付（early_claim+amount_dev 并存、linkage ≥3）、1 三个工作日、2 批次抽查、3 常规快赔（fraud_review=false 时必须为 3）",
+    "组合形态：单风险、双风险同档、多风险跨档、风险互相掩盖（报案及时但频发——按最快档判）",
+    "小额快赔对照（专门生成）：小额案件触线也复核的样本与阈值豁免（<500 元自动快赔）的对照——豁免线不算漏报",
+    "贴边未触发对照（fraud_review=false 须专门生成）：报案 25-28 天、偏离 25-28%、理赔 3 次",
+    "要素完整度（evidence_sufficient）：齐全、缺统计窗口、缺险种、缺指标名、多项缺失",
+    "呈现风格：理赔案件导出体、审核员批注体、反欺诈评分卡体、稽核抽查记录体",
+    "易错陷阱：early_claim+amount_dev 升档 0、linkage 优先于单案特征、单证缺失可补档 2、小额豁免线、频发看 24 个月窗口"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为欺诈风险复核建议，拒赔与追偿决定由理赔负责人按制度作出；涉嫌保险诈骗的线索一律转反欺诈专班与合规部门，模型不给出欺诈定性；小额豁免线以内的自动快赔不触发本场景，属制度设计而非模型漏报。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "male 理核员 B, 健康险理赔",
+      "context": "新保单生效后第 12 天申请住院理赔，金额异常偏高",
+      "insurance_type": "健康险",
+      "indicators": "报案距出险天数 1.0 天, 单证缺失数 0.0 份, 单笔理赔金额偏离度 65.0 %, 近 24 个月理赔次数 1.0 次, 投保后首赔天数 12.0 天, 关联风险标记数 1.0 项",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "action_tier", "type": "score",
+       "instructions": "复核处置应在多长时间内启动？"},
+      {"qid": "risk_category", "type": "choice",
+       "instructions": "触发复核的主要风险属于哪一类？"}
+    ],
+    "expected_label": {"action_tier": "1", "risk_category": "amount_dev"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触发复核样本（tier 0-2 约 2:2:1），其余为常规快赔对照；对照中至少 15% 为贴边未触发样本（报案 25-28 天、偏离 25-28%、理赔 3 次）。early_claim+amount_dev 并存样本单独 6% 并强制档 0；linkage 样本单独 7%（各档均有）；小额豁免线对照单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 action_tier 四档与 risk_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留 insurance_type 与统计窗口——缺险种的范例会教出跨险种套用偏离度基准；「early_claim+amount_dev 升档 0」并存范例必须与单一触发成对出现；linkage 范例需写出「关联优先」的取类推理。",
+  "compliance": [
+    "理赔样本须去标识：剔除投保人/被保险人姓名、保单号、就诊机构与金额绝对值，仅保留险种与比例数值",
+    "关联风险标记只保留标记项数，不保留黑名单明细与触点身份",
+    "输出仅为复核建议，不构成欺诈认定，不生成对投保人的定性评价",
+    "涉嫌保险诈骗犯罪的线索转反欺诈专班与司法通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "fraud_review accuracy ≥0.96，漏报率（应复核判快赔）≤2%（漏报的欺诈损失高于误复核成本）",
+    "action_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "risk_category 七类 macro-F1 ≥0.88",
+    "early_claim+amount_dev 并存子集 action_tier=0 比例 ≥0.95（升档验收）",
+    "linkage 子集 action_tier ≤1 比例 =1.0（硬规则验收）",
+    "贴边未触发子集 fraud_review=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: action_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "linkage 样本被赋档 2 → rules 分支顺序未关联优先，检查 then 顺序",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "early_claim 样本档位漂移 → 投保后首赔是 low 侧字段，检查窗口方向",
+    "跨险种偏离度误判 → 蒸馏标签未按险种区分基准，检查 insurance_type 字段保留"
+  ],
+  "expert_review": [
+    "报案 30/90 天、偏离 30/80%、理赔 4/8 次的档位与本机构反欺诈制度的对应",
+    "小额豁免线（自动快赔阈值）与反欺诈筛查豁免的一致性",
+    "投保后首赔 30/7 天的档位与犹豫期/等待期条款的衔接",
+    "关联风险标记的来源（黑名单、多方关联图）与数据授权边界",
+    "金额偏离度的基准（同类案件均值口径）与险种差异"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "报案距出险天数", "unit": "天", "decimals": 0, "normal": [0.0, 29.0],
+       "critical": {"high": [[30.0, 100000.0]]}, "category": "reporting_delay"},
+      {"name": "单证缺失数", "unit": "份", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "doc_gap"},
+      {"name": "单笔理赔金额偏离度", "unit": "%", "decimals": 1, "normal": [0.0, 29.0],
+       "critical": {"high": [[30.0, 500.0]]}, "category": "amount_dev"},
+      {"name": "近 24 个月理赔次数", "unit": "次", "decimals": 0, "normal": [0.0, 3.0],
+       "critical": {"high": [[4.0, 1000000000.0]]}, "category": "frequency"},
+      {"name": "投保后首赔天数", "unit": "天", "decimals": 0, "normal": [31.0, 100000.0],
+       "critical": {"low": [[0.0, 30.0]]}, "category": "early_claim"},
+      {"name": "关联风险标记数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "linkage"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "报案距出险天数": [[90.0, 100000.0]],
+        "单证缺失数": [[3.0, 1000000000.0]],
+        "单笔理赔金额偏离度": [[80.0, 500.0]],
+        "近 24 个月理赔次数": [[8.0, 1000000000.0]],
+        "投保后首赔天数": [[0.0, 7.0]],
+        "关联风险标记数": [[3.0, 1000000000.0]]
+      },
+      "1": {
+        "报案距出险天数": [[60.0, 89.0]],
+        "单证缺失数": [[2.0, 2.0]],
+        "单笔理赔金额偏离度": [[50.0, 79.9]],
+        "近 24 个月理赔次数": [[6.0, 7.0]],
+        "投保后首赔天数": [[8.0, 15.0]],
+        "关联风险标记数": [[2.0, 2.0]]
+      },
+      "2": {
+        "报案距出险天数": [[30.0, 59.0]],
+        "单证缺失数": [[1.0, 1.0]],
+        "单笔理赔金额偏离度": [[30.0, 49.9]],
+        "近 24 个月理赔次数": [[4.0, 5.0]],
+        "投保后首赔天数": [[16.0, 30.0]],
+        "关联风险标记数": [[1.0, 1.0]]
+      }
+    },
+    "contexts": [
+      "小额单方事故，报案及时",
+      "新保单生效后首赔，等待期刚过",
+      "续保客户常规理赔，历史履约良好",
+      "水灾群案批量报案，同一小区多客户",
+      "自雇职业意外理赔，单证自备",
+      "门诊理赔批量提交，金额零散",
+      "常规快赔通道案件，全部要素平稳",
+      "同修配厂关联出险，标记待核",
+      "无背景说明，仅一项要素贴线",
+      "年度理赔质量抽查复盘"
+    ],
+    "patients": [
+      "male 理核员 A, 车险理赔", "female 理核员 B, 健康险理赔", "male 理核员 C, 意外险理赔",
+      "female 理核员 D, 财产险理赔", "male 理核员 E, 团险理赔", "female 理核员 F, 农险理赔",
+      "male 理核员 G, 责任险理赔", "female 理核员 H, 货运险理赔"
+    ],
+    "rules": [
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "fraud_review", "value": true},
+          {"label": "action_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "risk_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "fraud_review", "value": false},
+          {"label": "action_tier", "value": 3},
+          {"label": "risk_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "fraud_review",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"reporting_delay": 0.13, "doc_gap": 0.14, "amount_dev": 0.18, "frequency": 0.13, "early_claim": 0.18, "linkage": 0.24},
+          "tier_split": {
+            "reporting_delay": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "doc_gap": [[0, 0.15], [1, 0.4], [2, 0.45]],
+            "amount_dev": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "frequency": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "early_claim": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "linkage": [[0, 0.2], [1, 0.4], [2, 0.4]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "报案距出险天数": "reporting_delay",
+      "单证缺失数": "doc_gap",
+      "单笔理赔金额偏离度": "amount_dev",
+      "近 24 个月理赔次数": "frequency",
+      "投保后首赔天数": "early_claim",
+      "关联风险标记数": "linkage"
+    }
+  }
+}

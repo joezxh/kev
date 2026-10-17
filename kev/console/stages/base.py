@@ -49,8 +49,9 @@ class Persist(str, Enum):
 class JobRequest(BaseModel):
     """一份作业请求。`params` 的键由各阶段的 `request_model` 校验。"""
 
-    scenario: str = Field(description="场景名，取自 docs/medical/specs/*.json 的 stem")
+    scenario: str = Field(description="场景名，取自 docs/domains/medical/specs/*.json 的 stem")
     run_name: str = Field(default="", description="运行名；须过 run_matrix.check_name（禁点号）")
+    project_id: str = Field(default="", description="作业归属的项目 id（D14）；提交路径在 _spawn 前校验非空且存在")
     params: dict = Field(default_factory=dict)
 
 

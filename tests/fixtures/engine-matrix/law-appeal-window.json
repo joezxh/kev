@@ -1,0 +1,174 @@
+{
+  "name": "上诉期处置",
+  "domain": "PR3：bands 形状 + object 字段",
+  "state": "一审判决后的上诉窗口",
+  "state_example": {
+    "审级": "一审",
+    "剩余上诉天数": "12 日",
+    "已申请延期": false,
+    "送达回执": {
+      "送达延误天数": "2 日",
+      "异议已登记": false
+    }
+  },
+  "questions": {
+    "window_band": {
+      "type": "score",
+      "instructions": "上诉窗口处于哪一档？",
+      "criteria": [
+        "已过",
+        "紧急",
+        "常规"
+      ]
+    },
+    "needs_extension": {
+      "type": "noul",
+      "instructions": "是否需要申请送达延期？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    }
+  },
+  "guidance": "PR3 的 G4 场景：只交 spec，不写 Python。二审只给 3 日窗口，一审给 5 日；送达回执的延误天数与是否已申请延期共同决定要不要走延期。",
+  "variety": [
+    "g4"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "审级",
+        "type": "enum",
+        "values": [
+          "一审",
+          "二审"
+        ],
+        "category": "case"
+      },
+      {
+        "name": "剩余上诉天数",
+        "unit": "日",
+        "decimals": 0,
+        "normal": [
+          -2,
+          20
+        ],
+        "category": "window",
+        "critical": {
+          "low": [
+            [
+              -1000000000.0,
+              0
+            ]
+          ]
+        }
+      },
+      {
+        "name": "已申请延期",
+        "type": "bool",
+        "category": "service"
+      },
+      {
+        "name": "送达回执",
+        "type": "object",
+        "category": "service",
+        "fields": [
+          {
+            "name": "送达延误天数",
+            "unit": "日",
+            "decimals": 0,
+            "normal": [
+              0,
+              10
+            ],
+            "category": "service"
+          },
+          {
+            "name": "异议已登记",
+            "type": "bool",
+            "category": "service"
+          }
+        ]
+      }
+    ],
+    "selectors": [
+      {
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "rules": [
+      {
+        "id": "expired",
+        "when": "state['剩余上诉天数'] <= 0",
+        "then": [
+          {
+            "label": "window_band",
+            "value": 0
+          },
+          {
+            "label": "needs_extension",
+            "value": "state['已申请延期'] or state['送达回执']['送达延误天数'] >= 5"
+          }
+        ]
+      },
+      {
+        "id": "urgent",
+        "when": "(state['审级'] == '二审' and state['剩余上诉天数'] <= 3) or (state['审级'] == '一审' and state['剩余上诉天数'] <= 5)",
+        "then": [
+          {
+            "label": "window_band",
+            "value": 1
+          },
+          {
+            "label": "needs_extension",
+            "value": "state['已申请延期'] or state['送达回执']['送达延误天数'] >= 5"
+          }
+        ]
+      },
+      {
+        "id": "open",
+        "when": "(state['审级'] == '二审' and state['剩余上诉天数'] > 3) or (state['审级'] == '一审' and state['剩余上诉天数'] > 5)",
+        "then": [
+          {
+            "label": "window_band",
+            "value": 2
+          },
+          {
+            "label": "needs_extension",
+            "value": "state['已申请延期'] or state['送达回执']['送达延误天数'] >= 5"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "floor": 0.05,
+      "by_label": {
+        "window_band:0 & needs_extension:false": {
+          "weight": 5
+        },
+        "window_band:0 & needs_extension:true": {
+          "weight": 13
+        },
+        "window_band:1 & needs_extension:false": {
+          "weight": 8
+        },
+        "window_band:1 & needs_extension:true": {
+          "weight": 17
+        },
+        "window_band:2 & needs_extension:false": {
+          "weight": 22
+        },
+        "window_band:2 & needs_extension:true": {
+          "weight": 15
+        }
+      }
+    }
+  }
+}

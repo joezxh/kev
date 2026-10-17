@@ -1,0 +1,152 @@
+{
+  "_meta": {
+    "purpose": "银行客户投诉分诊 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml（本 spec 的 source_yaml 待登记）。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/fin-complaint-triage.yaml"
+  },
+  "name": "fin-complaint-triage",
+  "label_zh": "投诉分诊",
+  "label_en": "Complaint Triage",
+  "domain": "银行、支付与消费金融机构的客户投诉分诊。客服收到客户投诉后，助手先判断投诉类别与紧急程度，识别是否需要升级至投诉管理岗或监管敏感场景，并说明信息是否完整。《银行业保险业消费投诉处理管理办法》（银保监会令 2020 年第 3 号）要求机构在 15 日内作出处理决定并告知投诉人，情况复杂可延长至 30 日；涉及监管转办的投诉另有报送时限。阈值为示例口径，实际以本机构投诉管理办法为准。",
+  "state": "一条客户投诉工单的结构化摘要：客户类型（个人/对公/代投诉）、投诉渠道（客服热线/网点/手机银行/监管转办/媒体）、业务条线（账户/卡/贷款/理财/支付/保险代销）、投诉内容简述（1-3 句）、涉及金额档、是否已造成资金损失、投诉是否包含威胁升级或舆情风险表述、工单信息是否完整（时间线/交易凭证/诉求是否明确）。",
+  "state_example": {
+    "customer": "female 56, 个人",
+    "channel": "客服热线",
+    "business_line": "信用卡",
+    "complaint": "信用卡被盗刷三笔共 1.2 万元，已挂失但两次申请拒付被拒，要求赔偿损失并修复征信",
+    "amount_tier": "1万-10万",
+    "funds_lost": true,
+    "escalation_language": false,
+    "ticket_complete": true
+  },
+  "questions": {
+    "category": {
+      "type": "choice",
+      "instructions": "该投诉属于哪一类？",
+      "criteria": {
+        "billing_service": "计费与服务问题：错扣、重复扣款、手续费争议、服务态度",
+        "credit_reporting": "征信异议：逾期记录争议、征信修复诉求",
+        "product_defect": "产品缺陷：误导销售、产品与宣传不符、风险揭示不足",
+        "fees": "费用争议：利率、罚息、提前还款违约金",
+        "fraud_claim": "欺诈与盗用：盗刷、伪冒开户、电信诈骗涉案账户",
+        "contract_dispute": "合同与条款争议：条款理解分歧、单方变更合同",
+        "service_attitude": "服务过程问题：态度、时效、承诺未兑现"
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "该投诉的处理紧急程度？",
+      "criteria": [
+        "0：当日优先处理（监管转办、舆情风险、涉案欺诈）",
+        "1：三个工作日内响应，常规高风险",
+        "2：按 15 日办结时限正常排期",
+        "3：普通服务建议，按月度汇总"
+      ]
+    },
+    "needs_manager": {
+      "type": "noul",
+      "instructions": "该投诉是否需要升级至投诉管理岗或法务合规介入？",
+      "criteria": {
+        "true": "涉及监管转办、群体性投诉、舆情风险、欺诈涉案或金额重大",
+        "false": "一线客服按标准流程可处理"
+      }
+    },
+    "complete_info": {
+      "type": "noul",
+      "instructions": "工单信息是否完整，足以直接派单处理？",
+      "criteria": {
+        "true": "时间线、交易凭证、客户诉求三者齐全",
+        "false": "缺时间线、缺凭证或诉求不明确，需先回访补齐"
+      }
+    }
+  },
+  "guidance": "投诉分诊只做分类、定级与派单建议，不做责任认定与赔偿承诺。category 按投诉核心诉求归类，多诉求并存时取客户最先主张的诉求；盗刷与伪冒一类即使表象是计费问题也归 fraud_claim。urgency 由三个因素决定：监管转办或媒体舆情必为 0；欺诈涉案且资金已损失为 0；普通高风险（金额 ≥10 万、群体性、威胁升级表述）为 1；常规投诉为 2；纯服务建议为 3。needs_manager 为 true 的判据：监管转办、舆情风险表述、群体性（同一问题 ≥5 名客户）、欺诈涉案、金额 ≥50 万。complete_info=false 时（缺时间线、缺凭证、诉求含糊），urgency 不得高于实际证据支撑的档位，且 needs_manager 的判断必须降权并显式标注待补证据。监管转办投诉的 15/30 日办结时限从受理日而非分诊日起算，分诊延误本身是合规风险——这是 urgency=0 的独立理由。涉刑（诈骗、洗钱线索）的工单不得在本场景内继续处理，需转交反洗钱与安保条线并终止客服流程。",
+  "variety": [
+    "投诉类别（category 七选项逐一覆盖）：计费错扣、征信异议、误导销售、罚息争议、盗刷伪冒、条款争议、服务时效",
+    "渠道谱系：客服热线、网点现场、手机银行在线、监管转办（12378/12363）、黑猫等第三方平台、媒体与信访",
+    "金额档（对应 urgency 与 needs_manager）：<1 千、1 千-1 万、1 万-10 万、10 万-50 万、≥50 万、无直接金额（服务类）",
+    "紧急程度四档全覆盖（urgency）：监管转办/舆情/涉案欺诈 → 0；群体性与大额 → 1；常规 → 2；纯建议 → 3",
+    "升级触发场景（needs_manager=true 须专门生成）：监管转办、同问题多人投诉、威胁向媒体曝光、涉案金额重大、涉未成年人或老年客户被骗",
+    "信息完整度（complete_info）：三要素齐全、缺时间线、缺交易凭证、诉求含糊（只说「要个说法」）、两项以上缺失",
+    "客户画像：老年客户、新市民、小微企业主、代投诉（律师/媒体代理）、情绪激动者、重复投诉者（第三次以上）",
+    "文本风格：客服工单记录体、客户口述转写体、监管转办函摘录体、中英混排（APP/OTP/征信）",
+    "易错陷阱：盗刷即使表象是扣款争议也归 fraud_claim、监管转办必为 urgency=0 且 needs_manager=true、complete_info=false 时不得凭单方陈述升级定级、不输出赔偿金额建议"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "complete_info",
+    "note": "投诉分诊为分类与派单建议，责任认定、赔偿与对外答复由投诉管理岗作出；涉刑线索直接转反洗钱与安保条线。置信不足转人工。"
+  },
+  "smoke_probe": {
+    "state": {
+      "customer": "male 62, 个人",
+      "channel": "监管转办",
+      "business_line": "理财",
+      "complaint": "客户称 2024 年购买的理财产品到期亏损 8 万元，销售时未告知风险等级，现要求全额赔付",
+      "amount_tier": "1万-10万",
+      "funds_lost": true,
+      "escalation_language": true,
+      "ticket_complete": false
+    },
+    "questions": [
+      {
+        "qid": "needs_manager",
+        "type": "noul",
+        "instructions": "该投诉是否需要升级至投诉管理岗或法务合规介入？"
+      }
+    ],
+    "expected_label": {
+      "needs_manager": "true"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：category 七类均衡（每类 ≥12%），urgency 四档中 0 档占比不低于 15%（监管转办与涉案场景单独成池）；needs_manager=true 占比 30%；complete_info=false 占比 20%。渠道中监管转办样本单独保留来源标记，不得与一般工单混池。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 category 七类中至少六类与 urgency 四档）作为 --examples 输入；few-shot 范例必须保留渠道与金额档字段——监管转办渠道是 urgency=0 的独立判据，范例缺渠道字段会教出监管敏感度漂移。",
+  "compliance": [
+    "输出仅为分类、定级与派单建议，不得输出责任认定、赔偿金额或对外答复口径",
+    "投诉工单按《个人信息保护法》与 JR/T 0171-2020 脱敏：剔除证件号、卡号、手机号与可识别个人的交易明细，保留金额档与业务条线",
+    "监管转办工单的报送时限与格式遵循《银行业保险业消费投诉处理管理办法》，本模型不生成报送文件（需专家复核报送口径）",
+    "涉刑线索（诈骗、洗钱）不得在本场景继续处理，样本中此类工单的标签是「转交反洗钱与安保条线」而非继续分类",
+    "不得对投诉人进行倾向性预设（如「职业投诉人」），样本中不得出现基于客户身份的歧视性表述"
+  ],
+  "acceptance": [
+    "category accuracy ≥0.90（七类，macro-F1 与 accuracy 同时报告）",
+    "urgency 四档有序相关性（Spearman）≥0.85，ECE ≤0.03",
+    "needs_manager 召回 ≥0.98（漏升级代价远高于误升级），误报率 ≤5%",
+    "complete_info=false 子集上 urgency 定级不高于证据支撑档位的比例 ≥0.95",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "category 各类样本不均 → 检查 topics 覆盖与 sampling 配比，write_records 的 <5% warning 不可忽略",
+    "盗刷被判 billing_service → guidance 中「盗刷一律归 fraud_claim」的优先级规则在蒸馏 few-shot 中未体现，补足对应范例",
+    "urgency 档位漂移 → 核对蒸馏轨标签侧车（sidecar）与 guidance 的三因素定级逻辑是否一致，标签以 sidecar 为准",
+    "sidecar 缺失导致 seed_to_kev.py 重建失败 → 蒸馏产物必须保留逐条 category/urgency/needs_manager/complete_info 四字段旁路标签"
+  ],
+  "expert_review": [
+    "urgency 四档与机构投诉 SLA（15/30 日办结、监管转办报送时限）的对应关系",
+    "needs_manager 的金额门槛（50 万）与群体性投诉人数门槛（≥5 人）",
+    "涉刑转交的触发口径（涉案金额、涉及人数、公安机关立案与否）",
+    "category 七分类与本机构投诉管理系统类目树的映射（监管报表类目通常更细，需专家复核归并方式）"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；文本分类任务难以用区间规则表达，标签由 sidecar 与人工复核提供。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是一位谨慎的银行投诉分诊助手。你的回答要体现专业分诊逻辑：先判断投诉类别与紧急程度，识别监管转办、舆情风险与欺诈涉案等升级信号，\n  再说明工单信息缺了什么，最后给出派单与处理时限建议。回答必须包含「涉及监管转办或欺诈线索时将按相关规定升级处理」一类的合规提示。\n  不做责任认定，不承诺赔偿金额。",
+      "en": "You are a careful bank complaint triage assistant. Your reply must reflect professional triage logic: classify the complaint and its urgency first, identify escalation signals such as regulator referral, public-opinion risk and fraud involvement,\n  then state what information the ticket is missing, and finally give routing and handling-deadline suggestions. End with a compliance note like 'regulator referrals and fraud leads will be escalated per applicable rules'.\n  Do not assign liability or promise any compensation."
+    },
+    "ask_template": "请基于以下投诉工单字段给出分诊建议：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "银行与消费金融客户投诉的分类与紧急度定级",
+      "监管转办、舆情风险、欺诈涉案等升级信号识别",
+      "工单完整性判断与派单时限建议"
+    ],
+    "kev_track": false
+  }
+}

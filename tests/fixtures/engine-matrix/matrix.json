@@ -254,59 +254,5 @@
     "domain": "law",
     "spike_records": 30,
     "spike_error": ""
-  },
-  {
-    "slug": "fin-credit-adverse",
-    "shape": "catalog",
-    "name": "征信风险事件复核",
-    "domain": "fin",
-    "spike_records": 0,
-    "spike_error": "",
-    "added": "PR1b"
-  },
-  {
-    "slug": "edu-unit-remediation",
-    "shape": "catalog",
-    "name": "薄弱单元补救",
-    "domain": "edu",
-    "spike_records": 0,
-    "spike_error": "",
-    "added": "PR1b"
-  },
-  {
-    "slug": "sci-incident-triage",
-    "shape": "catalog",
-    "name": "集群故障分诊",
-    "domain": "sci",
-    "spike_records": 0,
-    "spike_error": "",
-    "added": "PR1b"
-  },
-  {
-    "slug": "law-evidence-weight",
-    "shape": "catalog",
-    "name": "拟提交证据评估",
-    "domain": "law",
-    "spike_records": 0,
-    "spike_error": "",
-    "added": "PR1b"
-  },
-  {
-    "slug": "law-appeal-window",
-    "shape": "bands",
-    "name": "上诉期处置",
-    "domain": "law",
-    "spike_records": 0,
-    "spike_error": "",
-    "added": "PR3"
-  },
-  {
-    "slug": "edu-late-work-escalation",
-    "shape": "bands",
-    "name": "欠交作业升级",
-    "domain": "edu",
-    "spike_records": 0,
-    "spike_error": "",
-    "added": "PR3"
   }
 ]

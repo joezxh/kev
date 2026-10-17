@@ -1,3 +1,0 @@
-[
-  ["eval", "(()=>{const g=(n)=>{const e=document.querySelector(`[data-name=\"${n}\"]`);if(!e)return n+': MISSING';const b=e.getBoundingClientRect();return `${n}: ${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.width)}x${Math.round(b.height)}`};return [g('tray.plate'),g('tray.endL'),g('bms.board'),g('cell0.seps'),g('cell0.cathode0'),g('cell0.anode0'),g('cell0.wall-left')].join(' | ')})()"]
-]

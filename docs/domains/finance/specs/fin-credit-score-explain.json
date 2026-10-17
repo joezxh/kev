@@ -1,0 +1,156 @@
+{
+  "_meta": {
+    "purpose": "征信异议申请的类型判定与处理分诊 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/fin-credit-score-explain.yaml"
+  },
+  "name": "fin-credit-score-explain",
+  "label_zh": "征信异议分诊",
+  "label_en": "Credit Dispute Triage",
+  "domain": "消费金融贷后服务部的征信异议分诊。客服专员把一份异议申请要素单交给助手：异议事项描述、涉及产品类型、争议数据期次、已提供凭证类型、是否影响当前贷款审批、首次发现时间。助手判断异议类型（dispute_type 六选一）、本机构能否直接核查更正（resolvable_by_bank）、处理时限档（urgency_tier 四档），以及凭证是否足以判定（dispute_evidence）。口径以《征信业管理条例》异议处理 20 日要求为基线，阈值为示例口径，需合规与贷后管理人员复核。",
+  "state": "一份征信异议申请要素单：客户号段、异议事项描述（客户自述）、涉及产品类型（房贷/信用卡/消费贷/车贷/他行报送）、争议数据期次（年月）、已提供凭证类型（报案回执/还款流水/身份证比对/银行流水/无）、是否影响当前贷款审批（是/否/未知）、首次发现时间（天前）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "desk": "female 客服专员 A, 贷后服务部",
+    "context": "客户投诉名下多出非本人办理的账户",
+    "case": "客户号段 C-0327",
+    "issue": "名下出现非本人办理的消费贷账户，客户自述身份被冒用",
+    "product": "消费贷（他行报送）",
+    "data_period": "2026 年 8 月期次",
+    "evidence_type": "报案回执",
+    "affects_current_approval": "是（房贷审批中）",
+    "first_found": "3.0 天前"
+  },
+  "questions": {
+    "dispute_type": {
+      "type": "choice",
+      "instructions": "该异议属于哪一类型？",
+      "criteria": {
+        "identity_theft": "冒名贷款：客户否认办理，身份被冒用",
+        "data_error": "数据错误：金额、状态或账户归属记错",
+        "repayment_dispute": "还款争议：已实际还款但征信未更新或扣款失败争议",
+        "merge_error": "合并错误：同名人账户错并",
+        "unauthorized_query": "未经授权查询：客户不认识的机构查询其征信",
+        "timing_lag": "更新滞后：还款后征信未及更新且无争议"
+      }
+    },
+    "resolvable_by_bank": {
+      "type": "noul",
+      "instructions": "本机构能否直接核查并更正该异议数据？",
+      "criteria": {
+        "true": "本机构是数据报送机构且凭证齐全，可直接核查更正",
+        "false": "涉他行报送数据、征信中心数据或需司法凭证，需转交处理"
+      }
+    },
+    "urgency_tier": {
+      "type": "score",
+      "instructions": "异议处理应在什么时限内完成？",
+      "criteria": [
+        "立即上报并启动加急通道（冒名贷款且影响当前审批）",
+        "三个工作日内完成内部核查并答复",
+        "按条例 20 日异议处理流程办理",
+        "登记备查（重复提交或咨询性质）"
+      ]
+    },
+    "dispute_evidence": {
+      "type": "noul",
+      "instructions": "已提供凭证是否足以判定异议类型与责任归属？",
+      "criteria": {
+        "true": "凭证齐全（身份比对、流水或报案回执），可对照口径判定",
+        "false": "无凭证、期次不明或缺身份比对，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "dispute_type 的判据是客户自述与凭证的类型（示例口径，需合规与贷后管理人员复核）：客户否认办理且伴随报案 → identity_theft；数据本身记错（金额、状态、账户归属）→ data_error；已还款但未更新或扣款失败但客户已实际还款 → repayment_dispute——与 timing_lag 的区分在于是否存在还款争议；同名人账户错并 → merge_error；客户不认识的机构查询其征信 → unauthorized_query；还款后征信未及更新且无争议 → timing_lag。urgency_tier：identity_theft 且 affects_current_approval=是 → 档 0 加急；identity_theft 不影响审批 → 档 1；resolvable_by_bank=false 的其他类 → 档 2（条例 20 日流程）；重复提交、纯咨询 → 档 3。resolvable_by_bank：本机构是报送机构且凭证齐全 → true；涉及他行报送数据、人民银行征信中心数据或需司法凭证 → false。dispute_evidence=false（无凭证、期次不明、缺身份比对）时不得判定类型，标记待补充并按档 2 暂存。",
+  "variety": [
+    "异议类型（dispute_type 六选项逐一覆盖）：identity_theft（冒名贷款+报案回执）、data_error（还款金额记错）、repayment_dispute（已还但显示逾期）、merge_error（同名同生日账户错并）、unauthorized_query（半年内 5 次非授权查询）、timing_lag（还款后 5 天未更新）",
+    "时限档（urgency_tier 四档全覆盖）：0 加急（冒名+影响审批）、1 三个工作日（内部可更正的数据错误）、2 条例 20 日（涉他行报送）、3 备查（重复提交/咨询）",
+    "凭证谱系：报案回执、还款流水、身份证比对、银行流水、无凭证——凭证类型决定可判定性",
+    "resolvable_by_bank 对照（专门生成）：本机构报送（可直改）与他行/征信中心报送（需转交）的成对样本",
+    "易混对照（专门生成）：timing_lag 与 repayment_dispute 的区分（是否有还款争议）、identity_theft 与 merge_error 的区分（客户是否否认办理）",
+    "影响审批与否对照：影响当前房贷审批的加急样本与不影响审批的常规样本",
+    "呈现风格：客服工单体、客户自述体、贷后批注体、监管答复体",
+    "易错陷阱：冒名+影响审批档 0、他行报送不可直改、还款争议与更新滞后区分、重复提交档 3、无凭证不判定"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "dispute_evidence",
+    "note": "模型输出仅为异议分诊建议，异议处理决定与对外答复由合规与贷后部门按《征信业管理条例》作出；涉身份盗用的刑事报案与司法救济不在本场景范围，转警方与法务通道；模型不生成对客户信用状况的定性评价，不出具征信更正承诺。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 客服专员 B, 贷后服务部",
+      "context": "客户来电称征信报告出现非本人账户，房贷审批被拒",
+      "case": "客户号段 C-0851",
+      "issue": "名下出现非本人办理的消费贷账户，客户自述身份被冒用并已报案",
+      "product": "消费贷（他行报送）",
+      "data_period": "2026 年 7 月期次",
+      "evidence_type": "报案回执",
+      "affects_current_approval": "是（房贷审批中）",
+      "first_found": "2.0 天前"
+    },
+    "questions": [
+      {"qid": "dispute_type", "type": "choice",
+       "instructions": "该异议属于哪一类型？"},
+      {"qid": "urgency_tier", "type": "score",
+       "instructions": "异议处理应在什么时限内完成？"}
+    ],
+    "expected_label": {"dispute_type": "identity_theft", "urgency_tier": "0"}
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：dispute_type 六类中 identity_theft 12%、data_error 24%、repayment_dispute 22%、merge_error 8%、unauthorized_query 14%、timing_lag 20%；urgency_tier 四档 8/26/52/14；resolvable_by_bank true 62%、false 38%；dispute_evidence=false 占比 15%。「timing_lag vs repayment_dispute」区分对照对单独 8%；「identity_theft vs merge_error」对照单独 5%；影响审批的加急样本单独 6%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 dispute_type 六类中至少五类与 urgency_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 data_period 与 product 字段——缺期次的范例会教出忽略数据归属；「timing_lag vs repayment_dispute」对照范例必须成对出现并标注「是否存在还款争议」判据；identity_theft 范例需写出影响审批与档 0 加急的推理。",
+  "compliance": [
+    "异议样本须去标识：剔除客户号、证件号、机构名称与报案回执编号，仅保留产品大类与期次",
+    "客户自述保留争议结构，不保留具体金额与账户明细",
+    "输出仅为分诊建议，不构成征信更正承诺，不生成对客户信用的定性评价",
+    "涉监管投诉与诉讼的样本转法务通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "dispute_type 六类 macro-F1 ≥0.85，identity_theft 漏检率 ≤2%（冒名漏检的客诉与合规风险最高）",
+    "urgency_tier 四档 QWK ≥0.75",
+    "identity_theft 且影响审批子集 urgency_tier=0 比例 ≥0.95（加急验收）",
+    "resolvable_by_bank accuracy ≥0.93，误判「可直改」（涉他行报送）≤3%",
+    "dispute_evidence=false 子集上不强行判定率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "timing_lag 被归 repayment_dispute → 「是否有还款争议」判据在 sidecar 缺失，检查还款行为描述完整性",
+    "identity_theft 未档 0 → affects_current_approval 字段被截断，检查影响审批字段保留",
+    "merge_error 被归 data_error → 同名人/账户错并的语境缺失，检查 issue 描述",
+    "resolvable_by_bank 误判 true → 报送机构归属信息缺失，检查 product 字段",
+    "dispute_evidence=false 仍判定 → 违反软标签纪律，检查待补充标注"
+  ],
+  "expert_review": [
+    "条例 20 日异议处理时限与现行征信中心流程的匹配",
+    "加急通道（档 0）的触发条件与监管投诉口径的一致性",
+    "冒名贷款的先行处置与警方报案流程的衔接",
+    "merge_error 的常见来源与征信中心更正路径",
+    "未经授权查询的责任认定边界与查询授权留存要求"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；异议类型判定依赖客户自述与凭证的语义判断（否认办理、还款争议、错并语境），无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是消费金融贷后服务部的征信异议分诊助手。基于异议申请要素单输出：异议类型（identity_theft/data_error/repayment_dispute/merge_error/unauthorized_query/timing_lag 六选一）、本机构能否直接核查更正（resolvable_by_bank）、处理时限档（0-3 档：加急通道/三个工作日内部核查/条例 20 日流程/登记备查）、凭证是否足以判定。冒名贷款且影响当前审批 → 档 0 加急；冒名不影响审批 → 档 1；需他行或征信中心处理 → 档 2；重复提交与咨询 → 档 3。有还款争议（已还但未更新/扣款失败）→ repayment_dispute，与无争议的更新滞后（timing_lag）区分；同名人账户错并 → merge_error。信息不足时标记待补充并按档 2 暂存，不得凭部分凭证判定。输出为分诊建议，异议处理与对外答复由合规与贷后部门作出。",
+      "en": "You are a credit-dispute triage assistant for consumer-finance post-loan service. From a dispute intake sheet, output: the dispute type (identity_theft/data_error/repayment_dispute/merge_error/unauthorized_query/timing_lag), whether the institution can correct it directly (resolvable_by_bank), the handling tier (0-3: expedited channel / internal review within 3 working days / the 20-day regulatory process / log only), and whether the evidence suffices. Identity theft affecting an active approval is tier 0; identity theft without an active approval is tier 1; data held by other lenders or the credit registry is tier 2; duplicates and enquiries are tier 3. A contested repayment (paid but not updated / failed debit) is repayment_dispute, distinct from a mere update lag (timing_lag); a same-name account merge is merge_error. Mark missing evidence and hold at tier 2 rather than guessing. Output is triage advice; dispute handling and external replies rest with compliance and post-loan teams."
+    },
+    "ask_template": "请根据以下征信异议申请要素单完成分诊：\n\n异议要素单：\n{{ state }}\n\n请逐项输出：\n1. dispute_type：异议类型（identity_theft/data_error/repayment_dispute/merge_error/unauthorized_query/timing_lag 六选一），说明类型判据推理。\n2. resolvable_by_bank：本机构能否直接核查更正（true/false），注明数据报送机构归属。\n3. urgency_tier：处理时限档（0-3），列明时限依据（加急/3 个工作日/条例 20 日/备查）。\n4. dispute_evidence：凭证是否足以判定（true/false），false 时列出缺失凭证与补充指引。",
+    "topics": [
+      "冒名贷款与身份盗用的识别",
+      "数据错误：金额、状态与账户归属",
+      "还款争议：已还未更新与扣款失败",
+      "同名人账户错并（merge_error）",
+      "未经授权的征信查询",
+      "更新滞后与还款争议的区分",
+      "报送机构归属与可处理性判定",
+      "影响当前贷款审批的加急通道"
+    ],
+    "kev_track": false
+  }
+}

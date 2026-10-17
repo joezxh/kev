@@ -155,7 +155,7 @@
     ],
     "rules": [
       {
-        "when": "state['地平高度'] > 30 and state['月龄'] < 7",
+        "when": "state['地平高度'] > '30.0 度' and state['月龄'] < '7.0 天'",
         "then": [
           {
             "label": "observable",

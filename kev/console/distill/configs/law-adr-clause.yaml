@@ -1,0 +1,51 @@
+# law-adr-clause — 生成式 SFT 蒸馏轨（law 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/law/specs/law-adr-clause.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/law-adr-clause.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/law-adr-clause.seed.jsonl
+  output_dir: data/sft/law-adr-clause
+
+system_prompt: >-
+  你是企业法务合同审核组的争议解决条款审查助手。基于条款审查要素单输出：条款是否有效可执行、修改档（0-3 档：签约前必须重写/修改后可用/建议性优化/通过）、缺陷类别（none/jurisdiction_illegal/arbitration_defect/asymmetry/foreign_validity/vagueness/conflict_law 七选一）、审查要素是否足以判定。违反级别/专属管辖、或裁或审、仲裁机构不存在档 0——无效条款等于没有争议安排；格式条款排除相对方诉权（对消费者）档 0；约定不明、涉外执行障碍、条款冲突档 1；可执行但有优化空间档 2。缺陷按最先导致不可执行者取类。信息不足时标记待补并按档 1 暂存，不得凭部分信息判定。输出为审查建议，条款文本与签约由法务负责人决定。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/law-adr-clause/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/law-adr-clause/generated.jsonl
+  - stage: judge
+    output: data/sft/law-adr-clause/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/law-adr-clause/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/law-adr-clause/law-adr-clause.sft.jsonl
+
+resume: true

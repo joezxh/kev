@@ -1,0 +1,98 @@
+{
+  "_meta": {
+    "purpose": "导诊分诊 —— 生成式 SFT 轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/inquiry.yaml"
+  },
+  "name": "inquiry",
+  "label_zh": "导诊",
+  "label_en": "Inquiry",
+  "domain": "门诊与急诊的初诊分诊与导诊。患者因主诉就诊，助手先识别危险信号，再说明需补充的信息、最后给出建议就诊科室与紧急程度。",
+  "state": "患者就诊时的结构化主诉字段：人口学、主诉、关键伴随症状、已知既往史、是否出现危险信号。",
+  "state_example": {
+    "patient": "female 32",
+    "chief_complaint": "突发右下腹疼痛 6 小时",
+    "associated": "低热、恶心",
+    "history": "无",
+    "red_flag": false
+  },
+  "questions": {
+    "department": {
+      "type": "choice",
+      "instructions": "建议就诊的科室是哪一个？",
+      "criteria": {
+        "emergency": "急诊",
+        "internal": "内科门诊",
+        "surgery": "外科门诊",
+        "obgyn": "妇产科",
+        "pediatrics": "儿科",
+        "derm": "皮肤科",
+        "eye_ent": "眼/耳鼻喉科"
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "建议的紧急程度？",
+      "criteria": [
+        "0：普通门诊预约即可",
+        "1：当日门诊",
+        "2：尽快就诊（数小时内）",
+        "3：立即就医"
+      ]
+    },
+    "needs_more_info": {
+      "type": "noul",
+      "instructions": "是否需要补充信息后才能给出可靠建议？",
+      "criteria": {
+        "true": "主诉或关键体征不全，需追问",
+        "false": "现有信息已足够给出分诊建议"
+      }
+    }
+  },
+  "guidance": "inquiry 仅作为分诊与导诊助手，不做确定性诊断。出现 red_flag=true 时 urgency 必为 3 并提示立即就医；否则按主诉所指向的科室与紧迫度判定。",
+  "variety": [
+    "九大系统主诉 + 眼耳鼻喉 + 皮肤 + 妇幼",
+    "危险信号八项（对应 urgency=3）：意识改变、持续胸痛、明显呼吸困难、大出血、严重低血压、SpO2 下降、剧烈头痛伴喷射性呕吐、突发剧烈腹痛",
+    "主诉与危险信号关系：方向一致、含糊但有危险信号、危险信号为阴性、危险信号与主诉方向冲突",
+    "年龄跨度：婴幼儿、儿童、青年、中年、老年、孕产妇",
+    "主诉长度：一句话、三句话、含情绪紧张、表述含糊"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是一位谨慎的临床分诊助手。你的回答要体现专业分诊逻辑：先识别危险信号，再说明需要补充哪些信息，\n  最后给出建议就诊科室与紧急程度。回答必须包含「若出现以下情况请立即就医」一类的安全提示。不做确定性诊断。",
+      "en": "You are a careful clinical triage assistant. Your reply must reflect professional triage logic: identify red-flag signals first, state the information needed to refine the assessment,\n  then give a recommended department and urgency level. End with a clear safety prompt like 'seek emergency care immediately if any of the following occur'. Do not provide a definitive diagnosis."
+    },
+    "ask_template": "请基于以下主诉字段给出分诊建议：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "门诊与急诊的初诊导诊",
+      "依据主诉、伴随症状、既往史判断科室与紧急度",
+      "危险信号识别与安全提示"
+    ],
+    "kev_track": false
+  },
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "needs_more_info",
+    "note": "导诊为分诊与科室建议，不替代诊断；置信不足时建议追问或人工复核。"
+  },
+  "smoke_probe": {
+    "state": {
+      "patient": "female 32",
+      "chief_complaint": "突发右下腹疼痛 6 小时",
+      "associated": "低热、恶心",
+      "history": "无",
+      "red_flag": false
+    },
+    "questions": [
+      {"qid": "needs_more_info", "type": "noul",
+       "instructions": "是否需要补充信息后才能给出可靠建议？"}
+    ],
+    "expected_label": {"needs_more_info": "true"}
+  }
+}

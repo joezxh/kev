@@ -173,7 +173,7 @@
         ]
       },
       {
-        "when": "'催告' in state['往来函件'] and state['已履行比例'] < 50",
+        "when": "'催告' in state['往来函件'] and state['已履行比例'] < '50.0 %'",
         "then": [
           {
             "label": "breach",

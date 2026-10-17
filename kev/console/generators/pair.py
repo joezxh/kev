@@ -1,83 +1,64 @@
-"""PairBuilder — minimal pair: the twin of a record with exactly one *field* moved (design doc D8).
+"""PairBuilder — minimal pair: a twin record whose state differs in exactly one field and whose label flips.
 
-Spec §3.3. Reads `spec_json.generator.augmentation.minimal_pair` for rate + strategy.
-
-What changed in PR1a is the shape it works on: the sampler's **flat field view** (pre-skeleton) instead of reaching into
-`record["state"]["labs"]`. The engine re-assembles the twin with `make_record`, so the field's own `path` decides where
-the flipped value lands (design doc D2) and a scenario without a `labs` key can have minimal pairs at all.
-
-PR3 made the flip itself typed: `values.flip` moves each field type the way *that type* crosses a decision — a
-measurement to the safe side of its bound, an enum or a text to another value of the same pool, a bool to its negation,
-a date to the far half of its window, a list by one element, an object by one sub-field, a catalog by one drawn
-candidate. One field, one move: what the twin shows is that fact dissolved into the rest, so a catalog pair changes one
-candidate in `_meta.derive` and every surface that field's `surface` builds (D11 is what makes those two the same fact).
-
-The twin therefore carries the *derived* view as well as the field view, and the engine rebuilds the surfaces and
-re-evaluates the rules on it. A pair whose label does not move is dropped rather than written: a twin that teaches the
-same answer twice is noise, which is the rule `common.minimal_pair` already enforces for the legacy generators.
+Spec §3.3. Reads `spec_json.generator.augmentation.minimal_pair` for rate + strategy. The boundary_flip strategy is
+implemented in Task 9.
 """
 from __future__ import annotations
 from random import Random
-from typing import Any, Dict, List, Optional, Set, Tuple
-
-from . import values
-
-
-def fact_keys(field: dict, name: str) -> Set[str]:
-    """The field-view keys one fact is allowed to move: the field itself plus every key its `surface` builds.
-
-    D11 makes those the same fact — the drawn candidate and the chief complaint spelled out of it are one thing seen
-    two ways — so a catalog pair that changes the draw and its two surfaces is still *one* changed fact, while a pair
-    that also moved an unrelated field would not be a minimal pair. The engine asserts the changed keys sit inside this
-    set.
-    """
-    return {name} | set(field.get("surface") or {})
+from typing import Any, Optional
 
 
 class PairBuilder:
-    def __init__(self, augmentation: Optional[dict] = None, sampler=None, spec: Optional[dict] = None):
+    def __init__(self, augmentation: Optional[dict] = None, sampler=None):
         self.augmentation = augmentation or {}
         self.sampler = sampler
-        self.spec = spec or {}
 
-    def candidates(self, state: Dict[str, Any], derived: Dict[str, Any], fields: Dict[str, dict],
-                   preferred: Optional[str], rng: Random) -> List[str]:
-        """The names worth moving, best first.
+    def build(self, record, handle, rng: Random) -> Optional[dict]:
+        """The minimal pair for `record`: a twin whose triggering measurement is on the safe side of the bound.
 
-        `preferred` is the field the plan steered — the boundary the record was bought for, so it leads. The rest come in
-        a shuffled order rather than in spec order: a run that always moved the same companion would demonstrate one
-        boundary and leave the others untaught.
+        Returns None when the record has no safely flippable field (legacy `gen_*` `pair_twin` semantics).
         """
-        present = [name for name in fields if name in state or name in (derived or {})]
-        lead = [preferred] if preferred in present else []
-        rest = [name for name in present if name != preferred]
-        return lead + rng.sample(rest, len(rest))
+        from . import ops
+        from .rules import RuleEvaluator
 
-    def build(self, state: Dict[str, Any], fields: Dict[str, dict], name: Optional[str], rng: Random,
-              derived: Optional[Dict[str, Any]] = None) -> Optional[Tuple[str, Dict[str, Any], Dict[str, Any]]]:
-        """Move field `name` (or the best candidate if it is None), as `(name, twin view, twin derived)`.
-
-        None comes back when nothing can be moved: no candidate, a one-option pool, a list pinned between its `min` and
-        `max`, a measurement with no safe band on either side of its bound. A field whose declaration cannot be read at
-        all — a numeric with no `critical` to cross — is the same answer, because a twin that cannot change its label is
-        not a minimal pair; the sampler already refused an unknown `type` before this point, so nothing to catch here
-        hides a schema error. The engine drops the pair rather than writing a duplicate.
-        """
-        for candidate in self.candidates(state, derived, fields, name, rng):
-            field = fields[candidate]
-            moves = derived or {}
-            current = moves.get(candidate) if candidate in moves else state.get(candidate)
-            try:
-                moved = values.flip(field, current, rng, self.spec)
-            except values.UnsupportedField:
-                continue
-            if moved is None or moved == current:
-                continue
-            twin_state = dict(state)
-            twin_derived = dict(moves)
-            if candidate in twin_derived:
-                twin_derived[candidate] = moved
-            else:
-                twin_state[candidate] = moved
-            return candidate, twin_state, twin_derived
-        return None
+        if handle is None or handle.get("dropped"):
+            return None
+        panels = handle.get("panels") or {}
+        if not panels:
+            return None
+        name = handle["name"]
+        if name not in panels:
+            return None
+        field = panels[name]
+        # Pull the formatted value out of record.state.labs.
+        labs = (record.get("state") or {}).get("labs") or {}
+        formatted = labs.get(name)
+        if formatted is None:
+            return None
+        # Re-sample the safe side via the sampler.
+        safe = ops.crossed(rng, field)
+        if ops._is_in_critical_range(safe, field):
+            return None
+        # Build the twin record.
+        twin_state = dict(record["state"])
+        twin_labs = dict(twin_state["labs"])
+        twin_labs[name] = ops._format(field, safe, with_unit=True)
+        twin_state["labs"] = twin_labs
+        twin_record = {"state": twin_state, "questions": {}}
+        # Re-evaluate rules on the twin. The legacy `gen_*` minimal pair only flipped the `is_critical`
+        # label (e.g. critical-value's "is_critical" flips true->false on the safe side, the score
+        # `notify_within` flips to "no notification needed", and the choice `critical_item` flips to
+        # "none"); the rule engine may not produce all of them on its own, so the engine seeds the
+        # twin with the original record's labels and lets the rule engine's output override the ones
+        # the rule engine knows about. This keeps the twin's question set identical to the original
+        # so _common.labelled's "every spec question has a label" check passes.
+        evaluator = RuleEvaluator(handle.get("rules", []))
+        twin_labels = evaluator.evaluate(twin_state["labs"])
+        # Seed twin with the original record's labels so every spec question has a label.
+        original_labels = {qid: q.get("label") for qid, q in (record.get("questions") or {}).items()}
+        for qid, value in original_labels.items():
+            twin_record["questions"][qid] = {"type": "noul", "label": value}
+        # Override with rule-engine outputs (e.g. is_critical flips to false on the safe side).
+        for qid, value in twin_labels.items():
+            twin_record["questions"][qid] = {"type": "noul", "label": value}
+        return twin_record

@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="zh" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kev Studio · Project Hub v7 样稿（THROWAWAY）</title>
+<style>
+  /* ---- .studio 深色 IDE 令牌（严格取自 playground/src/app/globals.css .studio 块）---- */
+  :root{
+    --background:#0a0a0a; --foreground:#ededed; --card:#111111; --popover:#111111;
+    --primary:#3b82f6; --primary-fg:#ffffff; --secondary:#1c1c1c; --muted:#161616;
+    --muted-fg:#8b8b8b; --accent:#161616; --destructive:#ef4444; --border:#262626;
+    --ring:#3b82f6; --sidebar:#111111; --sidebar-accent:#161616; --sidebar-border:#262626;
+    --green:#22c55e; --green-bg:#14532d; --blue:#3b82f6; --blue-bg:#1e3a8a;
+    --red:#ef4444; --red-bg:#7f1d1d; --amber:#f59e0b; --amber-bg:#3a2a06;
+    --radius:6px;
+    --font-sans:ui-sans-serif,system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+    --font-mono:ui-monospace,"Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--background); color:var(--foreground);
+    font-family:var(--font-sans); font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased; display:flex; flex-direction:column; min-height:100vh;
+  }
+  a{color:inherit;text-decoration:none}
+  h1,h2,h3{margin:0;font-weight:600;letter-spacing:-0.01em}
+  .mono{font-family:var(--font-mono)}
+  .muted{color:var(--muted-fg)}
+  .sm{font-size:12px}.xs{font-size:11px}
+
+  /* ---- throwaway 顶条 ---- */
+  .throwaway{
+    background:repeating-linear-gradient(45deg,#241a06,#241a06 10px,#1c1406 10px,#1c1406 20px);
+    color:var(--amber); font-size:11px; letter-spacing:.02em; padding:5px 16px;
+    border-bottom:1px solid #3a2a06; display:flex; gap:10px; align-items:center;
+  }
+  .throwaway b{color:#fbbf24}
+
+  /* ---- topbar ---- */
+  .topbar{
+    display:flex; align-items:center; gap:16px; padding:0 20px; height:52px;
+    border-bottom:1px solid var(--border); background:var(--background); flex:0 0 auto;
+  }
+  .brand{font-weight:600; font-size:14px; display:flex; align-items:center; gap:8px}
+  .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--primary)}
+  .topbar .spacer{flex:1}
+  .seg{display:flex; gap:14px; font-size:12px}
+  .seg a{color:var(--muted-fg)}
+  .seg a.on{color:var(--foreground); font-weight:500}
+
+  /* ---- project switcher (下拉+创建) ---- */
+  .switcher{display:flex;align-items:center;gap:8px}
+  select,input,textarea{
+    background:#111111; color:var(--foreground); border:1px solid var(--border);
+    border-radius:var(--radius); font-family:inherit; font-size:13px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{border-color:var(--primary)}
+  .switcher select{padding:6px 10px}
+  .ghost{color:var(--muted-fg); font-size:12px}
+  .ghost:hover{color:var(--foreground)}
+
+  /* ---- shell ---- */
+  .shell{display:flex; flex:1; min-height:0}
+  .sidebar{
+    width:224px; flex:0 0 auto; border-right:1px solid var(--sidebar-border);
+    background:var(--sidebar); overflow-y:auto; padding:8px;
+  }
+  .nav-group{margin-bottom:14px}
+  .nav-title{font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted-fg); padding:6px 10px 4px}
+  .nav-item{
+    display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--radius);
+    font-size:13px; color:var(--foreground); cursor:pointer; opacity:.86;
+  }
+  .nav-item:hover{background:var(--sidebar-accent)}
+  .nav-item.on{background:var(--sidebar-accent); font-weight:500; opacity:1; box-shadow:inset 2px 0 0 var(--primary)}
+  .nav-item .ico{width:14px;height:14px;color:var(--muted-fg);flex:0 0 auto}
+  .nav-item.on .ico{color:var(--primary)}
+  .nav-item .badge{margin-left:auto;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--amber);border:1px solid #3a2a06;border-radius:999px;padding:0 6px}
+  .content{flex:1; min-width:0; overflow-y:auto; padding:28px 32px}
+
+  /* ---- primitives ---- */
+  .page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px}
+  .page-head h1{font-size:22px;font-weight:600;letter-spacing:-.02em}
+  .page-head .sub{margin-top:5px;font-size:13px;color:var(--muted-fg)}
+  .page-head .actions{display:flex;gap:8px;align-items:center;flex:0 0 auto}
+  .grid{display:grid;gap:12px}
+  .g4{grid-template-columns:repeat(4,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g2{grid-template-columns:repeat(2,1fr)}
+  .panel{border:1px solid var(--border); background:var(--card); border-radius:8px; margin-bottom:16px}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)}
+  .panel-head h3{font-size:13px;font-weight:600}
+  .panel-head .desc{font-size:12px;color:var(--muted-fg)}
+  .panel-body{padding:16px}
+  .kpi{border:1px solid var(--border); background:var(--card); border-radius:8px; padding:14px}
+  .kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-fg)}
+  .kpi .value{margin-top:8px;font-size:26px;font-weight:600;line-height:1;letter-spacing:-.02em}
+  .kpi .delta{margin-top:7px;font-size:11px}
+  .up{color:var(--green)} .down{color:var(--red)}
+
+  .badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:500}
+  .badge .pt{width:6px;height:6px;border-radius:50%}
+  .b-ok{background:var(--green-bg);color:var(--green)} .b-ok .pt{background:var(--green)}
+  .b-run{background:var(--blue-bg);color:var(--blue)} .b-run .pt{background:var(--blue);animation:pulse 1.4s infinite}
+  .b-fail{background:var(--red-bg);color:var(--red)} .b-fail .pt{background:var(--red)}
+  .b-pend{background:#1c1c1c;color:#8b8b8b} .b-pend .pt{background:#5c5c5c}
+  .b-warn{background:var(--amber-bg);color:var(--amber)} .b-warn .pt{background:var(--amber)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-weight:500;color:var(--muted-fg);font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:8px 12px;border-bottom:1px solid var(--border)}
+  td{padding:9px 12px;border-bottom:1px solid rgba(38,38,38,.6)}
+  tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#141414}
+  .num{text-align:right;font-family:var(--font-mono);font-size:12px}
+
+  .chip{border:1px solid var(--border); background:#111111; color:var(--muted-fg); border-radius:var(--radius); padding:6px 11px; font-size:12px; cursor:pointer}
+  .chip.on{border-color:var(--primary); background:var(--blue-bg); color:var(--blue)}
+  .btn{border-radius:var(--radius); padding:7px 13px; font-size:13px; cursor:pointer; border:1px solid var(--border); background:#111111; color:var(--foreground)}
+  .btn:hover{background:#161616}
+  .btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn-primary:hover{background:#2f6fe0}
+  .btn[disabled]{opacity:.45;cursor:not-allowed}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap}
+  .tab{border:1px solid var(--border); background:#111111; color:var(--muted-fg); border-radius:var(--radius); padding:7px 14px; font-size:12px; cursor:pointer}
+  .tab.on{border-color:var(--primary); background:var(--blue-bg); color:var(--blue)}
+
+  .bar{height:6px;border-radius:999px;background:#262626;overflow:hidden}
+  .bar>i{display:block;height:100%;background:var(--primary)}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-fg)}
+  .field input,.field select,.field textarea{padding:8px 10px;width:100%}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .callout{border-radius:var(--radius);padding:10px 13px;font-size:12px;border:1px solid}
+  .callout-warn{background:var(--amber-bg);border-color:#5a4210;color:#fcd34d}
+  .callout-err{background:var(--red-bg);border-color:#7f2222;color:#fca5a5}
+  .callout-info{background:#0e1a2b;border-color:#1e3a8a;color:#93c5fd}
+  .kv{display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;font-size:12px}
+  .kv dt{color:var(--muted-fg)} .kv dd{margin:0}
+  .pill{font-family:var(--font-mono);font-size:11px;background:#1c1c1c;border:1px solid var(--border);border-radius:5px;padding:1px 6px}
+  .diff{border-left:2px solid var(--primary);background:#0e1420;padding:8px 12px;border-radius:0 var(--radius) var(--radius) 0;font-size:12px;margin-bottom:14px}
+  .diff b{color:var(--blue)}
+  [hidden]{display:none !important}
+  .dialog-scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;align-items:center;justify-content:center}
+  .dialog{width:520px;max-width:92vw;background:var(--card);border:1px solid var(--border);border-radius:10px}
+  .dialog header{display:flex;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);font-weight:600}
+  .dialog .body{padding:20px;display:flex;flex-direction:column;gap:14px}
+  .dialog footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border)}
+  .close{cursor:pointer;color:var(--muted-fg)}.close:hover{color:var(--foreground)}
+</style>
+</head>
+<body>
+  <div class="throwaway">
+    <b>⚠ THROWAWAY 样稿</b> 假数据 · 画布性质 · 不接后端 · 看完可能推倒重做 —— Project Hub v7 前端/后端项目化改造
+  </div>
+
+  <!-- ================= TOPBAR ================= -->
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span>Kev Studio</div>
+    <nav class="seg">
+      <a class="on" onclick="go('overview')">Console</a>
+      <a onclick="go('overview')">Studio</a>
+    </nav>
+    <div class="spacer"></div>
+    <!-- ProjectSwitcher：与 /console 共享同一 localStorage key（kev.project.id）· D12 -->
+    <div class="switcher" id="switcher">
+      <span class="xs muted">当前项目</span>
+      <select id="projSel" onchange="switchProject(this.value)">
+        <option value="prj-cv-2026-10" selected>危重值 2026-10（critical-value-2026-10）</option>
+        <option value="prj-cv-2026-09">危重值 2026-09（critical-value-2026-09）</option>
+        <option value="prj-triage-2026-10">急诊分诊 2026-10（triage-2026-10）</option>
+      </select>
+      <a class="ghost" onclick="openDialog('dlgCreate')">+ 项目</a>
+    </div>
+  </header>
+
+  <!-- ================= SHELL ================= -->
+  <div class="shell">
+    <aside class="sidebar" id="sidebar"><!-- nav injected by script --></aside>
+
+    <main class="content" id="content">
+
+      <!-- ===== 总览 Overview ===== -->
+      <section data-pane="overview" class="pane">
+        <div class="page-head">
+          <div><h1>总览</h1><div class="sub" id="ovSub">项目 <b class="mono" style="color:var(--foreground)">critical-value-2026-10</b> 的一轮训练流水线 · 场景 critical-value</div></div>
+          <div class="actions">
+            <div class="chip on" onclick="ovScope(this,'proj')">本项目</div>
+            <div class="chip" onclick="ovScope(this,'all')">全部项目</div>
+            <button class="btn" onclick="go('projects')">管理项目</button>
+          </div>
+        </div>
+        <div class="grid g4" style="margin-bottom:18px">
+          <div class="kpi"><div class="label" id="ovLblTotal">项目作业总数</div><div class="value" id="ovKpiTotal">14</div></div>
+          <div class="kpi"><div class="label">运行中</div><div class="value" id="ovKpiRun" style="color:var(--blue)">1</div><div class="delta" id="ovKpiRunDelta">train · step 1.2k/3.4k</div></div>
+          <div class="kpi"><div class="label">成功</div><div class="value" id="ovKpiOk" style="color:var(--green)">11</div></div>
+          <div class="kpi"><div class="label">失败</div><div class="value" id="ovKpiFail" style="color:var(--red)">2</div></div>
+        </div>
+        <div class="grid g3">
+          <a class="panel" style="margin:0;cursor:pointer" onclick="go('detail')"><div class="panel-body"><div class="sm" style="font-weight:600">项目中枢</div><div class="xs muted" style="margin-top:4px">六 tab · freeze 门槛 · 血缘</div><div class="xs" style="color:var(--blue);margin-top:10px">打开 →</div></div></a>
+          <a class="panel" style="margin:0;cursor:pointer" onclick="go('datasets')"><div class="panel-body"><div class="sm" style="font-weight:600">数据</div><div class="xs muted" style="margin-top:4px">域与场景 · 数据集 · 金标集</div><div class="xs" style="color:var(--blue);margin-top:10px">打开 →</div></div></a>
+          <a class="panel" style="margin:0;cursor:pointer" onclick="go('train')"><div class="panel-body"><div class="sm" style="font-weight:600">生命周期</div><div class="xs muted" style="margin-top:4px">训练 · 评测 · 部署 · 发布</div><div class="xs" style="color:var(--blue);margin-top:10px">打开 →</div></div></a>
+        </div>
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-head"><div><h3>最近作业</h3><div class="desc" id="ovJobsDesc">当前项目 · 可切右上角「全部项目」跨项目统计</div></div><a class="ghost" onclick="go('datasets')">数据集 →</a></div>
+          <table><thead><tr><th>状态</th><th>作业</th><th>stage</th><th>kind</th><th>项目</th><th class="num">created</th></tr></thead><tbody id="ovJobs"></tbody></table>
+        </div>
+      </section>
+
+      <!-- ===== 项目列表 Projects ===== -->
+      <section data-pane="projects" class="pane" hidden>
+        <div class="page-head">
+          <div><h1>项目</h1><div class="sub">一个项目 = 一个场景的一轮训练流水线（schema v7 起，projects 已从「账单根」升级为「流水线根」）</div></div>
+          <div class="actions"><button class="btn btn-primary" onclick="openDialog('dlgCreate')">+ 新建项目</button></div>
+        </div>
+        <div class="panel">
+          <table><thead><tr><th>项目</th><th>场景</th><th>状态</th><th class="num">作业</th><th class="num">产物</th><th>freeze 门槛</th><th class="num">最近活动</th></tr></thead><tbody id="prjRows"></tbody></table>
+        </div>
+      </section>
+
+      <!-- ===== Console 写入口 (D12) ===== -->
+      <section data-pane="console" class="pane" hidden>
+        <div class="page-head"><div><h1>Console 工作台</h1><div class="sub">唯一的提交面（写入口）· 表单真相源在 stage_param_specs · D12</div></div></div>
+        <div class="diff">D12：外壳头部已挂 <b>ProjectSwitcher</b>（与本样稿顶栏同源），各 stage 页提交时从同一 context 取 <b>project_id</b> 塞进 <b>POST /jobs</b>。<b>缺项目 → 前端置灰提交、后端返回 400</b>。工作台仍是唯一提交面，项目页只读只选、不复制第二套表单。</div>
+        <div class="panel">
+          <div class="panel-head"><h3>提交训练作业 · stage = train</h3><span class="pill">kind: train</span></div>
+          <div class="panel-body">
+            <div class="form-grid" style="margin-bottom:16px">
+              <div class="field"><label>base</label><input value="Qwen/Qwen3.5-4B-Base" /></div>
+              <div class="field"><label>--data（冻结 bundle 路径）</label><input class="mono" value="data/critical-value-2026-10/bundles/round24.jsonl" /></div>
+              <div class="field"><label>epochs</label><input value="2" /></div>
+              <div class="field"><label>lr</label><input value="5e-5" /></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <button class="btn btn-primary" id="submitBtn">提交作业</button>
+              <span class="xs" id="submitHint"><span class="pill">project_id = prj-cv-2026-10</span> 作业场景 = 项目场景 ✓</span>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>边界演示：未选项目</h3></div>
+          <div class="panel-body" style="display:flex;flex-direction:column;gap:10px">
+            <div class="callout callout-err">后端：<span class="mono">POST /jobs 400 {"detail":"project_id required"}</span>（无例外 · D14）</div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <button class="btn" disabled>提交作业（先选项目）</button>
+              <span class="xs muted">无当前项目时提交按钮置灰并在旁显示原因，而非让用户猜。</span>
+            </div>
+            <button class="btn" onclick="switchProject('')">模拟「取消选择项目」</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 项目详情（中枢 · 6 tab） ===== -->
+      <section data-pane="detail" class="pane" hidden>
+        <div class="page-head">
+          <div>
+            <h1>危重值 2026-10</h1>
+            <div class="sub"><span class="mono">critical-value-2026-10</span> · 场景 <span class="mono" style="color:var(--foreground)">critical-value</span> · 状态 <span class="badge b-ok"><span class="pt"></span>active</span></div>
+          </div>
+          <div class="actions"><button class="btn" onclick="go('projects')">← 项目列表</button></div>
+        </div>
+        <div class="diff">与现状差异：现有 <span class="mono">projects/[id]/page.tsx</span> 是 <b>5 tab（overview/data/trainings/results/lineage）</b>；需求 + 设计稿 §7 的目标态是 <b>6 tab（data/merge/review/trainings/results/lineage）</b> —— 补 merge、review，收掉 overview（其内容并入页头摘要）。</div>
+
+        <!-- 页头摘要（吸收原 overview）+ freeze 门槛就地可编 · D11 -->
+        <div class="panel">
+          <div class="panel-head"><div><h3>本轮目标</h3><div class="desc">各阶段最后一个作业、版本/快照/发布计数、最近事件尾巴</div></div></div>
+          <div class="panel-body">
+            <p style="margin:0 0 14px;font-size:13px">把 64k 长文档危重值判定的 ECE 压到 0.05 以下。</p>
+            <div class="kv">
+              <div><dt>状态</dt><dd>active</dd></div><div><dt>作业数</dt><dd>14</dd></div>
+              <div><dt>产物版本数</dt><dd>31</dd></div><div><dt>快照 / 发布</dt><dd>3 / 1</dd></div>
+            </div>
+            <div class="grid g4" style="margin-top:14px">
+              <div class="kpi" style="padding:10px"><div class="label">data</div><div style="margin-top:6px"><span class="badge b-ok"><span class="pt"></span>succeeded</span></div></div>
+              <div class="kpi" style="padding:10px"><div class="label">train</div><div style="margin-top:6px"><span class="badge b-run"><span class="pt"></span>running</span></div></div>
+              <div class="kpi" style="padding:10px"><div class="label">eval</div><div style="margin-top:6px"><span class="badge b-ok"><span class="pt"></span>succeeded</span></div></div>
+              <div class="kpi" style="padding:10px"><div class="label">deploy</div><div style="margin-top:6px"><span class="badge b-fail"><span class="pt"></span>failed</span></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- freeze 门槛 + freeze_checks 红绿 -->
+        <div class="panel">
+          <div class="panel-head"><div><h3>冻结门槛（freeze policy）</h3><div class="desc">两道门槛就地可编 · PUT /projects/{id}/freeze-policy · 只提醒不拦路（D11）</div></div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="xs muted">min records</span><input value="300" style="width:70px;padding:4px 8px" />
+              <span class="xs muted">min review ratio</span><input value="0.10" style="width:64px;padding:4px 8px" />
+              <button class="btn xs">保存</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="callout callout-warn" style="margin-bottom:12px">⚠ 最近一次 freeze 成功（200），但 <b>F2 / F3</b> 未达标 —— 门槛只提醒，bundle 仍可训练。复核比例拆 <span class="mono">native 12 + inherited 46</span>（D13：只看合计会把「本轮没看、上轮看过」绿过去）。</div>
+            <table><thead><tr><th>检查</th><th>结果</th><th>actual</th><th>need</th><th>detail</th></tr></thead><tbody>
+              <tr><td class="mono">F1 materialized</td><td><span class="badge b-ok"><span class="pt"></span>ok</span></td><td class="num">sha ✓ · 1,842 records</td><td class="num">≥1 include</td><td class="xs muted">硬拒项，已过</td></tr>
+              <tr><td class="mono">F2 min_records</td><td><span class="badge b-warn"><span class="pt"></span>warn</span></td><td class="num" style="color:var(--amber)">240</td><td class="num">300</td><td class="xs muted">警告：量不足，可继续</td></tr>
+              <tr><td class="mono">F3 min_review_ratio</td><td><span class="badge b-warn"><span class="pt"></span>warn</span></td><td class="num" style="color:var(--amber)">0.08</td><td class="num">0.10</td><td class="xs muted">警告：复核覆盖率不足</td></tr>
+              <tr><td class="mono">F4 no_unresolved</td><td><span class="badge b-ok"><span class="pt"></span>ok</span></td><td class="num">0 flags</td><td class="num">0</td><td class="xs muted">硬拒项，已过</td></tr>
+            </tbody></table>
+          </div>
+        </div>
+
+        <!-- 6 tab 导航 -->
+        <div class="tabs" style="margin-bottom:16px">
+          <div class="tab on" onclick="dtab('data',this)">data</div>
+          <div class="tab" onclick="dtab('merge',this)">merge</div>
+          <div class="tab" onclick="dtab('review',this)">review</div>
+          <div class="tab" onclick="dtab('trainings',this)">trainings</div>
+          <div class="tab" onclick="dtab('results',this)">results</div>
+          <div class="tab" onclick="dtab('lineage',this)">lineage</div>
+        </div>
+
+        <!-- tab: data -->
+        <div class="dtab" data-dtab="data">
+          <div class="panel">
+            <div class="panel-head"><div><h3>产物版本</h3><div class="desc">artifact × seq × 记录数 × sha × integrity × 来源作业（替掉 mock 页 datasets/[id]）</div></div>
+              <input placeholder="搜索 q…" style="padding:5px 10px;width:180px" /></div>
+            <table><thead><tr><th>artifact</th><th class="num">seq</th><th class="num">records</th><th>sha256</th><th>integrity</th><th>来源作业</th></tr></thead><tbody>
+              <tr><td class="mono xs">bundle:critical-value-2026-10/round24</td><td class="num">1</td><td class="num">1,842</td><td class="mono xs">a3f1c9…</td><td><span class="badge b-ok"><span class="pt"></span>ok</span></td><td class="mono xs muted">job 8813</td></tr>
+              <tr><td class="mono xs">dataset:critical-value/gen</td><td class="num">3</td><td class="num">1,208</td><td class="mono xs">7be0aa…</td><td><span class="badge b-ok"><span class="pt"></span>ok</span></td><td class="mono xs muted">job 8790</td></tr>
+              <tr><td class="mono xs">dataset:critical-value/gen</td><td class="num">2</td><td class="num">1,190</td><td class="mono xs">1cd44e…</td><td><span class="badge b-warn"><span class="pt"></span>drift</span></td><td class="mono xs muted">job 8771</td></tr>
+              <tr><td class="mono xs">goldset:critical-value/audit</td><td class="num">1</td><td class="num">300</td><td class="mono xs">f9021b…</td><td><span class="badge b-ok"><span class="pt"></span>ok</span></td><td class="mono xs muted">job 8802</td></tr>
+            </tbody></table>
+            <div class="panel-body"><div class="xs muted">行展开 → 预览 50 条记录（走 <span class="mono">GET /artifact-versions/{vid}/records?q&amp;verdict</span>），源文件永不改写 · D6。</div></div>
+          </div>
+        </div>
+
+        <!-- tab: merge -->
+        <div class="dtab" data-dtab="merge" hidden>
+          <div class="panel">
+            <div class="panel-head"><div><h3>组快照 round24 · bundle（draft）</h3><div class="desc">有序成员 + 三态 op（include/exclude/overlay）· 取舍=单成员，并集=多成员（D4/D5）</div></div></div>
+            <div class="panel-body">
+              <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px">
+                <table><thead><tr><th>ord</th><th>成员版本</th><th>op</th></tr></thead><tbody>
+                  <tr><td class="mono">1</td><td class="mono xs">gen v3（1,208）</td><td><span class="chip on" style="padding:2px 8px">include</span></td></tr>
+                  <tr><td class="mono">2</td><td class="mono xs">gen v2（1,190）</td><td><span class="chip" style="padding:2px 8px">exclude</span></td></tr>
+                  <tr><td class="mono">3</td><td class="mono xs">audit v1（300）</td><td><span class="chip on" style="padding:2px 8px">overlay</span></td></tr>
+                </tbody></table>
+                <div>
+                  <div class="kv" style="grid-template-columns:1fr">
+                    <div><dt>records_kept</dt><dd class="mono">1,842</dd></div>
+                    <div><dt>drop_reasons</dt><dd class="mono xs">dup 41 · state_conflict 12 · review_drop 6 · review_unresolved 0</dd></div>
+                    <div><dt>review_ratio</dt><dd class="mono" style="color:var(--amber)">0.08</dd></div>
+                  </div>
+                  <p class="xs muted" style="margin-top:10px">去重与标签冲突一律复用 <span class="mono">split_data.dedupe</span>，不另写一套（反目标 §2.3）。</p>
+                  <div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" onclick="go('console')">物化 materialize</button><button class="btn" onclick="go('console')">冻结 freeze →</button></div>
+                </div>
+              </div>
+              <div class="callout callout-info" style="margin-top:14px">预演（preview）→ <span class="mono">POST /bundles/round24/materialize</span> 起一个 kind=materialize 作业，携 project_id 走 /console 提交面。</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- tab: review -->
+        <div class="dtab" data-dtab="review" hidden>
+          <div class="panel">
+            <div class="panel-head"><div><h3>键盘优先复核队列</h3><div class="desc">与 tools/review 同键位 · 决策落 record_reviews（场景作用域，D13）· 替掉 console/goldset/review 的浏览器导出</div></div>
+              <div class="xs">已复核 <b class="mono">58</b> / 总 <b class="mono">1,842</b> = <b class="mono" style="color:var(--amber)">3.1%</b> · 距 F3(0.10) 还差 <b class="mono">127</b> 条</div></div>
+            <div class="panel-body">
+              <div style="border:1px solid var(--border);border-radius:8px;padding:16px">
+                <div class="xs muted" style="margin-bottom:8px">队列 #59 · fingerprint <span class="mono">sha256(canonical {state,questions})</span> = 5e1… · <span class="pill">本轮新生成</span></div>
+                <div class="mono xs" style="background:#0d0d0d;border:1px solid var(--border);border-radius:6px;padding:10px;white-space:pre-wrap">&lt;state&gt; 患者女，68 岁，血钾 6.9 mmol/L，心电图 T 波高尖、QRS 增宽……（16,402 tokens）</div>
+                <div style="margin-top:10px;font-size:13px">Q: 当前是否需要按高钾血症危重值处理？ <span class="badge b-pend"><span class="pt"></span>label: 待议</span></div>
+                <div style="display:flex;gap:6px;margin-top:14px;flex-wrap:wrap">
+                  <span class="chip on">Enter/y accept</span><span class="chip">1-9 重标</span><span class="chip">x drop</span><span class="chip">f flag</span><span class="chip">e 导出</span><span class="chip">u 撤销</span>
+                  <button class="btn xs" onclick="openDialog('dlgDrawer')">抽屉编辑 state / question ↗</button>
+                </div>
+              </div>
+              <div class="xs muted" style="margin-top:12px">队列服务端抽样（seed 固定 → 换机器同一批）。默认跳过已决定的指纹，<b style="color:var(--foreground)">含继承来的</b> —— 第二轮的队列只剩新记录（D13 的可感受效果）。导入：<span class="mono">POST /projects/{id}/reviews/import</span> 收 <span class="mono">reviews.jsonl</span>。</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- tab: trainings -->
+        <div class="dtab" data-dtab="trainings" hidden>
+          <div class="panel">
+            <div class="panel-head"><h3>项目内训练作业 · G1-G7</h3><span class="xs muted">替掉 train/records、train/monitor、train/[id]（mock）</span></div>
+            <table><thead><tr><th>run</th><th>状态</th><th class="num">step</th><th>G1</th><th>G2</th><th>G3</th><th>G4</th><th>G5</th><th>G6</th><th>G7</th></tr></thead><tbody>
+              <tr><td class="mono xs">q35-4b-s23</td><td><span class="badge b-run"><span class="pt"></span>running</span></td><td class="num">1,204/3,400</td><td><span style="color:var(--green)">✓</span></td><td><span style="color:var(--green)">✓</span></td><td><span style="color:var(--green)">✓</span></td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td></tr>
+              <tr><td class="mono xs">q35-4b-s22</td><td><span class="badge b-fail"><span class="pt"></span>failed</span></td><td class="num">2,980/3,400</td><td><span style="color:var(--green)">✓</span></td><td><span style="color:var(--green)">✓</span></td><td><span style="color:var(--red)">✗</span></td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td></tr>
+            </tbody></table>
+          </div>
+        </div>
+
+        <!-- tab: results -->
+        <div class="dtab" data-dtab="results" hidden>
+          <div class="panel">
+            <div class="panel-head"><h3>发布结论 releases（project_releases · D8）</h3><span class="xs muted">替掉 eval/compare、publish（mock）</span></div>
+            <table><thead><tr><th>name</th><th class="num">acc</th><th class="num">ECE</th><th class="num">Brier</th><th class="num">AURC</th><th>G1-G7</th><th>verdict</th></tr></thead><tbody>
+              <tr><td>kev-cv-4b-r24</td><td class="num">0.812</td><td class="num" style="color:var(--amber)">0.058</td><td class="num">0.091</td><td class="num">0.104</td><td><span class="badge b-warn"><span class="pt"></span>6/7</span></td><td><span class="badge b-pend"><span class="pt"></span>candidate</span></td></tr>
+            </tbody></table>
+            <div class="panel-body"><div class="xs muted">点进去是回溯链：release → bundle_members → artifact_versions → jobs → events / record_reviews（一路到源记录 fingerprint · P5）。gates_snapshot 由服务端现算并落库，删掉 eval 目录仍读得出当时判定。</div></div>
+          </div>
+        </div>
+
+        <!-- tab: lineage -->
+        <div class="dtab" data-dtab="lineage" hidden>
+          <div class="panel">
+            <div class="panel-head"><h3>产物血缘 DAG</h3><span class="xs muted">节点按 kind 上色 · 边标 relation（composed_of 等）</span></div>
+            <div class="panel-body">
+              <div class="mono xs" style="line-height:2">
+                <div><span style="color:var(--blue)">dataset:gen/v3</span> ──<span class="muted">composed_of</span>──▶ <span style="color:var(--green)">bundle:round24</span></div>
+                <div><span style="color:var(--blue)">goldset:audit/v1</span> ──<span class="muted">overlay</span>──▶ <span style="color:var(--green)">bundle:round24</span></div>
+                <div><span style="color:var(--green)">bundle:round24</span> ──<span class="muted">--data</span>──▶ <span style="color:var(--amber)">run:q35-4b-s23</span> ──▶ <span style="color:var(--red)">eval:decision-v7</span></div>
+              </div>
+              <div class="xs muted" style="margin-top:12px">lineage 表只装父子边（provenance 数字住 <span class="mono">bundle_members</span>，D3/§4.3）。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 数据集 Datasets ===== -->
+      <section data-pane="datasets" class="pane" hidden>
+        <div class="page-head"><div><h1>数据集</h1><div class="sub">列表页默认只显示当前项目的条目 · URL 接受 ?project=&lt;id&gt;</div></div></div>
+        <div class="toolbar" style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+          <span class="chip on">本项目 critical-value-2026-10</span>
+          <span class="chip" onclick="this.parentNode.querySelector('.on').classList.remove('on');this.classList.add('on')">全部（含历史 project_id=''）</span>
+          <div style="flex:1"></div>
+          <input placeholder="⌕ 搜索" style="padding:6px 12px;width:220px" />
+        </div>
+        <div class="panel"><table><thead><tr><th>名称</th><th>kind</th><th class="num">records</th><th class="num">bytes</th><th>项目</th><th class="num">created</th></tr></thead><tbody>
+          <tr><td>bundle:round24</td><td class="mono xs">bundle</td><td class="num">1,842</td><td class="num">42.1 MB</td><td class="mono xs">critical-value-2026-10</td><td class="num muted">2h 前</td></tr>
+          <tr><td>dataset:critical-value/gen</td><td class="mono xs">dataset</td><td class="num">1,208</td><td class="num">28.4 MB</td><td class="mono xs">critical-value-2026-10</td><td class="num muted">昨天</td></tr>
+          <tr style="opacity:.55"><td>dataset:legacy/cv-train</td><td class="mono xs">dataset</td><td class="num">9,910</td><td class="num">210 MB</td><td class="xs">旧数据（未归属）</td><td class="num muted">3 周前</td></tr>
+        </tbody></table></div>
+        <div class="xs muted" style="margin-top:8px">历史行 <span class="mono">project_id=''</span> 是具名哨兵，只归「全部」，永不出现在具体项目列表（D14）。</div>
+      </section>
+
+      <!-- ===== 金标集 Goldset ===== -->
+      <section data-pane="goldset" class="pane" hidden>
+        <div class="page-head"><div><h1>金标集</h1><div class="sub">抽样（plan_size → goldset）同样成版本 · 逐条改标的入口已收进项目详情 review tab（PR6）</div></div>
+          <div class="actions"><div class="chip on" onclick="scopeToggle(this)">本项目</div><div class="chip" onclick="scopeToggle(this)">全部项目</div><button class="btn" onclick="go('detail');setTimeout(()=>dtab('review'),0)">去复核队列 →</button></div></div>
+        <div class="callout callout-info" style="margin-bottom:14px">本设计将仓内两个逐条改标入口<b>收成一个</b>：现有的 <span class="mono">console/goldset/review</span>（决策只在浏览器里、刷新即丢）不再作为独立入口，改为写 <span class="mono">record_reviews</span>。</div>
+        <div class="panel"><table><thead><tr><th>抽样集</th><th class="num">records</th><th>verdict 分布</th><th>项目</th><th class="num">created</th></tr></thead><tbody>
+          <tr><td class="mono xs">goldset:critical-value/audit</td><td class="num">300</td><td class="xs"><span style="color:var(--green)">accept 214</span> · <span style="color:var(--blue)">relabel 38</span> · drop 12 · flag 0 · 待定 36</td><td class="mono xs">critical-value-2026-10</td><td class="num muted">3d 前</td></tr>
+          <tr><td class="mono xs">goldset:triage/audit</td><td class="num">120</td><td class="xs"><span style="color:var(--green)">accept 98</span> · <span style="color:var(--blue)">relabel 14</span> · drop 8 · flag 0 · 待定 0</td><td class="mono xs">triage-2026-10</td><td class="num muted">6d 前</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <!-- ===== 训练 Train ===== -->
+      <section data-pane="train" class="pane" hidden>
+        <div class="page-head"><div><h1>训练</h1><div class="sub">train 作业列表（默认当前项目，可切全部）· --data 传冻结 bundle 路径</div></div>
+          <div class="actions"><div class="chip on" onclick="scopeToggle(this)">本项目</div><div class="chip" onclick="scopeToggle(this)">全部项目</div><button class="btn btn-primary" onclick="go('console')">+ 提交训练作业</button></div></div>
+        <div class="panel"><table><thead><tr><th>run</th><th>状态</th><th class="num">step</th><th class="num">loss</th><th>data</th><th>项目</th><th class="num">started</th></tr></thead><tbody>
+          <tr><td class="mono xs"><a style="color:var(--foreground);cursor:pointer" onclick="go('ops')">q35-4b-s23</a></td><td><span class="badge b-run"><span class="pt"></span>running</span></td><td class="num">1,204/3,400</td><td class="num">0.4231</td><td class="mono xs muted">bundle:round24</td><td class="mono xs">critical-value-2026-10</td><td class="num muted">42m</td></tr>
+          <tr><td class="mono xs">q35-4b-s22</td><td><span class="badge b-fail"><span class="pt"></span>failed</span></td><td class="num">2,980/3,400</td><td class="num">0.3980</td><td class="mono xs muted">bundle:round23</td><td class="mono xs">critical-value-2026-10</td><td class="num muted">2d</td></tr>
+          <tr><td class="mono xs">q35-4b-s21</td><td><span class="badge b-ok"><span class="pt"></span>succeeded</span></td><td class="num">3,400/3,400</td><td class="num">0.3811</td><td class="mono xs muted">bundle:round22</td><td class="mono xs">critical-value-2026-10</td><td class="num muted">5d</td></tr>
+          <tr><td class="mono xs">tri-08b-s3</td><td><span class="badge b-ok"><span class="pt"></span>succeeded</span></td><td class="num">2,100/2,100</td><td class="num">0.4402</td><td class="mono xs muted">bundle:tri-r1</td><td class="mono xs">triage-2026-10</td><td class="num muted">6d</td></tr>
+          <tr style="opacity:.55"><td class="mono xs">legacy-run-77</td><td><span class="badge b-pend"><span class="pt"></span>succeeded</span></td><td class="num">—</td><td class="num">—</td><td class="mono xs muted">—</td><td class="xs">旧数据（未归属）</td><td class="num muted">3 周前</td></tr>
+        </tbody></table></div>
+        <div class="xs muted" style="margin-top:8px">产出 checkpoint / training_metrics.json / resume 点与快照→ 归入本项目 artifacts。历史行 <span class="mono">project_id=''</span> 只归「全部项目」（D14）。</div>
+      </section>
+
+      <!-- ===== 评测 Eval ===== -->
+      <section data-pane="eval" class="pane" hidden>
+        <div class="page-head"><div><h1>评测</h1><div class="sub">baseline / benchmark / compare / calibrate · 产出 rows.json / report.json / calibration.json · 默认当前项目、可切全部</div></div>
+          <div class="actions"><div class="chip on" onclick="scopeToggle(this)">本项目</div><div class="chip" onclick="scopeToggle(this)">全部项目</div><button class="btn btn-primary" onclick="go('console')">+ 提交 benchmark</button></div></div>
+        <div class="grid g4" style="margin-bottom:16px">
+          <div class="kpi"><div class="label">Accuracy</div><div class="value">0.812</div><div class="delta up">+1.4 vs baseline</div></div>
+          <div class="kpi"><div class="label">ECE</div><div class="value" style="color:var(--amber)">0.058</div><div class="delta down">目标 &lt;0.05</div></div>
+          <div class="kpi"><div class="label">Brier</div><div class="value">0.091</div></div>
+          <div class="kpi"><div class="label">AURC</div><div class="value">0.104</div></div>
+        </div>
+        <div class="panel"><div class="panel-head"><div><h3>评测作业</h3><div class="desc">每次 benchmark 一行 · 项目列支持跨项目对照</div></div></div>
+          <table><thead><tr><th>run / suite</th><th>状态</th><th class="num">acc</th><th class="num">ECE</th><th>项目</th><th class="num">created</th></tr></thead><tbody>
+            <tr><td class="mono xs">q35-4b-s23 · decision-v7</td><td><span class="badge b-ok"><span class="pt"></span>succeeded</span></td><td class="num">0.812</td><td class="num">0.058</td><td class="mono xs">critical-value-2026-10</td><td class="num muted">3h 前</td></tr>
+            <tr><td class="mono xs">tri-08b-s3 · triage-v1</td><td><span class="badge b-ok"><span class="pt"></span>succeeded</span></td><td class="num">0.774</td><td class="num">0.071</td><td class="mono xs">triage-2026-10</td><td class="num muted">6d 前</td></tr>
+          </tbody></table></div>
+        <div class="panel"><div class="panel-head"><h3>report.json 指标（kev.benchmark）</h3><span class="xs muted">temperature 服务在其自身 development rows 拟合</span></div>
+          <div class="panel-body"><div class="kv">
+            <div><dt>selective coverage</dt><dd class="mono">0.86</dd></div>
+            <div><dt>permutation Δ</dt><dd class="mono">-0.004</dd></div>
+            <div><dt>isolation</dt><dd class="mono">✓</dd></div>
+            <div><dt>CI95</dt><dd class="mono">[0.781, 0.843]</dd></div>
+          </div></div></div>
+      </section>
+
+      <!-- ===== 部署 Deploy ===== -->
+      <section data-pane="deploy" class="pane" hidden>
+        <div class="page-head"><div><h1>部署</h1><div class="sub">构建镜像（Dockerfile.*）与冒烟 smoke · 产出镜像与端点配置 · 默认当前项目、可切全部</div></div>
+          <div class="actions"><div class="chip on" onclick="scopeToggle(this)">本项目</div><div class="chip" onclick="scopeToggle(this)">全部项目</div><button class="btn btn-primary" onclick="go('console')">+ 构建镜像</button></div></div>
+        <div class="panel"><table><thead><tr><th>镜像</th><th>base</th><th>状态</th><th class="num">size</th><th>端点</th><th>项目</th></tr></thead><tbody>
+          <tr><td class="mono xs">kev-4b:round24</td><td class="mono xs">Dockerfile.4B</td><td><span class="badge b-fail"><span class="pt"></span>build failed</span></td><td class="num">—</td><td class="xs muted">/v1/systemone</td><td class="mono xs">critical-value-2026-10</td></tr>
+          <tr><td class="mono xs">kev-4b:round22</td><td class="mono xs">Dockerfile.4B</td><td><span class="badge b-ok"><span class="pt"></span>smoke ok</span></td><td class="num">6.4 GB</td><td class="mono xs muted">:8008</td><td class="mono xs">critical-value-2026-10</td></tr>
+          <tr><td class="mono xs">kev-08b:tri-r1</td><td class="mono xs">Dockerfile.0.8B</td><td><span class="badge b-ok"><span class="pt"></span>smoke ok</span></td><td class="num">1.7 GB</td><td class="mono xs muted">:8010</td><td class="mono xs">triage-2026-10</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <!-- ===== 发布 Publish ===== -->
+      <section data-pane="publish" class="pane" hidden>
+        <div class="page-head"><div><h1>发布</h1><div class="sub">将最终 checkpoint 推送 HF Hub · 生成模型卡与版本记录（project_releases 为结论真相）</div></div>
+          <div class="actions"><div class="chip on" onclick="scopeToggle(this)">本项目</div><div class="chip" onclick="scopeToggle(this)">全部项目</div></div></div>
+        <div class="panel"><div class="panel-body">
+          <div class="kv">
+            <div><dt>候选 release</dt><dd class="mono">kev-cv-4b-r24</dd></div>
+            <div><dt>verdict</dt><dd><span class="badge b-pend"><span class="pt"></span>candidate</span></dd></div>
+            <div><dt>gates_snapshot</dt><dd class="mono xs">6/7 · G7 regression +0.6（待人工确认）</dd></div>
+            <div><dt>Hub repo</dt><dd class="mono xs muted">未推送</dd></div>
+          </div>
+          <div class="callout callout-warn" style="margin-top:14px">G1-G7 未全绿，按 §6.3 状态机仍停在 <b>candidate</b>；accepted 需全绿 + 人工确认后才推 Hub。</div>
+          <div style="margin-top:12px"><button class="btn" disabled>推送到 HF Hub</button></div>
+        </div></div>
+        <div class="panel"><div class="panel-head"><div><h3>发布记录</h3><div class="desc">跨项目对照 · 每条 release 归属其项目</div></div></div>
+          <table><thead><tr><th>release</th><th>verdict</th><th>G1-G7</th><th>Hub repo</th><th>项目</th></tr></thead><tbody>
+            <tr><td class="mono xs">kev-cv-4b-r24</td><td><span class="badge b-pend"><span class="pt"></span>candidate</span></td><td><span class="badge b-warn"><span class="pt"></span>6/7</span></td><td class="xs muted">未推送</td><td class="mono xs">critical-value-2026-10</td></tr>
+            <tr><td class="mono xs">kev-cv-4b-r22</td><td><span class="badge b-ok"><span class="pt"></span>accepted</span></td><td><span class="badge b-ok"><span class="pt"></span>7/7</span></td><td class="mono xs muted">jaredpalmer/kev-4b</td><td class="mono xs">critical-value-2026-10</td></tr>
+            <tr><td class="mono xs">kev-tri-08b-r1</td><td><span class="badge b-ok"><span class="pt"></span>accepted</span></td><td><span class="badge b-ok"><span class="pt"></span>7/7</span></td><td class="mono xs muted">jaredpalmer/kev-triage</td><td class="mono xs">triage-2026-10</td></tr>
+          </tbody></table></div>
+      </section>
+
+      <!-- ===== 用量 Usage ===== -->
+      <section data-pane="usage" class="pane" hidden>
+        <div class="page-head"><div><h1>用量</h1><div class="sub">上方为当前项目 · 下方跨项目明细（add_usage 真写：storage_gb_used / training_hours_used 不再是一排 0、§4.6）</div></div>
+          <div class="actions"><div class="chip on" onclick="scopeToggle(this)">本项目</div><div class="chip" onclick="scopeToggle(this)">全部项目</div></div></div>
+        <div class="grid g3" style="margin-bottom:16px">
+          <div class="kpi"><div class="label">存储</div><div class="value">18.4<span style="font-size:14px"> GB</span></div></div>
+          <div class="kpi"><div class="label">训练时长</div><div class="value">7.2<span style="font-size:14px"> h</span></div></div>
+          <div class="kpi"><div class="label">API 调用</div><div class="value">1,204</div></div>
+        </div>
+        <div class="panel"><div class="panel-head"><h3>额度（project_quota）</h3></div>
+          <div class="panel-body" style="display:flex;flex-direction:column;gap:14px">
+            <div><div class="xs muted" style="display:flex;justify-content:space-between"><span>存储</span><span class="mono">18.4 / 50 GB</span></div><div class="bar" style="margin-top:5px"><i style="width:37%"></i></div></div>
+            <div><div class="xs muted" style="display:flex;justify-content:space-between"><span>训练时长</span><span class="mono">7.2 / 40 h</span></div><div class="bar" style="margin-top:5px"><i style="width:18%"></i></div></div>
+          </div>
+        </div>
+        <div class="panel"><div class="panel-head"><div><h3>跨项目用量</h3><div class="desc">全部项目 + 历史未归属行 · add_usage 真写</div></div></div>
+          <table><thead><tr><th>项目</th><th class="num">存储 GB</th><th class="num">训练时长 h</th><th class="num">API 调用</th><th class="num">合计成本</th></tr></thead><tbody>
+            <tr><td class="mono xs">critical-value-2026-10</td><td class="num">18.4</td><td class="num">7.2</td><td class="num">1,204</td><td class="num">$41.20</td></tr>
+            <tr><td class="mono xs">critical-value-2026-09</td><td class="num">12.1</td><td class="num">4.8</td><td class="num">620</td><td class="num">$22.65</td></tr>
+            <tr><td class="mono xs">triage-2026-10</td><td class="num">6.7</td><td class="num">2.1</td><td class="num">318</td><td class="num">$9.10</td></tr>
+            <tr style="opacity:.55"><td class="xs">旧数据（project_id=''）</td><td class="num">31.0</td><td class="num">—</td><td class="num">4,010</td><td class="num">$12.40</td></tr>
+            <tr style="font-weight:600;background:#141414"><td>合计</td><td class="num">68.2</td><td class="num">14.1</td><td class="num">6,152</td><td class="num">$85.35</td></tr>
+          </tbody></table></div>
+      </section>
+
+      <!-- ===== 运维监控 Ops ===== -->
+      <section data-pane="ops" class="pane" hidden>
+        <div class="page-head"><div><h1>运维监控</h1><div class="sub">跨作业时间线 GET /projects/{id}/events?after_id（不新表，只 JOIN、D10）· SSE 续传不动 · 可按项目过滤或跨项目统计</div></div>
+          <div class="actions"><div class="chip on" onclick="scopeToggle(this)">本项目</div><div class="chip" onclick="scopeToggle(this)">全部项目</div><span class="badge b-run"><span class="pt"></span>q35-4b-s23 streaming</span></div></div>
+        <div class="panel"><div class="panel-head"><div><h3>事件（Last-Event-ID 续传）</h3><div class="desc">每条带项目标签 · 切「全部项目」显示跨项目时间线</div></div></div>
+          <div class="panel-body"><ul class="mono xs" style="list-style:none;margin:0;padding:0;line-height:1.9;color:var(--muted-fg)">
+            <li><span class="pill" style="font-size:10px">critical-value-2026-10</span> 14:22:08 <span style="color:#5c5c5c">train</span> step=1204 loss=0.4231 kl=0.0187 grad_norm=0.91</li>
+            <li><span class="pill" style="font-size:10px">critical-value-2026-10</span> 14:21:40 <span style="color:#5c5c5c">train</span> snapshot 0.25 written step-0000850</li>
+            <li><span class="pill" style="font-size:10px">triage-2026-10</span> 14:20:11 <span style="color:#5c5c5c">eval</span> benchmark decision-v8 acc=0.774</li>
+            <li><span class="pill" style="font-size:10px">critical-value-2026-10</span> 14:18:02 <span style="color:#5c5c5c">train</span> resume point committed</li>
+            <li><span class="pill" style="font-size:10px">critical-value-2026-10</span> 14:15:11 <span style="color:#5c5c5c">data</span> materialize registered bundle:round24 seq=1 sha=a3f1c9…</li>
+            <li><span class="pill" style="font-size:10px">critical-value-2026-10</span> 14:15:10 <span style="color:#5c5c5c">data</span> add_usage storage +0.04 GB</li>
+          </ul></div></div>
+        <div class="panel"><div class="panel-head"><div><h3>跨项目事件统计</h3><div class="desc">按项目聚合的事件数与最近活动</div></div></div>
+          <table><thead><tr><th>项目</th><th class="num">事件总数</th><th class="num">运行中作业</th><th>最近事件</th></tr></thead><tbody>
+            <tr><td class="mono xs">critical-value-2026-10</td><td class="num">1,842</td><td class="num" style="color:var(--blue)">1</td><td class="num muted">14:22:08</td></tr>
+            <tr><td class="mono xs">critical-value-2026-09</td><td class="num">964</td><td class="num">0</td><td class="num muted">3 周前</td></tr>
+            <tr><td class="mono xs">triage-2026-10</td><td class="num">411</td><td class="num">1</td><td class="num muted">14:20:11</td></tr>
+          </tbody></table></div>
+      </section>
+
+      <!-- ===== 维持现状占位 ===== -->
+      <section data-pane="domains" class="pane" hidden>
+        <div class="page-head"><div><h1>域与场景</h1><div class="sub">维持现状</div></div></div>
+        <div class="callout callout-info">本改造不改这页：场景 spec 仍是单一真相源（D7）·项目建时<b>选</b>已有场景（scenario 必填），不在这里动。项目化只在项目创建与作业提交时引用它。</div>
+      </section>
+      <section data-pane="apikeys" class="pane" hidden>
+        <div class="page-head"><div><h1>API Keys</h1><div class="sub">维持现状</div></div></div>
+        <div class="callout callout-info">api_keys 只服务代理推理；console/api 路由目前无鉴权（非目标 §2.2，本设计记录不修）。</div>
+      </section>
+
+      <!--PANES:APPEND-->
+
+    </main>
+  </div>
+
+  <!-- ===== 建项目弹窗（scenario 必填） ===== -->
+  <div class="dialog-scrim" id="dlgCreate" hidden>
+    <div class="dialog">
+      <header><span>新建项目</span><span class="close" onclick="closeDialog('dlgCreate')">✕</span></header>
+      <div class="body">
+        <div class="field"><label>Slug *</label><input placeholder="critical-value-2026-11" value="critical-value-2026-11" /></div>
+        <div class="field"><label>场景 Scenario *（必填且须已存在）</label>
+          <select><option>critical-value</option><option>triage</option><option>cv</option><option>emotion</option></select>
+          <span class="xs muted">建项目即选场景，不留「先建后猜场景」的孤儿项目 · D1。POST /projects 场景不存在直接 400。</span>
+        </div>
+        <div class="field"><label>目标 Goal</label><textarea rows="3" placeholder="一句话写清这轮要什么">把 64k 长文档危重值判定的 ECE 压到 0.05 以下</textarea></div>
+        <div class="form-grid">
+          <div class="field"><label>freeze 最小记录数</label><input value="300" /><span class="xs muted">只提醒不拦路（D11）</span></div>
+          <div class="field"><label>freeze 最小复核比例</label><input value="0.10" /><span class="xs muted">覆盖率，非一致性（单人标注 D6）</span></div>
+        </div>
+      </div>
+      <footer><button class="btn" onclick="closeDialog('dlgCreate')">取消</button><button class="btn btn-primary" onclick="closeDialog('dlgCreate')">创建</button></footer>
+    </div>
+  </div>
+
+  <!-- ===== 复核抽屉（编辑 state / question patch）===== -->
+  <div class="dialog-scrim" id="dlgDrawer" hidden>
+    <div class="dialog" style="width:640px">
+      <header><span>编辑决定 · 队列 #59</span><span class="close" onclick="closeDialog('dlgDrawer')">✕</span></header>
+      <div class="body">
+        <div class="xs muted">只编 <span class="mono">state</span> 的 JSON 值与 <span class="mono">questions.&lt;qid&gt;</span> 字段；不做富文本/表编辑器（非目标 §2.2）。</div>
+        <div class="field"><label>verdict</label><select><option>relabel</option><option>accept</option><option>edit</option><option>drop</option><option>flag</option></select></div>
+        <div class="field"><label>questions.critical.label</label><input value="是（高钾血症危重）" /></div>
+        <div class="field"><label>note</label><input placeholder="为何这样改" /></div>
+        <div class="callout callout-info">提交 → <span class="mono">PUT /projects/{id}/reviews/{fingerprint}</span>：覆盖前先归档一条 history；源文件 sha256 不变。</div>
+      </div>
+      <footer><button class="btn" onclick="closeDialog('dlgDrawer')">取消</button><button class="btn btn-primary" onclick="closeDialog('dlgDrawer')">保存决定</button></footer>
+    </div>
+  </div>
+
+<script>
+/* ---- studio 侧栏分组（复刻 components/studio/Sidebar.tsx GROUPS）---- */
+const GROUPS=[
+  {title:"数据",items:[["domains","域与场景"],["datasets","数据集"],["goldset","金标集"]]},
+  {title:"生命周期",items:[["train","训练"],["eval","评测"],["deploy","部署"],["publish","发布"]]},
+  {title:"系统",items:[["overview","总览"],["ops","运维监控"],["apikeys","API Keys"],["usage","用量"]]},
+  {title:"管理",items:[["projects","项目"],["console","Console 写入口"],["detail","项目详情"]]},
+];
+const ICON='<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>';
+function buildNav(){
+  document.getElementById('sidebar').innerHTML=GROUPS.map(g=>
+    `<div class="nav-group"><div class="nav-title">${g.title}</div>${g.items.map(it=>
+      `<div class="nav-item" data-nav="${it[0]}" onclick="go('${it[0]}')">${ICON}<span>${it[1]}</span>${it[0]==='projects'?'<span class="badge">hub</span>':''}</div>`).join('')}</div>`).join('');
+}
+function go(pane){
+  document.querySelectorAll('.pane').forEach(p=>p.hidden=p.dataset.pane!==pane);
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('on',n.dataset.nav===pane));
+  document.getElementById('content').scrollTop=0;
+}
+/* ---- 项目详情 6 tab 子路由 ---- */
+function dtab(id,el){
+  document.querySelectorAll('.dtab').forEach(t=>t.hidden=t.dataset.dtab!==id);
+  if(el){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));el.classList.add('on');}
+}
+/* ---- fake data ---- */
+const JOBS=[
+  ["b-run","running","train · q35-4b-s23","train","train","—","critical-value-2026-10"],
+  ["b-ok","succeeded","materialize · round24","data","materialize","2h 前","critical-value-2026-10"],
+  ["b-ok","succeeded","benchmark · decision-v7","eval","benchmark","3h 前","critical-value-2026-10"],
+  ["b-warn","succeeded","generate · 1.8k records","data","generate","昨天","triage-2026-10"],
+  ["b-fail","failed","deploy · build 4B image","deploy","docker_build","昨天","critical-value-2026-10"],
+  ["b-ok","succeeded","split · precheck G1","data","split","2 天前","triage-2026-10"],
+];
+const PROJECTS=[
+  ["危重值 2026-10","critical-value","active",14,31,"300 / 0.10","2h 前",true],
+  ["危重值 2026-09","critical-value","archived",9,22,"300 / 0.10","3 周前",false],
+  ["急诊分诊 2026-10","triage","active",6,12,"200 / 0.15","5h 前",false],
+];
+function badge(cls,txt){return `<span class="badge ${cls}"><span class="pt"></span>${txt}</span>`}
+/* ---- 总览：本项目 / 全部项目（按项目过滤 + 跨项目统计总览）---- */
+const CV_SLUG='critical-value-2026-10';
+let ovMode='proj';
+function scopeToggle(el){el.parentNode.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));el.classList.add('on');}
+function ovScope(el,mode){ovMode=mode;el.parentNode.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));el.classList.add('on');renderOv();}
+function renderOv(){
+  const all=ovMode==='all';
+  const rows=JOBS.filter(j=>all||j[6]===CV_SLUG);
+  document.getElementById('ovJobs').innerHTML=rows.map(j=>
+    `<tr><td>${badge(j[0],j[1])}</td><td>${j[2]}</td><td class="mono xs">${j[3]}</td><td class="mono xs">${j[4]}</td><td class="mono xs">${j[6]}</td><td class="num muted">${j[5]}</td></tr>`).join('');
+  if(all){
+    document.getElementById('ovSub').innerHTML='<b class="mono" style="color:var(--foreground)">全部 3 个项目</b> 跨项目统计总览 · critical-value ×2 · triage ×1';
+    document.getElementById('ovLblTotal').textContent='全部项目作业总数';
+    document.getElementById('ovKpiTotal').textContent='29';
+    document.getElementById('ovKpiRun').textContent='2';
+    document.getElementById('ovKpiRunDelta').textContent='cv train ×1 · tri eval ×1';
+    document.getElementById('ovKpiOk').textContent='22';
+    document.getElementById('ovKpiFail').textContent='5';
+    document.getElementById('ovJobsDesc').textContent="跨全部项目 · 含历史 project_id=''（D14 具名哨兵）";
+  }else{
+    document.getElementById('ovSub').innerHTML='项目 <b class="mono" style="color:var(--foreground)">critical-value-2026-10</b> 的一轮训练流水线 · 场景 critical-value';
+    document.getElementById('ovLblTotal').textContent='项目作业总数';
+    document.getElementById('ovKpiTotal').textContent='14';
+    document.getElementById('ovKpiRun').textContent='1';
+    document.getElementById('ovKpiRunDelta').textContent='train · step 1.2k/3.4k';
+    document.getElementById('ovKpiOk').textContent='11';
+    document.getElementById('ovKpiFail').textContent='2';
+    document.getElementById('ovJobsDesc').textContent='当前项目 · 可切右上角「全部项目」跨项目统计';
+  }
+}
+function fill(){
+  renderOv();
+  document.getElementById('prjRows').innerHTML=PROJECTS.map(p=>
+    `<tr><td><a onclick="go('detail')" style="cursor:pointer;color:var(--foreground);font-weight:500">${p[0]}</a><div class="mono xs muted">${p[0].includes('2026-10')&&p[1]==='critical-value'?'critical-value-2026-10':''}</div></td><td class="mono xs">${p[1]}</td><td>${p[2]==='active'?badge('b-ok','active'):badge('b-pend','archived')}</td><td class="num">${p[3]}</td><td class="num">${p[4]}</td><td class="mono xs">${p[5]}</td><td class="num muted">${p[6]}</td></tr>`).join('');
+}
+/* ---- project switcher + dialog ---- */
+let current='prj-cv-2026-10';
+function switchProject(id){
+  current=id;
+  const hint=document.getElementById('submitHint'), btn=document.getElementById('submitBtn');
+  if(!id||id===''){ if(hint)hint.innerHTML='<span class="pill">project_id = —</span> <span style="color:var(--red)">先选项目（POST /jobs 将返回 400）</span>'; if(btn){btn.disabled=true;btn.classList.remove('btn-primary')} document.getElementById('projSel').value=''; }
+  else{ const map={'prj-cv-2026-10':'prj-cv-2026-10','prj-cv-2026-09':'prj-cv-2026-09','prj-triage-2026-10':'prj-triage-2026-10'}; if(hint)hint.innerHTML=`<span class="pill">project_id = ${map[id]||id}</span> 作业场景 = 项目场景 ✓`; if(btn){btn.disabled=false;btn.classList.add('btn-primary')} }
+}
+function openDialog(id){document.getElementById(id).hidden=false}
+function closeDialog(id){document.getElementById(id).hidden=true}
+buildNav();fill();go('overview');switchProject('prj-cv-2026-10');
+</script>
+</body>
+</html>

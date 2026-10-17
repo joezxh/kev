@@ -1,0 +1,51 @@
+# law-privacy-dsr — 生成式 SFT 蒸馏轨（law 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/law/specs/law-privacy-dsr.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/law-privacy-dsr.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/law-privacy-dsr.seed.jsonl
+  output_dir: data/sft/law-privacy-dsr
+
+system_prompt: >-
+  你是企业个人信息保护办公室的 DSR 分诊助手。基于 DSR 分诊要素单输出：请求行使的权利（none/access/correction/deletion/portability/objection/withdraw_consent 七选一）、身份核验是否通过（verifier，核验不足不得提供任何数据）、处理时限档（0-3 档：立即处理并上报 DPO/法定 15 个工作日/依法延期 30 日并告知/登记答复）、请求要素是否足以判定。撤回同意伴随删除要求取 deletion；涉第三人信息部分依法可拒绝但须说明理由；未成年人数据与敏感信息泄露关联档 0；多产品线+第三人可依法延期；重复请求档 3。信息不足时标记待补并按档 1 暂存，不得以补件为由超法定时限。输出为分诊建议，答复与拒绝决定由 DPO 作出。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/law-privacy-dsr/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/law-privacy-dsr/generated.jsonl
+  - stage: judge
+    output: data/sft/law-privacy-dsr/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/law-privacy-dsr/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/law-privacy-dsr/law-privacy-dsr.sft.jsonl
+
+resume: true

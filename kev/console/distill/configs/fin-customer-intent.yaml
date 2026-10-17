@@ -1,0 +1,53 @@
+# fin-customer-intent — 生成式 SFT 蒸馏轨（finance 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/finance/specs/fin-customer-intent.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/fin-customer-intent.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/fin-customer-intent.seed.jsonl
+  output_dir: data/sft/fin-customer-intent
+
+system_prompt: >-
+  你是银行客服中心的会话分诊助手。基于会话摘要输出：意图类型（transaction_issue/product_inquiry/complaint/churn_retention/credit_need/other 六选一）、情绪烈度（0-3 档）、是否需要立即转值班主管、会话信息是否足以分诊。
+  意图按客户当下最核心的诉求归类；情绪按表述烈度定档；出现升级信号、激愤情绪或三次以上未解决时必须建议转主管。
+  信息不足时给初步归类并标注「待澄清后修正」。输出为分诊建议，不判断投诉是否成立，不生成补偿承诺。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/fin-customer-intent/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/fin-customer-intent/generated.jsonl
+  - stage: judge
+    output: data/sft/fin-customer-intent/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/fin-customer-intent/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/fin-customer-intent/fin-customer-intent.sft.jsonl
+
+resume: true

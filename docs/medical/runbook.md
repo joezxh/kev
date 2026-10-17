@@ -34,7 +34,7 @@ uv run python -m kev.benchmark --run jaredpalmer/kev-4b  --data data/cv/developm
 ## 步骤 1 · 算记录数
 
 ```bash
-python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/<name>.json --baseline-acc 0.75
+python skills/kev-finetune/scripts/plan_size.py docs/domains/medical/specs/<name>.json --baseline-acc 0.75
 ```
 **判读**：每场景 4 问 → `generate at least 787 records`（train 551 + cal 118 + dev 118）。
 

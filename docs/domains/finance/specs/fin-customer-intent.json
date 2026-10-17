@@ -1,0 +1,154 @@
+{
+  "_meta": {
+    "purpose": "客户意图与情绪识别 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/fin-customer-intent.yaml"
+  },
+  "name": "fin-customer-intent",
+  "label_zh": "客户意图",
+  "label_en": "Customer Intent",
+  "domain": "银行与券商客服中心的来电/在线会话分诊。客服把一段客户会话的结构化摘要（渠道、开场陈述、诉求描述、历史交互摘要）交给助手，助手判断客户核心意图类型（交易异常求助/产品咨询/投诉维权/销户与挽留/信贷需求/其他）、情绪烈度、是否需要立即转值班主管，以及会话信息是否足以分诊。意图与情绪口径为示例分类，需客服运营专家复核。",
+  "state": "一段客户会话的结构化摘要：渠道（电话/APP 在线/网点）、客户身份（个人/商户/企业）、开场陈述原文（2-6 句）、诉求涉及的产品或业务线、近 30 日同类会话次数、当前会话是否已排队等待超时、是否提及监管投诉或向媒体曝光等升级信号。",
+  "state_example": {
+    "session": "female 36, 电话客服",
+    "channel": "电话",
+    "our_side": "个人客户",
+    "opening": "我上周三转账的两万块对方说没收到，你们系统显示成功。我已经打了三次电话了，每次都说 48 小时反馈，到现在没人联系我。",
+    "product_line": "转账汇款",
+    "recent_contacts": 3,
+    "queue_wait": false,
+    "escalation_signal": true
+  },
+  "questions": {
+    "intent_type": {
+      "type": "choice",
+      "instructions": "该客户的核心意图属于哪一类？",
+      "criteria": {
+        "transaction_issue": "交易异常求助：转账未达、扣款异常、限额、账户冻结",
+        "product_inquiry": "产品咨询：费率、额度、功能、开通条件",
+        "complaint": "投诉维权：对服务或处理结果不满，要求处理或赔偿",
+        "churn_retention": "销户与挽留：表达销户/解约意向或比价流失",
+        "credit_need": "信贷需求：咨询或申请贷款、提额、分期",
+        "other": "其他：无法归入上述类别的诉求"
+      }
+    },
+    "emotion_level": {
+      "type": "score",
+      "instructions": "客户当前情绪烈度属于哪一档？",
+      "criteria": [
+        "激愤或威胁升级（提监管投诉/媒体/报警，或辱骂）",
+        "明显不满（重复追问、催促、抱怨处理慢）",
+        "平静中性（正常陈述诉求）",
+        "积极满意（感谢、认可）"
+      ]
+    },
+    "needs_supervisor": {
+      "type": "noul",
+      "instructions": "该会话是否需要立即转值班主管（而不是常规客服流程）？",
+      "criteria": {
+        "true": "出现升级信号、情绪激愤、或同类诉求三次以上未解决",
+        "false": "常规诉求且情绪平稳，按标准流程处理"
+      }
+    },
+    "info_sufficient": {
+      "type": "noul",
+      "instructions": "摘要是否提供了分诊所需的全部要素（诉求描述、涉及业务线、历史交互）？",
+      "criteria": {
+        "true": "要素齐全，可按意图分类分诊",
+        "false": "诉求描述含糊或缺关键要素，需先澄清"
+      }
+    }
+  },
+  "guidance": "意图识别是会话分诊参考，不是客户诉求的最终结论——客服按 intent_type 派单，实体处理由业务条线作出。intent_type 按客户当下最核心的诉求归类：一笔交易出问题同时抱怨客服的处理，若主要交锋在资金未达（要结果）归 transaction_issue，若主要交锋在处理时效与态度（要说法）归 complaint——区分点是客户要的是钱还是说法。销户意向中夹带费率抱怨的归 churn_retention（挽留优先），纯比价咨询归 product_inquiry。emotion_level 按开场陈述与升级信号定档：出现监管投诉、媒体、报警、辱骂任一表述即为档 0；「已经打了三次电话」类重复受挫表述是档 1 的典型信号。needs_supervisor=true 的判据：escalation_signal 为真、emotion_level=0、或 recent_contacts ≥3 且诉求未解决；排队超时本身不触发转主管，但需在回答中提示优先接入。info_sufficient=false 时（诉求含糊、缺业务线），intent_type 仍可按摘要给初步归类但必须标注「待澄清后修正」，needs_supervisor 按保守口径处理——分诊工具宁可多提示、不可漏升级。",
+  "variety": [
+    "意图类型（intent_type 六选项逐一覆盖）：交易异常（转账未达/扣款重复/限额误触）、产品咨询（费率/功能/开通）、投诉维权（时效/态度/赔偿）、销户挽留（比价/解约/积分）、信贷需求（贷款/提额/分期）、其他（无法归类）",
+    "情绪烈度（emotion_level 四档全覆盖）：0 激愤（监管投诉/报警/辱骂表述）、1 明显不满（三次来电/催促/抱怨）、2 平静、3 积极",
+    "升级转接（needs_supervisor=true 专门生成）：提银保监投诉、提及媒体曝光、辱骂客服、三次未解决、涉资金安全的紧急挂失",
+    "常规分诊对照（needs_supervisor=false）：首次来电的费率咨询、情绪平稳的进度查询、礼貌的额度咨询",
+    "渠道与身份：电话/APP 在线/网点 × 个人/商户/企业；商户客户的对公诉求（结算异常）单独覆盖",
+    "信息完整度（info_sufficient）：齐全、诉求含糊、缺业务线、缺历史交互、多项缺失",
+    "文本风格：口语转写体（含语气词）、客服摘要体、投诉信书面体、方言词汇夹杂",
+    "易错陷阱：要结果不等于要说法（transaction_issue vs complaint）、销户意向优先于夹带抱怨、排队超时不触发转主管、含糊诉求标注待澄清而不是硬归类"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "info_sufficient",
+    "note": "输出仅为意图识别与分诊建议，客户诉求的实体处理与补偿决定由业务条线作出；涉资金安全的紧急诉求（挂失、可疑交易）优先转安全通道，不在本模型继续处理。"
+  },
+  "smoke_probe": {
+    "state": {
+      "session": "male 52, 电话客服",
+      "channel": "电话",
+      "our_side": "个人客户",
+      "opening": "你们这个理财到期三天了钱还没到账，我不管什么 T 加几，今天必须给我个准话，不然我就去银保监投诉。",
+      "product_line": "理财产品兑付",
+      "recent_contacts": 2,
+      "queue_wait": true,
+      "escalation_signal": true
+    },
+    "questions": [
+      {
+        "qid": "needs_supervisor",
+        "type": "noul",
+        "instructions": "该会话是否需要立即转值班主管？"
+      }
+    ],
+    "expected_label": {
+      "needs_supervisor": "true"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：intent_type 六类均衡（每类 ≥13%，complaint 类保底 18% 因其与 transaction_issue 最易混淆）；emotion_level 四档 15/35/40/10；needs_supervisor=true 占比 28%；info_sufficient=false 占比 18%。「要结果 vs 要说法」最小对照对（同一交易问题的两种表述）单独 10%；涉升级信号样本单独 6% 并强制 needs_supervisor=true。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 intent_type 六类中至少五类与 needs_supervisor 两态）作为 --examples 输入；few-shot 范例必须保留 recent_contacts 与 escalation_signal 字段——缺历史交互的范例会教出对重复受挫漏判；「要结果 vs 要说法」的对照范例必须成对出现且标注区分点，训练按核心诉求归类的纪律。",
+  "compliance": [
+    "会话录音转写属敏感个人信息，训练数据须脱敏：去除姓名、卡号、手机号、精确金额与地址，保留诉求结构与情绪特征",
+    "输出仅为意图与分诊建议，不构成对客户投诉是否成立的判断，不生成补偿或赔偿承诺",
+    "辱骂与威胁内容样本只保留情绪烈度标记与触发类别，正文做遮蔽处理",
+    "涉反洗钱、涉诈账户的会话样本转安全条线，不进入本场景训练集"
+  ],
+  "acceptance": [
+    "intent_type 六类 macro-F1 ≥0.85，complaint 与 transaction_issue 的混淆率 ≤8%（核心失败模式）",
+    "emotion_level 四档 QWK ≥0.75（有序档位一致性）",
+    "needs_supervisor 召回 ≥0.97（漏转主管的升级风险远高于过转）",
+    "info_sufficient=false 子集上「待澄清后修正」标注率 =1.0（硬规则验收）",
+    "语气不变性：同一诉求的口语体与书面体样本 intent_type 预测一致率 ≥0.95",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "complaint 吞并 transaction_issue → few-shot 缺少「要结果 vs 要说法」对照范例，补充同题双表述样本并核对 sidecar 的区分点标注",
+    "needs_supervisor 漏报 → 检查蒸馏数据中 escalation_signal 与 recent_contacts 是否被脱敏误删",
+    "情绪档与升级信号矛盾 → sidecar 标注不一致，检查 emotion_level=0 是否强制 needs_supervisor=true",
+    "含糊诉求被硬归类 → 「待澄清后修正」标注路径失效，检查 sidecar 是否保留不确定样本",
+    "方言/口语样本意图漂移 → 蒸馏 topics 未覆盖口语体，补充口语转写样本占比"
+  ],
+  "expert_review": [
+    "intent_type 六分类与客服中心工单类目的映射（各机构工单体系不同，需客服运营专家复核）",
+    "emotion_level 四档与质检评分表的口径对应",
+    "needs_supervisor 触发清单（升级信号、重复来电次数阈值）与值班主管授权范围",
+    "「要结果 vs 要说法」的区分口径在边界案例中的应用",
+    "涉资金安全诉求转安全通道的触发词清单"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；会话意图与情绪无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是银行客服中心的会话分诊助手。基于会话摘要输出：意图类型（transaction_issue/product_inquiry/complaint/churn_retention/credit_need/other 六选一）、情绪烈度（0-3 档）、是否需要立即转值班主管、会话信息是否足以分诊。意图按客户当下最核心的诉求归类；情绪按表述烈度定档；出现升级信号、激愤情绪或三次以上未解决时必须建议转主管。信息不足时给初步归类并标注「待澄清后修正」。输出为分诊建议，不判断投诉是否成立，不生成补偿承诺。",
+      "en": "You are a call-center triage assistant for a bank. From a conversation summary, output: intent type (one of transaction_issue/product_inquiry/complaint/churn_retention/credit_need/other), emotion level (0-3), whether the session needs immediate supervisor escalation, and whether the summary is sufficient for triage. Classify by the customer's dominant ask; escalate on any escalation signal, hostile emotion, or 3+ unresolved contacts. When information is insufficient, give a provisional label marked for clarification. Output is triage advice only — never adjudicate complaints or promise compensation."
+    },
+    "ask_template": "请基于以下会话摘要输出分诊判断：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "银行与券商客服中心的来电与在线会话分诊",
+      "意图六分类（交易异常/产品咨询/投诉/销户挽留/信贷需求/其他）",
+      "情绪烈度四档与升级信号识别",
+      "「要结果 vs 要说法」的意图区分",
+      "信息不足时的保守分诊口径"
+    ],
+    "kev_track": false
+  }
+}

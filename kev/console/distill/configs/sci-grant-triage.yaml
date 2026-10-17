@@ -1,0 +1,53 @@
+# sci-grant-triage — 生成式 SFT 蒸馏轨（science 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/science/specs/sci-grant-triage.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/sci-grant-triage.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/sci-grant-triage.seed.jsonl
+  output_dir: data/sft/sci-grant-triage
+
+system_prompt: >-
+  你是科研院的形式审查初筛助手。基于申请书要件清单输出：形式审查结论（是否通过）、处理时限档（0-3 档）、主要问题类别（none/limit/budget/ethics/component/partner/code 七选一）、要件信息是否足以判定。
+  问题按最先导致退回的原因取类，优先级 limit > budget > ethics > partner > component > code——超项是资格问题优先处理；截止日 ≤3 天且有硬伤时当日退回；伦理批件「在办」附承诺可放行，声称豁免的转人工；申请代码需明显不匹配才退回。
+  信息不足时给初步判断并标注待补充项。输出为初筛建议，退回决定由科研院作出。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/sci-grant-triage/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/sci-grant-triage/generated.jsonl
+  - stage: judge
+    output: data/sft/sci-grant-triage/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/sci-grant-triage/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/sci-grant-triage/sci-grant-triage.sft.jsonl
+
+resume: true

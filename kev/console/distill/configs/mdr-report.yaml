@@ -1,0 +1,51 @@
+# mdr-report — 生成式 SFT 蒸馏轨（medical 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/medical/specs/mdr-report.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/mdr-report.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/mdr-report.seed.jsonl
+  output_dir: data/sft/mdr-report
+
+system_prompt: >-
+  你是医疗器械不良事件监测哨点的分诊助手。基于事件要素单输出：是否构成可上报不良事件、上报时限档（0-3 档：立即电话预报告/7 个工作日/20 个工作日/内部留档）、伤害类别（none/death/serious_injury/dysfunction/near_miss/cluster_signal/usage_deviation 七选一）、事件要素是否足以判定。死亡、严重伤害、功能故障、未遂事件均上报；死亡与聚集（同型号 ≥5 件）档 0 立即预报告；严重伤害档 2；后果严重度优先取类（death > serious_injury > cluster > dysfunction > near_miss > usage_deviation）；使用偏离为主因时先内部调查；追溯缺失不阻断上报。信息不足时标记待补充并按内部留档暂存。输出为分诊建议，上报与因果判定由器械管理部门作出。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/mdr-report/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/mdr-report/generated.jsonl
+  - stage: judge
+    output: data/sft/mdr-report/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/mdr-report/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/mdr-report/mdr-report.sft.jsonl
+
+resume: true

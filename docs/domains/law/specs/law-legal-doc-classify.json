@@ -1,0 +1,163 @@
+{
+  "_meta": {
+    "purpose": "法务台的来文文书分类与处理时限分派 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/law-legal-doc-classify.yaml"
+  },
+  "name": "law-legal-doc-classify",
+  "label_zh": "文书分类",
+  "label_en": "Legal Document Classification",
+  "domain": "企业法务部与律所行政的来文文书分类与处理分派。法务助理把一份来文文书的关键要素交给助手：文书来源、落款主体、核心主张、期限要求、附件形式、印章签署状态。助手判断文书类型（doc_type 六选一）、处理时限档（urgency_tier 四档）、是否需要执业律师介入（needs_counsel），以及文书要素是否足以分类定档（routing_evidence）。时限口径为法务台的通行分派惯例，阈值为示例口径，需法务负责人复核。",
+  "state": "一份来文文书的关键要素：文书来源（对方当事人/对方律师/法院或仲裁庭/监管机构/内部部门/其他）、落款主体（个人/律所/法院印章/机关印章/部门负责人）、核心主张（催款/索赔/应诉通知/整改要求/合规通报/执行申请等）、期限要求（有无明确期限及天数）、附件形式（证据清单/传票/决定书/无）、印章签署状态（签章齐全/仅签名/无签章）。",
+  "state_example": {
+    "desk": "female 法务助理 A, 集团法务部来文登记",
+    "context": "供应商就质量争议发出的正式交涉",
+    "doc_source": "对方律师",
+    "signatory": "律所",
+    "core_claim": "限期赔偿并保留诉讼权利",
+    "deadline_note": "明确期限 7 天",
+    "attachments": "证据清单",
+    "seal_status": "签章齐全"
+  },
+  "questions": {
+    "doc_type": {
+      "type": "choice",
+      "instructions": "该文书应归入哪一类？",
+      "criteria": {
+        "complaint": "起诉状/仲裁申请书：已进入或即将启动程序",
+        "defense": "答辩状/异议文书：程序中的抗辩与异议",
+        "lawyer_letter": "律师函：对方律师的交涉、催告、警告",
+        "regulatory": "监管函件：行政机关、行业监管的通知、决定、问询",
+        "internal_report": "内部合规报告：内部部门的风险通报与整改要求",
+        "judgment": "判决/裁定/决定书：裁判机关的生效文书"
+      }
+    },
+    "urgency_tier": {
+      "type": "score",
+      "instructions": "处理应在多长时间内启动？",
+      "criteria": [
+        "当日处理（有明确法定期限或已临近）",
+        "三个工作日内（期限 7 天内或程序性文书）",
+        "本周内登记流转（无近期期限的常规来文）",
+        "常规归档（通知知悉类，无行动要求）"
+      ]
+    },
+    "needs_counsel": {
+      "type": "noul",
+      "instructions": "该文书是否需要执业律师介入处理？",
+      "criteria": {
+        "true": "程序性文书或涉实体抗辩，需律师判断与应对",
+        "false": "登记知悉或行政流程性处理即可，无需法律判断"
+      }
+    },
+    "routing_evidence": {
+      "type": "noul",
+      "instructions": "文书要素是否提供了分类定档所需的全部要素（来源、主张、期限）？",
+      "criteria": {
+        "true": "来源、主张、期限齐备，可直接分类定档",
+        "false": "缺来源、缺核心主张或缺期限信息，无法可靠定档"
+      }
+    }
+  },
+  "guidance": "doc_type 的唯一判据是文书的程序角色与落款主体（示例口径，需法务负责人复核）：法院/仲裁机构发出的载明案号的程序文书 → complaint（起诉状/申请书）或 judgment（已作出裁判的文书）——按文书是启动程序还是作出裁判区分；对方律师签署的交涉文书 → lawyer_letter；行政机关印章的通知、决定、问询 → regulatory；内部部门的通报 → internal_report；答辩与异议类抗辩文书 → defense。urgency_tier 由期限要求决定：文书载明明确期限且 ≤7 天 → 档 0 或 1（≤3 天为 0）；监管问询与听证通知即便期限较长也至少档 1——逾期不答复本身构成违规；裁判文书按上诉期/履行期计算，剩余期限 ≤5 天档 0；无行动要求的知悉类通知为档 3。needs_counsel 的判据：complaint、defense、judgment 一律 true——程序与上诉权利依赖专业判断；lawyer_letter 视核心主张而定，涉索赔与停止侵害主张 true，仅催款对账 false；regulatory 涉整改要求与处罚 true，仅备案告知 false。对方律师文书声称「保留诉讼权利」但无期限 → 档 2 而非档 0，恫吓性表述不抬升档位。routing_evidence=false 时（缺来源、缺主张、缺期限），doc_type 与 urgency_tier 不得凭猜测填写，标记待补充并按档 2 暂存流转。",
+  "variety": [
+    "文书类型（doc_type 六选项逐一覆盖）：complaint（起诉状副本+传票）、defense（管辖权异议）、lawyer_letter（索赔函/催款函）、regulatory（责令改正通知书/问询函）、internal_report（内审通报/合规整改单）、judgment（一审判决书/支付令）",
+    "期限谱系（urgency_tier 四档全覆盖）：期限 2 天（档 0）、期限 7 天（档 1）、无期限交涉（档 2）、知悉类通知（档 3）",
+    "程序阶段谱系：诉前（律师函）、一审（起诉状/答辩）、裁判后（判决书+上诉期）、执行（执行申请书）",
+    "印章签署谱系：法院印章、机关印章、律所签章、仅个人签名、无签章——无签章的「法院文书」是陷阱样本（核验后按普通信件处理）",
+    "恫吓性表述对照（专门生成）：「保留诉讼权利」「将采取一切手段」但无期限 → 档 2 不抬升",
+    "要素完整度（routing_evidence）：齐备、缺来源、缺核心主张、缺期限、多项缺失",
+    "呈现风格：来文登记表体、法务助理批注体、收发文台账体、行政流转单体",
+    "易错陷阱：启动程序 vs 作出裁判的区分、监管问询至少档 1、上诉期剩余 ≤5 天档 0、恫吓表述不抬档、无签章文书需核验"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "routing_evidence",
+    "note": "模型输出仅为文书分类与时限分派建议，答辩与上诉决定由执业律师按期限作出；涉保密封存与涉外送达的文书转专人，模型不拆封判断；期限计算（上诉期、举证期、答辩期）以执业律师核对送达回证为准，模型给出的时限仅为分派建议。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 法务助理 B, 律所行政前台",
+      "context": "法院直接送达， EMS 单号在途 2 天后签收",
+      "doc_source": "法院或仲裁庭",
+      "signatory": "法院印章",
+      "core_claim": "应诉通知并指定举证期限",
+      "deadline_note": "明确期限 5 天（举证期限）",
+      "attachments": "传票, 起诉状副本",
+      "seal_status": "签章齐全"
+    },
+    "questions": [
+      {
+        "qid": "doc_type",
+        "type": "choice",
+        "instructions": "该文书应归入哪一类？"
+      },
+      {
+        "qid": "urgency_tier",
+        "type": "score",
+        "instructions": "处理应在多长时间内启动？"
+      }
+    ],
+    "expected_label": {
+      "doc_type": "complaint",
+      "urgency_tier": "0"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：doc_type 六类中 complaint 15%、defense 12%、lawyer_letter 22%、regulatory 18%、internal_report 15%、judgment 18%；urgency_tier 四档 20/30/25/25；needs_counsel=true 65%、false 35%；routing_evidence=false 占比 15%。恫吓性表述对照单独 6%；无签章陷阱样本单独 5%；「启动程序 vs 作出裁判」对照对单独 6%；监管问询样本单独 8% 并强制档 ≥1。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 doc_type 六类中至少五类与 urgency_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 doc_source 与 deadline_note 字段——缺来源的范例会教出凭核心主张强行归类；「起诉状（启动程序）vs 判决书（作出裁判）」对照范例必须成对出现并标注区分依据；恫吓性表述范例需显式写出「无期限不抬档」的推理；无签章陷阱范例需写出核验步骤。",
+  "compliance": [
+    "文书样本须去标识：剔除当事人名称、案号与金额绝对值，仅保留文书结构、程序角色与期限结构",
+    "裁判文书仅保留文书类型与期限结构，不保留裁判理由与当事人信息",
+    "输出仅为分类分派建议，不构成法律意见，不生成答辩或上诉的实体建议",
+    "涉密与未公开裁判文书的样本不在本场景范围"
+  ],
+  "acceptance": [
+    "doc_type 六类 macro-F1 ≥0.87，judgment 与 complaint 混淆率 ≤3%（程序角色区分的核心验收）",
+    "urgency_tier 四档 QWK ≥0.75，监管问询子集档 ≥1 比例 =1.0（硬规则验收）",
+    "needs_counsel accuracy ≥0.94，程序性文书漏转律师率 ≤2%",
+    "恫吓表述子集档 2 比例 ≥0.9（不抬档口径验收）",
+    "routing_evidence=false 子集上不强行定档率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "judgment 被归 complaint → 「启动程序 vs 作出裁判」区分信息在 sidecar 缺失，检查文书角色标注",
+    "监管问询被赋档 2/3 → 「问询至少档 1」口径未进蒸馏标签，检查对照样本",
+    "恫吓表述抬档 → few-shot 缺「无期限不抬档」范例，核对标注",
+    "无签章陷阱样本被直接定档 → 核验步骤未入标签，检查印章状态字段完整性",
+    "routing_evidence=false 仍定档 → 违反软标签纪律，检查待补充标注"
+  ],
+  "expert_review": [
+    "四档时限（当日/三个工作日/本周/归档）与法务部分派 SLA 的对应",
+    "监管问询至少档 1 的口径与各监管答复期限的匹配",
+    "恫吓性表述不抬档的边界（律师函同时载明最后期限的情形）",
+    "无签章文书的核验流程与口径（先核验后归类的操作衔接）",
+    "电子送达与在途时间的处理是否需单独口径"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；文书分类依赖程序角色与落款主体的语义判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是法务台的来文文书分类助手。基于来文文书的关键要素输出：文书类型（complaint/defense/lawyer_letter/regulatory/internal_report/judgment 六选一）、处理时限档（0-3 档）、是否需要执业律师介入、文书要素是否足以分类定档。分类判据是文书的程序角色与落款主体：启动程序的文书与作出裁判的文书区分开；监管问询即便期限较长也至少档 1；期限 ≤3 天档 0、≤7 天档 1、无期限交涉档 2、知悉类档 3；恫吓性表述无期限不抬档；无签章的「法院文书」先核验再归类。信息不足时标记待补充并按档 2 暂存，不得凭核心主张强行归类。输出为分派建议，答辩与上诉由执业律师按期限决定。",
+      "en": "You are a legal-desk mailroom classifier. From a document's key elements, output: the document type (complaint/defense/lawyer_letter/regulatory/internal_report/judgment), the handling tier (0-3), whether counsel must be involved, and whether the elements suffice for classification. Classify by procedural role and signatory: distinguish documents that initiate proceedings from those adjudicating them; regulator inquiries get tier >=1 regardless of deadline length; deadlines <=3 days are tier 0, <=7 days tier 1, no-deadline advocacy tier 2, no-action notices tier 3; threatening language without a deadline does not raise the tier; unsigned 'court documents' must be verified first. Mark missing elements and hold at tier 2 rather than guessing. Output is routing advice only; response and appeal decisions rest with counsel."
+    },
+    "ask_template": "请根据以下来文文书要素完成分类定档：\n\n文书要素：\n{{ state }}\n\n请逐项输出：\n1. doc_type：文书类型（complaint/defense/lawyer_letter/regulatory/internal_report/judgment 六选一），说明程序角色与落款主体的判断依据。\n2. urgency_tier：处理时限档（0-3），列明期限依据；恫吓性表述与核验存疑的处理说明。\n3. needs_counsel：是否需要执业律师介入（true/false），false 时说明行政处理路径。\n4. routing_evidence：文书要素是否足以分类定档（true/false），false 时列出缺失要素与暂存处置。",
+    "topics": [
+      "起诉状与应诉通知（启动程序类文书）",
+      "答辩状与管辖权异议（程序抗辩类文书）",
+      "律师函（催款函/索赔函/警告函）",
+      "监管函件（责令改正/问询函/听证通知）",
+      "内部合规报告（内审通报/整改单）",
+      "判决裁定与上诉期（作出裁判类文书）",
+      "期限驱动的时限分派（3 天/7 天/无期限）",
+      "恫吓性表述不抬档与无签章核验陷阱"
+    ],
+    "kev_track": false
+  }
+}

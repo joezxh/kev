@@ -1,0 +1,164 @@
+{
+  "_meta": {
+    "purpose": "基金申请书形式审查初筛 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/sci-grant-triage.yaml"
+  },
+  "name": "sci-grant-triage",
+  "label_zh": "基金初筛",
+  "label_en": "Grant Triage",
+  "domain": "高校科研院与基金依托单位的基金申请书形式审查与初筛。科研秘书把一份申请书的要件清单交给助手：申请代码匹配度、预算合规项、申请人限项状态、合作单位要件、伦理批件状态、申请书要件完整性。助手判断形式审查结论（formality_pass）、进入会评的优先档（review_tier 四档）、主要问题类别（issue_category 七选一），以及要件信息是否足以判定（completeness_sufficient）。形式审查基线为《国家自然科学基金条例》及各基金委指南的通行形式要件，阈值为示例口径，需科研管理人员复核。",
+  "state": "一份基金申请书的要件清单：基金类型（面上/青年/重点/区域联合）、申请代码与研究方向匹配情况、预算合规问题数（项）、申请人限项冲突状态（无冲突/超项/同期限制）、合作单位要件缺失数（份）、伦理批件状态（已批/在办/未提交）、要件缺失数（项，签字/承诺书/代表作等）。",
+  "state_example": {
+    "office": "female 科秘 A, 校内形式审查",
+    "context": "青年基金，合作医院未盖章",
+    "fund_type": "青年",
+    "code_match": "研究方向与申请代码匹配",
+    "budget_issues": "1.0 项（劳务费比例超限）",
+    "limit_status": "无冲突",
+    "partner_missing": "1.0 份",
+    "ethics_status": "在办",
+    "component_missing": "2.0 项"
+  },
+  "questions": {
+    "formality_pass": {
+      "type": "noul",
+      "instructions": "该申请书是否通过形式审查（而不是退回修改）？",
+      "criteria": {
+        "true": "全部形式要件合规，无退回事由",
+        "false": "存在超项、要件缺失或预算违规等任一退回事由"
+      }
+    },
+    "review_tier": {
+      "type": "score",
+      "instructions": "处理应在多长时间内执行？",
+      "criteria": [
+        "当日退回（截止日临近且存在硬伤）",
+        "三个工作日内退回并指导修改",
+        "记录在案，随下一批集中反馈",
+        "通过形式审查，转入会评准备"
+      ]
+    },
+    "issue_category": {
+      "type": "choice",
+      "instructions": "触发退回的主要问题属于哪一类？",
+      "criteria": {
+        "none": "无（通过形式审查）",
+        "limit": "限项类：申请人超项或同期申请冲突",
+        "budget": "预算类：科目比例、开支范围违反指南",
+        "ethics": "伦理类：批件缺失或在办未附承诺",
+        "component": "要件类：签字、承诺书、代表作等形式要件缺失",
+        "partner": "合作类：合作单位盖章、协议或要件缺失",
+        "code": "代码类：申请代码与研究方向明显不匹配"
+      }
+    },
+    "completeness_sufficient": {
+      "type": "noul",
+      "instructions": "要件清单是否提供了判定所需的全部要素（状态原文、数量、类型）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照指南要件判定",
+        "false": "缺状态原文、缺类型或缺数量，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "formality_pass 的唯一判据是任一形式要件不合规（示例口径，实际以当年指南为准，需专家复核）：限项冲突为任何形式即退回；预算合规问题 ≥1 项退回；伦理批件「未提交」退回、「在办」可附承诺后放行（在办不算硬伤但要记录）；合作单位要件缺失 ≥1 份退回；要件缺失 ≥1 项退回；申请代码明显不匹配退回。review_tier 由问题类别与截止日共同决定：formality_pass=true 时为 3；截止日 ≤3 天（context 注明）且有任一硬伤时为 0——当日退回否则申请人错过修改窗口；ethics「在办」单独出现不退回但记录在案（档 2）并提示承诺书随附；预算与限项是硬伤，按截止日定档 0-1。issue_category 按「最先导致退回的问题」取类，优先级：limit > budget > ethics(未提交) > partner > component > code——超项是资格问题，资格优先于形式。code 类要求「明显不匹配」——研究方向与代码的合理交叉不算，判断依据是申请书关键词与代码内涵的对应。formality_pass=true 时 issue_category 必须为 none。completeness_sufficient=false 时（缺状态原文、缺类型），formality_pass 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 issue_category 不得凭猜测填写。",
+  "variety": [
+    "问题类别（issue_category 七选项逐一覆盖）：limit（超项 1 项/同期两处申请）、budget（劳务费比例/设备费列支测试费）、ethics（未提交/在办附承诺）、component（缺签字 2 处/缺承诺书）、partner（合作医院未盖章/缺合作协议）、code（医学申请投信息代码）、none",
+    "处理档（review_tier 四档全覆盖）：0 当日退回（截止 ≤3 天 + 硬伤）、1 三个工作日、2 集中反馈（ethics 在办）、3 转会评（formality_pass=true 必须为 3）",
+    "基金类型：面上、青年、重点、区域联合——不同类型的限项口径在 state 中带出",
+    "截止日谱系：截止 ≤3 天、7 天内、30 天以上、无截止（预申请）——截止日是档 0 的必要条件",
+    "伦理状态谱系：已批（附批件号）、在办（附承诺）、未提交、涉人但声称豁免（需人工复核的陷阱样本）",
+    "要件完整度（completeness_sufficient）：齐全、缺伦理状态原文、缺基金类型、缺数量、多项缺失",
+    "呈现风格：形式审查表体、科秘批注体、基金委指南对照体、申请书封面要素摘录体",
+    "易错陷阱：超项是资格问题优先、截止日 ≤3 天才触发当日退回、ethics 在办不算硬伤、code 类要求明显不匹配、涉人豁免需转人工"
+  ],
+  "routing": {
+    "risk": "low",
+    "human_review": true,
+    "evidence_question": "completeness_sufficient",
+    "note": "模型输出仅为形式审查初筛建议，退回与放行由科研院按指南作出；「涉人声称豁免」的伦理判断一律转伦理委员会人工复核；模型不生成交给申请人的正式退回意见文本。"
+  },
+  "smoke_probe": {
+    "state": {
+      "office": "male 科秘 B, 重点项目管理",
+      "context": "截止日前 2 天，申请人同时有一项在研重点项目未结题",
+      "fund_type": "重点",
+      "code_match": "匹配",
+      "budget_issues": "0.0 项",
+      "limit_status": "超项 1 项",
+      "partner_missing": "0.0 份",
+      "ethics_status": "已批",
+      "component_missing": "0.0 项"
+    },
+    "questions": [
+      {
+        "qid": "review_tier",
+        "type": "score",
+        "instructions": "处理应在多长时间内执行？"
+      },
+      {
+        "qid": "issue_category",
+        "type": "choice",
+        "instructions": "触发退回的主要问题属于哪一类？"
+      }
+    ],
+    "expected_label": {
+      "review_tier": "0",
+      "issue_category": "limit"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：issue_category 七类中 none 35%（与 pass 对齐）、limit 10%、budget 12%、ethics 12%、partner 10%、component 13%、code 8%（code 类与 component 最易混淆故两者都给足）；review_tier 四档 10/30/25/35；completeness_sufficient=false 占比 15%。「截止临近+硬伤」样本单独 8% 并强制档 0；「ethics 在办放行」对照对（在办 vs 未提交）单独 8%；「明显不匹配 vs 合理交叉」的 code 对照对单独 6%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 issue_category 七类中至少五类与 review_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 limit_status 与 ethics_status 原文——缺限项状态的范例会教出漏判资格硬伤；「截止临近+硬伤」范例与「同硬伤无截止压力」范例必须成对出现，训练档 0 的双条件判据；code 类范例需标注「明显不匹配」的判断推理。",
+  "compliance": [
+    "申请书要件样本须去标识：剔除申请人、单位与合作方名称，仅保留要件类型与状态",
+    "输出仅为形式审查初筛建议，不构成资助评价，不生成对申请人学术水平的判断",
+    "限项计算依赖的基金系统数据只保留冲突状态标记，不保留完整承担课题清单",
+    "涉敏感领域的申请（涉密、涉外合作）转专门审查通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "formality_pass accuracy ≥0.96，误放行率（应退回判通过）≤1.5%（误放行到会评浪费评审资源且损害申请人信誉）",
+    "review_tier 四档 QWK ≥0.75",
+    "issue_category 七类 macro-F1 ≥0.85，limit 的漏检率 ≤2%（资格硬伤零容忍）",
+    "截止 ≤3 天 + 硬伤子集 review_tier=0 比例 =1.0（硬规则验收）",
+    "ethics「在办」子集 formality_pass=true 比例 ≥0.9（在办不算硬伤的口径一致性）",
+    "completeness_sufficient=false 子集上软标签纪律遵守率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "limit 漏检 → 检查蒸馏数据中 limit_status 字段是否被截断，资格硬伤依赖该字段",
+    "code 吞并 component → few-shot 缺少「明显不匹配 vs 要件缺失」区分范例，核对 sidecar 标注",
+    "ethics 在办被误退 → 「在办附承诺放行」口径未进蒸馏标签，检查对照对样本",
+    "无截止压力样本被赋档 0 → 双条件判据失效，检查 sidecar 是否保留截止日信息",
+    "formality_pass=true 但 issue_category 非 none → 违反硬规则，检查贴边样本标注"
+  ],
+  "expert_review": [
+    "形式要件清单与当年各基金指南的对应（要件年年调整，需科研管理人员复核）",
+    "限项口径（超项/同期限制）与基金委限项新规的一致性",
+    "ethics「在办附承诺」放行的边界与科研伦理办公室流程衔接",
+    "申请代码匹配度的判断标准（交叉学科的合理交叉认定）",
+    "截止日分档（3 天/7 天）与实际形式审查窗口的匹配"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；形式审查依赖要件状态与指南的逐项对照语义，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是科研院的形式审查初筛助手。基于申请书要件清单输出：形式审查结论（是否通过）、处理时限档（0-3 档）、主要问题类别（none/limit/budget/ethics/component/partner/code 七选一）、要件信息是否足以判定。问题按最先导致退回的原因取类，优先级 limit > budget > ethics > partner > component > code——超项是资格问题优先处理；截止日 ≤3 天且有硬伤时当日退回；伦理批件「在办」附承诺可放行，声称豁免的转人工；申请代码需明显不匹配才退回。信息不足时给初步判断并标注待补充项。输出为初筛建议，退回决定由科研院作出。",
+      "en": "You are a research-office grant formality screener. From an application's checklist summary, output: whether it passes formality review, the handling tier (0-3), the dominant issue category (none/limit/budget/ethics/component/partner/code), and whether the checklist suffices. Classify by the first disqualifying issue (limit > budget > ethics > partner > component > code — over-limit is an eligibility matter); same-day return only when the deadline is within 3 days AND a hard defect exists; ethics 'in progress' with a commitment letter passes; 'obviously mismatched' codes are returned, reasonable intersections are not. Mark incomplete checklists as provisional. Output is screening advice; returns are issued by the research office."
+    },
+    "ask_template": "请基于以下申请书要件清单输出初筛判断：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "基金申请书的形式审查初筛",
+      "问题七分类与退回优先级",
+      "截止日与处理时限分档",
+      "伦理批件状态的处理口径",
+      "要件不全时的保守判定"
+    ],
+    "kev_track": false
+  }
+}

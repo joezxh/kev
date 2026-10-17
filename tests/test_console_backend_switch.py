@@ -8,7 +8,7 @@ import os
 import pytest
 import sqlalchemy as sa
 
-from kev.console.db import Store, backend_url
+from kev.console.db import SCHEMA_VERSION, Store, backend_url
 
 
 def test_backend_url_defaults_to_sqlite(monkeypatch):
@@ -46,8 +46,14 @@ def test_store_default_is_sqlite_round_trip(tmp_path):
     store = Store(tmp_path / "switch.sqlite")
     try:
         assert store.backend == "sqlite"
-        assert store.schema_version() == 4
-        jid = store.create_job(kind="train", stage="data", scenario="diagnosis", title="t",
+        assert store.schema_version() == SCHEMA_VERSION
+        # v8：跨领域 spec 登记用的四列（见 kev/console/scenario_specs.py）
+        for table, column in (("scenario_domains", "spec_dir"), ("scenarios", "track"),
+                              ("scenarios", "generator_kind"), ("scenarios", "distill_yaml"),
+                              ("scenarios", "origin")):
+            assert store._column_exists(table, column), f"{table}.{column}"
+        jid = store.create_job(project_id=store.create_project("switch-1", "切换测试", scenario="diagnosis"),
+                               kind="train", stage="data", scenario="diagnosis", title="t",
                                request={}, argv=[], env_overlay={}, cwd="/tmp",
                                log_path="/tmp/x.log", artifacts_in=[], artifacts_out=[])
         assert store.get_job(jid)["status"] == "pending"
@@ -63,7 +69,8 @@ def test_postgres_round_trip_if_configured():
         assert store.backend == "postgresql"
         # 表结构由 schema.postgres.sql / Store() 建好；这里跑一轮基础往返
         assert store.list_scenario_slugs()
-        jid = store.create_job(kind="train", stage="data", scenario="diagnosis", title="t",
+        jid = store.create_job(project_id=store.create_project("pg-round-trip-1", "postgres 往返", scenario="diagnosis"),
+                               kind="train", stage="data", scenario="diagnosis", title="t",
                                request={}, argv=[], env_overlay={}, cwd="/tmp",
                                log_path="/tmp/x.log", artifacts_in=[], artifacts_out=[])
         assert store.get_job(jid)["status"] == "pending"

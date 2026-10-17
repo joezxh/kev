@@ -1,0 +1,162 @@
+{
+  "_meta": {
+    "purpose": "主观题阅卷辅助评分 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/edu-answer-grading.yaml"
+  },
+  "name": "edu-answer-grading",
+  "label_zh": "主观题阅卷辅助",
+  "label_en": "Subjective Answer Grading",
+  "domain": "K12 与高校主观题（解答题/作文/简答）的阅卷辅助。阅卷员把一道主观题的评分要素与一份学生作答交给助手：题目要求、评分标准（得分点与分值）、学生作答。助手输出评分档位（grade_band 四档：优秀/良好/基本达标/未达标）、主要失分维度（dimension_issue 五选一）、作答是否离题（off_topic），以及作答信息是否足以评分（grading_evidence）。评分口径为示例标准，实际以本题官方评分细则为准，需学科阅卷组长复核。",
+  "state": "一份主观题阅卷要素：学段学科、题型（解答/简答/作文）、题目要求、评分标准摘要（得分点与分值分布）、学生作答（原样）、作答字数、本题均分（历史数据，%）。",
+  "state_example": {
+    "grader": "female 阅卷员 07, 高考仿真阅卷",
+    "context": "双评差值超阈值进入三评的样本",
+    "grade_subject": "高三语文",
+    "question_type": "简答",
+    "prompt": "结合文本分析标题「春风沉醉的夜晚」的双重意蕴（6 分）",
+    "rubric": "答出表层意蕴 3 分；答出深层意蕴 3 分；言之成理即可给分",
+    "student_answer": "「标题表面写夜晚的景色，深层写主人公漂浮不定的生存状态与朦胧的憧憬，也暗示了时代氛围。」",
+    "answer_len": "78.0 字",
+    "avg_score": "68.0 %"
+  },
+  "questions": {
+    "grade_band": {
+      "type": "score",
+      "instructions": "该作答的得分率属于哪一档？",
+      "criteria": [
+        "优秀档（得分率 ≥85%）：要点齐全且论证/表达质量高",
+        "良好档（得分率 60-84%）：主要得分点覆盖，个别要点缺失",
+        "基本达标档（得分率 30-59%）：触及部分得分点，论证或表达有明显不足",
+        "未达标档（得分率 <30%）：要点基本未覆盖或答非所问"
+      ]
+    },
+    "dimension_issue": {
+      "type": "choice",
+      "instructions": "主要失分属于哪个维度？",
+      "criteria": {
+        "none": "无主要失分（优秀档）",
+        "understanding": "理解维度：对文本/题意的理解偏差",
+        "analysis": "分析维度：论证不充分、推理跳跃或要点缺失",
+        "expression": "表达维度：语言组织、术语使用或书写规范问题",
+        "structure": "结构维度：答题结构混乱、逻辑层次不清"
+      }
+    },
+    "off_topic": {
+      "type": "noul",
+      "instructions": "该作答是否离题（答非所问）？",
+      "criteria": {
+        "true": "作答与题目设问对象或任务类型不符",
+        "false": "作答切题（质量高低与是否离题无关）"
+      }
+    },
+    "grading_evidence": {
+      "type": "noul",
+      "instructions": "作答与评分标准是否提供了评分所需的全部要素？",
+      "criteria": {
+        "true": "评分标准完整且作答完整，可直接对照评分",
+        "false": "评分标准残缺或作答明显不完整（涂改/截断），评分需谨慎"
+      }
+    }
+  },
+  "guidance": "grade_band 按得分点覆盖率与质量定档（示例口径，实际以本题官方评分细则为准，需阅卷组长复核）：覆盖全部得分点且表达质量高是档 0；主要得分点覆盖、个别要点缺失是档 1；触及部分得分点但论证不足是档 2；要点基本未覆盖或答非所问是档 3。评分必须逐点对照 rubric——「言之成理即可给分」类弹性得分点按论证质量给分，不因表述与参考答案不一致而扣分；仅复述题目或只抄原文不给理解分。dimension_issue 取失分占比最大的维度：得分点齐但论证空泛归 analysis，要点缺在理解偏差（曲解题意）时归 understanding 而非 analysis——先判断「没想到」还是「没说清」。off_topic 的判据是作答对象或任务类型与设问不符：题目问「标题意蕴」答成「段落作用」是离题，答得浅但对象对不算离题——质量低与离题是两件事，grade_band=3 不必然 off_topic=true。off_topic=true 时 grade_band 按未达标档处理，但 dimension_issue 仍需按作答实际内容归类（其内容针对的是什么就按什么维度的失分逻辑）。grading_evidence=false 时（评分标准残缺、作答截断、涂改无法辨认），grade_band 必须用软标签 target 按相邻档均分处理，dimension_issue 不得凭猜测填写；双评差值超阈值的样本（context 注明）按三评口径严格对照 rubric，评分置信度在回答中下调。",
+  "variety": [
+    "档位（grade_band 四档全覆盖）：0 优秀（要点全+质量高）、1 良好（主点覆盖缺个别）、2 基本达标（触及部分点）、3 未达标（未覆盖/答非所问）",
+    "失分维度（dimension_issue 五选项逐一覆盖）：none（优秀档必须为 none）、understanding（曲解题意/张冠李戴）、analysis（论证空泛/要点缺失/推理跳跃）、expression（语病/术语误用/字迹影响辨认）、structure（层次混乱/先答后问）",
+    "离题判定（off_topic）：换对象（问意蕴答作用）、换任务（问分析答概述）→ true；答得浅但切题 → false 且不与低档混同",
+    "弹性得分点样本：「言之成理即可」「有创见酌情加分」——不因与参考答案表述不同而扣分",
+    "学科覆盖：语文（意蕴/作用/作文立意）、数学（证明题步骤给分）、英语（书面表达要点）、历史（史论结合）、物理（公式与单位给分）",
+    "作答形态：完整规范、涂改较多、明显截断、只抄原文、空白（空白不评分走 grading_evidence=false）",
+    "双评与三评：双评一致、差值超阈值进三评（context 注明，置信度下调）",
+    "易错陷阱：言之成理不扣分、复述题目不给理解分、离题与低质量分开判、off_topic=true 时 grade_band=3 但 dimension_issue 按实际内容归、空白作答走证据不足而不是档 3"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "grading_evidence",
+    "note": "模型输出仅为阅卷辅助参考，最终分数以人工评分（双评/三评机制）为准；高考等高利害考试样本仅用于阅卷员培训参考，不直接决定考生分数；模型不生成给学生的评语。"
+  },
+  "smoke_probe": {
+    "state": {
+      "grader": "male 阅卷员 12, 中考阅卷",
+      "context": "双评一致样本",
+      "grade_subject": "初二数学",
+      "question_type": "解答",
+      "prompt": "证明：等腰三角形两底角相等（8 分）",
+      "rubric": "写出已知求证 2 分；辅助线或依据 3 分；证明过程完整 3 分",
+      "student_answer": "「因为等边对等角，所以两个底角相等。」（直接引用定理未证明）",
+      "answer_len": "22.0 字",
+      "avg_score": "55.0 %"
+    },
+    "questions": [
+      {
+        "qid": "grade_band",
+        "type": "score",
+        "instructions": "该作答的得分率属于哪一档？"
+      },
+      {
+        "qid": "dimension_issue",
+        "type": "choice",
+        "instructions": "主要失分属于哪个维度？"
+      }
+    ],
+    "expected_label": {
+      "grade_band": "2",
+      "dimension_issue": "analysis"
+    }
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "蒸馏轨样本分布建议：grade_band 四档 15/35/35/15；dimension_issue 五类中 none 15%、understanding 20%、analysis 30%（最大失分来源）、expression 15%、structure 10% 与「其他形态」10%；off_topic=true 占比 12%；grading_evidence=false 占比 10%。「离题 vs 低质量」最小对照对（同一题目两种作答）单独 10%；「言之成理」弹性得分点样本单独 8%；空白/截断样本单独 5% 并强制证据不足路径。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 grade_band 四档与 dimension_issue 五类中至少四类）作为 --examples 输入；few-shot 范例必须保留 rubric 字段——缺评分标准的范例会教出凭整体印象打分；「离题 vs 低质量」对照范例必须成对出现并标注判据差异（对象/任务不符 vs 质量不足）；「言之成理」范例需标注弹性给分的推理，防止学出按参考答案逐字匹配的坏习惯。",
+  "compliance": [
+    "学生作答须去标识：剔除姓名、考号与笔迹特征描述，仅保留作答内容",
+    "高利害考试（中高考）样本仅保留结构与口径，不保留可关联到真题原文的完整题面",
+    "输出仅为阅卷辅助参考，不生成给学生的评语，不构成对考生能力的评价",
+    "涉敏感话题的作文作答只保留结构与档位标记，正文做遮蔽处理"
+  ],
+  "acceptance": [
+    "grade_band 四档 QWK ≥0.80（阅卷场景一致性要求高于一般四档任务）",
+    "grade_band 在双评一致子集上与人评分的 MAE ≤0.5 档",
+    "dimension_issue 五类 macro-F1 ≥0.85，understanding 与 analysis 的混淆率 ≤8%（核心失败模式）",
+    "off_topic 召回 ≥0.90 且 off_topic=true 子集 grade_band=3 比例 =1.0（硬规则验收）",
+    "「言之成理」弹性得分点子集上因表述差异误扣分率 ≤3%",
+    "grading_evidence=false 子集上软标签纪律遵守率 =1.0，dimension_issue 凭猜测填写率 =0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "评分漂向参考答案逐字匹配 → few-shot 缺「言之成理」弹性范例，补充同要点不同表述的成对样本",
+    "understanding 吞并 analysis → few-shot 缺少「没想到 vs 没说清」对照，核对 sidecar 的维度标注依据",
+    "off_topic 与 grade_band=3 混同 → 检查蒸馏数据是否保留低质量但切题的样本（此类样本档 3 但 off_topic=false）",
+    "空白作答被赋档 → 证据不足路径失效，检查 grading_evidence=false 是否强制软标签",
+    "双评超阈值样本评分过自信 → context 的三评口径未生效，检查 few-shot 是否保留置信度下调的范例"
+  ],
+  "expert_review": [
+    "grade_band 四档的得分率切点（85/60/30% 为示例值，需按题型与学段校准，需阅卷组长复核）",
+    "dimension_issue 五分类与阅卷组质量分析报表的维度对应",
+    "弹性得分点（言之成理）的给分边界与仲裁案例库对照",
+    "离题判定在作文与简答题中的不同口径",
+    "高利害考试样本的脱敏边界（题面残缺化的程度）"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；主观题评分依赖对作答与评分标准的逐点对照理解，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是阅卷组的评分辅助助手。基于题目要求、评分标准与学生作答输出：得分率档位（0 优秀 ≥85% / 1 良好 60-84% / 2 基本达标 30-59% / 3 未达标 <30%）、主要失分维度（none/understanding/analysis/expression/structure 五选一）、作答是否离题、作答与评分标准是否完整可评。评分逐点对照评分标准，「言之成理」类弹性得分点按论证质量给分，不按参考答案逐字匹配；离题（对象或任务不符）与质量低分开判定，离题判未达标但失分维度按作答实际内容归类；评分标准残缺或作答不完整时降置信度并谨慎给分。输出为阅卷辅助参考，最终分数以人工评分为准。",
+      "en": "You are a grading-assistance assistant. Given the prompt, rubric, and student answer, output: score band (0 excellent ≥85% / 1 good 60-84% / 2 adequate 30-59% / 3 below <30%), the dominant lost-point dimension (none/understanding/analysis/expression/structure), whether the answer is off-topic, and whether the answer and rubric suffice for scoring. Score point by point; 'any reasonable argument' credit is judged by argument quality, never by verbatim match with the reference. Off-topic (wrong object or task) and low quality are judged separately — off-topic implies band 3 but the dimension still follows what the answer actually addresses. Lower confidence when the rubric or answer is incomplete. Output is grading assistance only; human scoring is final."
+    },
+    "ask_template": "请基于以下阅卷要素输出评分判断：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "K12 主观题的阅卷辅助评分",
+      "得分率四档与逐点对照评分",
+      "失分维度五分类（理解/分析/表达/结构）",
+      "离题与低质量的区分判定",
+      "弹性得分点与证据不足的评分口径"
+    ],
+    "kev_track": false
+  }
+}

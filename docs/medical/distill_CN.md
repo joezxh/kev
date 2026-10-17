@@ -44,7 +44,7 @@ python3 $D/make_seeds.py --all --n 500 --out-dir data/seeds
 
 **失败处置**：
 - `planned targets could not be realized` → 换 `--seed` 重跑；大批量出现则检查规则表与配额是否自洽
-- `no spec at ...` → 该场景的 spec 不在 `docs/medical/specs/`
+- `no spec at ...` → 该场景的 spec 不在 `docs/domains/medical/specs/`
 
 ---
 

@@ -1,0 +1,160 @@
+{
+  "_meta": {
+    "purpose": "手术安全核查表的完成度审查与放行决策 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/surgical-checklist.yaml"
+  },
+  "name": "surgical-checklist",
+  "label_zh": "手术核查",
+  "label_en": "Surgical Safety Checklist Review",
+  "domain": "手术室管理的手术安全核查表审查。手术协调员把一份核查表记录交给助手：核查时点（切皮前/手术中/离室前）、核查项完成状态、签名缺失数、关键项未核对标记、团队 brief 情况、标本确认状态。助手判断核查是否通过放行（checklist_pass）、处置档（hold_tier 四档：暂停手术/补核后开始/记录在案/通过）、缺陷类别（defect_category 七选一），以及核查记录是否足以判定（record_evidence）。口径以 WHO 手术安全核查表与《手术安全核查制度》为基线，阈值为示例口径，需手术室管理人员复核。",
+  "state": "一份手术安全核查表记录：手术间、术式、核查时点（切皮前/手术中/离室前）、核查项完成状态（已核/未核/不适用及各自数量）、签名缺失数（处，术者/麻醉/护士三方）、关键项未核对数（项，患者身份/手术部位/过敏史等）、团队 brief 完成状态（已完成/部分/未做）、标本确认状态（已确认/待确认/无标本）。",
+  "state_example": {
+    "desk": "female 手术协调员 A, 第 3 手术间",
+    "context": "接台手术，切皮前核查",
+    "room": "第 3 手术间",
+    "procedure": "腹腔镜胆囊切除术",
+    "checkpoint": "切皮前",
+    "items_status": "已核 8 项, 未核 2 项, 不适用 1 项",
+    "signature_missing": "1.0 处",
+    "key_items_unchecked": "1.0 项",
+    "team_brief": "部分",
+    "specimen_status": "无标本"
+  },
+  "questions": {
+    "checklist_pass": {
+      "type": "noul",
+      "instructions": "该时点核查是否通过放行（而不是需要补核或暂停）？",
+      "criteria": {
+        "true": "核查项全部完成且签名齐全，无关键项遗漏",
+        "false": "存在未核项、签名缺失或关键项遗漏"
+      }
+    },
+    "hold_tier": {
+      "type": "score",
+      "instructions": "处置应在多长时间内执行？",
+      "criteria": [
+        "立即暂停手术（关键项遗漏或部位确认缺失）",
+        "当场补核后再开始（签名/非关键项缺失）",
+        "记录在案，术后整改（离室前轻度缺陷）",
+        "核查通过，正常放行"
+      ]
+    },
+    "defect_category": {
+      "type": "choice",
+      "instructions": "触发处置的主要缺陷属于哪一类？",
+      "criteria": {
+        "none": "无（核查通过）",
+        "key_item": "关键项类：身份/部位/过敏史等关键项未核对",
+        "signature": "签名类：三方签名缺失",
+        "timing": "时点类：核查时点跳过或倒序执行",
+        "team_brief": "团队 brief 类：brief 未完成或缺失",
+        "specimen": "标本类：标本确认缺失或不符",
+        "incomplete": "完成度类：一般核查项未核数量超限"
+      }
+    },
+    "record_evidence": {
+      "type": "noul",
+      "instructions": "核查记录是否提供了判定所需的全部要素（时点、状态、签名）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照核查表判定",
+        "false": "缺时点、缺状态计数或缺签名信息，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "checklist_pass 的唯一判据是核查表要素完备（示例口径，需手术室管理人员复核）：关键项（患者身份、手术部位、过敏史）任一未核对 → 不放行且 hold_tier=0——关键项是手术安全的最后防线；签名缺失 ≥1 处 → 不放行，当场补核（档 1）——签名是责任链，缺一不可；核查时点跳过（如离室前补切皮前项目）→ 档 1 并重做该时点；team_brief 未做 → 档 1（当场补充 brief）；标本确认缺失 → 离室前时点档 1、术中时点档 0（标本离室不可逆）；一般核查项未核 ≥3 项 → 档 1，1-2 项 → 档 2 记录在案。hold_tier=3 时 checklist_pass 必须为 true 且 defect_category 为 none。defect_category 按「最先阻断放行的缺陷」取类，优先级：key_item > specimen > signature > timing > team_brief > incomplete——关键项优先于程序项。关键项与签名双缺陷时档位取更急者（关键项档 0 覆盖签名档 1）。record_evidence=false 时（缺时点、缺状态计数），checklist_pass 与 hold_tier 不得凭猜测填写，标记待补录并按档 2 暂存。",
+  "variety": [
+    "核查时点：切皮前（关键项密度最高）、手术中（标本/用药核对）、离室前（标本/器械清点/皮肤）——三时点的缺陷谱不同",
+    "缺陷类别（defect_category 七选项逐一覆盖）：key_item（部位未核对/过敏史缺）、signature（麻醉师未签名 1 处/三方全缺）、timing（离室前补切皮前项）、team_brief（brief 未做/部分）、specimen（冰冻标本待确认/标本袋未标注）、incomplete（未核 4 项/1 项）、none",
+    "处置档（hold_tier 四档全覆盖）：0 暂停手术（关键项遗漏、术中标本不符）、1 补核后开始、2 记录在案、3 放行（checklist_pass=true 必须为 3）",
+    "术式谱系：腹腔镜胆囊切除、髋关节置换、开颅肿瘤切除、剖宫产、白内障超声乳化——不同术式的关键项侧重不同",
+    "接台压力对照（专门生成）：接台手术压缩核查的缺陷样本与完整核查的对照样本——接台不是降档理由",
+    "要素完整度（record_evidence）：齐全、缺时点、缺状态计数、缺签名信息、多项缺失",
+    "呈现风格：核查表扫描体、协调员批注体、手术室信息栏导出体、质控抽查体",
+    "易错陷阱：关键项遗漏一律档 0、签名缺失档 1 不降档、接台不降档、术中标本缺陷档 0、时点跳过需重做"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "record_evidence",
+    "note": "模型输出仅为核查表审查建议，暂停与放行由术者、麻醉医师与巡回护士三方共同作出；核查中发现的紧急情况（过敏史阳性、部位存疑）由手术团队当场确认，模型不替代口头核对；核查表的签名补录须本人完成，模型不代签。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 手术协调员 B, 第 7 手术间",
+      "context": "接台手术，巡回护士发现核对单部位栏空缺",
+      "room": "第 7 手术间",
+      "procedure": "髋关节置换术",
+      "checkpoint": "切皮前",
+      "items_status": "已核 9 项, 未核 0 项, 不适用 2 项",
+      "signature_missing": "0.0 处",
+      "key_items_unchecked": "1.0 项",
+      "team_brief": "已完成",
+      "specimen_status": "无标本"
+    },
+    "questions": [
+      {"qid": "checklist_pass", "type": "noul",
+       "instructions": "该时点核查是否通过放行？"},
+      {"qid": "hold_tier", "type": "score",
+       "instructions": "处置应在多长时间内执行？"}
+    ],
+    "expected_label": {"checklist_pass": "false", "hold_tier": "0"}
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：defect_category 七类中 none 30%、key_item 14%、signature 14%、timing 10%、team_brief 10%、specimen 12%、incomplete 10%；hold_tier 四档 12/28/22/38；checklist_pass=false 62%、true 38%；record_evidence=false 占比 15%。接台压力样本单独 6%；「术中标本不符档 0 vs 离室前标本待确认档 1」对照对单独 6%；关键项+签名双缺陷档位取急的样本单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 defect_category 七类中至少五类与 hold_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 checkpoint 字段——缺时点的范例教不出时点相关档位（术中标本 vs 离室前标本）；「关键项档 0 vs 一般项档 2」对照范例必须成对出现并标注阻断逻辑；接台压力范例需显式写出「接台不降档」的推理。",
+  "compliance": [
+    "核查表样本须去标识：剔除患者姓名、住院号与术者姓名，仅保留术式大类、时点与核查状态",
+    "标本描述只保留确认状态，不保留病理细节",
+    "输出仅为核查审查建议，不构成手术安全结论，不生成对患者病情的判断",
+    "涉手术不良事件（器械遗留、部位错误已发生）的样本转不良事件上报通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "checklist_pass accuracy ≥0.96，误放行率（应暂停判通过）≤1.5%（误放行的手术安全风险高于误暂停打扰）",
+    "hold_tier 四档 QWK ≥0.75",
+    "defect_category 七类 macro-F1 ≥0.85，key_item 漏检率 ≤2%（关键项零容忍）",
+    "key_item 子集 hold_tier=0 比例 =1.0（硬规则验收）",
+    "接台子集 hold_tier 与常规子集档位分布一致率 ≥0.9（接台不降档验收）",
+    "record_evidence=false 子集上不强行判定率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "key_item 被归 incomplete → 「关键项 vs 一般项」的区分信息在 sidecar 缺失，检查关键项标记",
+    "接台样本被降档 → 「接台不降档」口径未进蒸馏标签，检查对照样本",
+    "signature 被赋档 0 → 签名缺失档 1 口径漂移，检查标注",
+    "时点跳过样本未重做 → timing 类缺陷的处置说明缺失，检查 sidecar",
+    "record_evidence=false 仍判定 → 违反软标签纪律，检查待补录标注"
+  ],
+  "expert_review": [
+    "关键项清单（身份/部位/过敏史/植入物）与本院核查表版本的对应",
+    "档位时限（暂停/补核/记录在案）与手术室管理制度 SLA 的匹配",
+    "team_brief 完成度判定（部分完成的边界）与团队沟通规范的对应",
+    "标本确认缺陷的档位（术中 vs 离室前）与标本管理制度的一致性",
+    "接台与急诊手术的核查压缩边界（哪些项可延后、哪些绝对不省）"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；核查表审查依赖关键项辨识与时点语境的语义判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是手术室管理的核查表审查助手。基于手术安全核查表记录输出：核查是否通过放行、处置档（0-3 档：暂停手术/补核后开始/记录在案/放行）、缺陷类别（none/key_item/signature/timing/team_brief/specimen/incomplete 七选一）、核查记录是否足以判定。关键项（身份/部位/过敏史）遗漏一律档 0——关键项是最后防线；签名缺失档 1 当场补核；接台压力不降档；术中标本不符档 0、离室前待确认档 1；缺陷按最先阻断放行者取类，关键项优先。信息不足时标记待补录并按档 2 暂存，不得凭部分信息放行。输出为审查建议，暂停与放行由手术团队三方共同决定。",
+      "en": "You are an OR checklist reviewer. From a surgical safety checklist record, output: whether it passes for release, the handling tier (0-3: hold surgery / re-verify then start / log for follow-up / pass), the defect category (none/key_item/signature/timing/team_brief/specimen/incomplete), and whether the record suffices. A missed critical item (identity/site/allergy) is always tier 0; missing signatures are tier 1 with on-the-spot re-signing; turn-over pressure never lowers the tier; intra-op specimen mismatch is tier 0 while pending confirmation at sign-out is tier 1. Classify by the first defect that blocks release; mark missing elements and hold at tier 2 rather than guessing. Output is review advice; hold/release decisions rest with the surgical team."
+    },
+    "ask_template": "请根据以下手术安全核查表记录完成审查：\n\n核查记录：\n{{ state }}\n\n请逐项输出：\n1. checklist_pass：该时点核查是否通过放行（true/false）。\n2. hold_tier：处置档（0-3），列明缺陷依据与阻断逻辑；接台或急诊情形的说明。\n3. defect_category：主要缺陷类别（none/key_item/signature/timing/team_brief/specimen/incomplete 七选一），说明取类优先级推理。\n4. record_evidence：核查记录是否足以判定（true/false），false 时列出缺失要素与暂存处置。",
+    "topics": [
+      "切皮前核查与关键项（身份/部位/过敏史）",
+      "术中核查与标本/用药核对",
+      "离室前核查与器械敷料清点",
+      "三方签名缺失与责任链",
+      "team brief 完成度判定",
+      "标本确认缺陷的时点相关档位",
+      "接台与急诊压力下的核查压缩边界",
+      "一般项未核数量的分档"
+    ],
+    "kev_track": false
+  }
+}

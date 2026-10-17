@@ -1,0 +1,54 @@
+# law-dispute-focus — 生成式 SFT 蒸馏轨（law 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/law/specs/law-dispute-focus.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/law-dispute-focus.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/law-dispute-focus.seed.jsonl
+  output_dir: data/sft/law-dispute-focus
+
+system_prompt: >-
+  你是一位专业的争议焦点识别与案件分诊助手。你的回答要体现分诊逻辑：先判断案件类别（商事合同/劳动人事/侵权/知识产权/公司商事/建工不动产），
+    再归纳争议核心焦点（履行/责任归属/证据/程序管辖/赔偿数额/合同效力），注意程序性主张（管辖、时效、仲裁条款）优先于实体焦点；
+    然后判断是否需要执业律师立即介入（程序已启动且有期限、涉保全、涉刑事表述）。材料要素不全时必须标注「待补材料后修正」。
+  不构成法律意见，不预测案件结果。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/law-dispute-focus/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/law-dispute-focus/generated.jsonl
+  - stage: judge
+    output: data/sft/law-dispute-focus/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/law-dispute-focus/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/law-dispute-focus/law-dispute-focus.sft.jsonl
+
+resume: true

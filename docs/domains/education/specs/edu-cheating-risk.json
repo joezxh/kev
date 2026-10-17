@@ -1,0 +1,242 @@
+{
+  "name": "edu-cheating-risk",
+  "domain": "中学与高校的考试违纪风险复核。考试中心把一场考试中一名考生的监考与系统监测摘要交给复核员：同场答案相似度、答题用时偏离度、监考异常事件数、违禁物品检出数、近 12 月违纪记录数、成绩异常跃升幅度。阈值为示例口径，实际以本校考试违纪处理办法为准。",
+  "state": "一名待复核考生的监测摘要：考试类型（期中/期末/机考/线上）、同场答案相似度（%，与最相似邻卷）、答题用时偏离度（%，实际用时对预期用时的偏离）、监考异常事件数（次）、违禁物品检出数（件）、近 12 月违纪记录数（次）、成绩异常跃升幅度（%，较上次同类考试）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "examinee": "male 17, 高二",
+    "context": "期末机考，与后桌答题节奏高度同步",
+    "indicators": {
+      "同场答案相似度": "78.0 %",
+      "答题用时偏离度": "35.0 %",
+      "监考异常事件数": "2.0 次",
+      "违禁物品检出数": "0.0 件",
+      "近12月违纪记录数": "0.0 次",
+      "成绩异常跃升幅度": "22.0 %"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "cheat_flag": {
+      "type": "noul",
+      "instructions": "该考生是否需要触发违纪复核（而不是排除风险）？",
+      "criteria": {
+        "true": "至少一项监测指标超出复核阈值",
+        "false": "全部指标在阈值内，排除本次复核"
+      }
+    },
+    "review_tier": {
+      "type": "score",
+      "instructions": "复核应在多长时间内启动？",
+      "criteria": [
+        "立即移交考试纪律委员会并固定证据",
+        "48 小时内完成证据固定与约谈",
+        "纳入场外复核名单，轻度越界",
+        "排除风险，无需复核"
+      ]
+    },
+    "signal_category": {
+      "type": "choice",
+      "instructions": "触发复核的信号属于哪一类？",
+      "criteria": {
+        "none": "无（全部指标正常）",
+        "answer_similarity": "雷同类：与邻卷答案相似度过高",
+        "timing": "时序类：答题用时与能力水平明显不符",
+        "proctor": "监考类：监考记录在案的异常事件",
+        "object": "物品类：检出违禁物品",
+        "history": "记录类：近期有违纪前科",
+        "score_jump": "跃升类：成绩较上次同类考试异常跃升"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "摘要是否提供了判定所需的全部要素（指标名、数值、单位、考试类型）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照复核阈值判定",
+        "false": "缺考试类型、缺单位或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "cheat_flag 的唯一判据是任一监测指标超出本表阈值（示例口径，实际以本校考试违纪处理办法为准，需专家复核）：同场答案相似度 ≥70% 触复核、≥90% 最高档；答题用时偏离度 ≥60% 触复核、≥85% 最高档；监考异常事件 ≥1 次触复核、≥4 次最高档；违禁物品 ≥1 件触复核、≥3 件最高档；近 12 月违纪记录 ≥2 次触复核、≥5 次最高档；成绩异常跃升 ≥40% 触复核、≥70% 最高档。review_tier 由最快触发的信号决定，等级从 0（移交纪律委员会）到 3（排除）：object 类只要检出即至少档 1——违禁物品是实体证据，不因指标孤立而降档；answer_similarity 与 timing 双触发时按 answer_similarity 取档——雷同卷是直接证据，用时偏离只是旁证；线上考试的相似度阈值需上浮 5 个百分点（同题库随机抽题重合率高），context 未写明线上时按常规口径判。纯 score_jump 单信号不直接判违纪——跃升是启动复核的线索而非证据，review_tier 至高档 2。cheat_flag=false 时 review_tier 必须为 3 且 signal_category 为 none。evidence_sufficient 为 false 时（缺考试类型、缺单位、缺指标名），cheat_flag 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 signal_category 不得凭猜测填写。",
+  "variety": [
+    "考试类型：期中、期末、学业水平、机考、线上居家考试、补考",
+    "触发类别（signal_category 七选项逐一覆盖）：answer_similarity（相似度 75/93%）、timing（偏离 65/88%）、proctor（事件 1/5 次）、object（检出 1/3 件）、history（记录 2/6 次）、score_jump（跃升 45/75%）、none（全部正常）",
+    "复核时限档（review_tier 四档全覆盖）：0 移交纪律委员会（相似度 ≥90、违禁 ≥3 件、异常 ≥4 次）、1 48 小时约谈、2 场外复核名单、3 排除（cheat_flag=false 时必须为 3）",
+    "信号组合形态：单信号、双信号同档、多信号跨档、信号互相矛盾（相似度高但用时正常）——跨档取最快档，相似度与用时并存按相似度取类",
+    "实体证据样本（object 类须专门生成）：夹带小抄、电子设备、替考痕迹；object 单信号即至少档 1",
+    "线索不等于证据（score_jump 单信号须专门生成）：成绩跃升但无其他信号，review_tier ≤2 且不判违纪",
+    "贴边未触发对照（cheat_flag=false 须专门生成）：相似度 60-68%、偏离 50-58%、事件 0 次、跃升 30-38%",
+    "摘要完整度（evidence_sufficient）：齐全、缺考试类型、缺单位、缺指标名、多项缺失",
+    "呈现风格：监考记录单、机考系统日志体、复核员批注体、线上监考平台导出体",
+    "易错陷阱：相似度与用时并存取相似度、违禁物品检出至少档 1、纯成绩跃升只是线索不是违纪证据、线上考试相似度阈值上浮、机考同题库重合不等于雷同"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为违纪风险复核与复核时限建议，违纪认定与处分由考试纪律委员会按校级程序作出；复核结论必须以实体证据与当事人陈述为准，模型不得输出「该生作弊」类定性结论。"
+  },
+  "smoke_probe": {
+    "state": {
+      "examinee": "female 16, 高一",
+      "context": "线上居家期末考，与三名同班考生同错且错法一致",
+      "indicators": "同场答案相似度 94.0 %, 答题用时偏离度 72.0 %, 监考异常事件数 0.0 次",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "review_tier", "type": "score",
+       "instructions": "复核应在多长时间内启动？"},
+      {"qid": "signal_category", "type": "choice",
+       "instructions": "触发复核的信号属于哪一类？"}
+    ],
+    "expected_label": {"review_tier": "0", "signal_category": "answer_similarity"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触发复核样本（tier 0-2 约 2:2:1），其余为排除对照；对照中至少 15% 为贴边未触发样本（相似度 60-68%、偏离 50-58%、跃升 30-38%）。score_jump 单信号样本单独 8% 且 review_tier 强制 ≤2；object 类样本单独 6% 并强制 review_tier ≥1；线上考试样本单独 10% 且 context 必须写明。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 review_tier 四档与 signal_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留考试类型字段——线上范例缺考试类型会教出按常规口径误判机考重合；score_jump 单信号范例必须与 answer_similarity 范例成对出现，训练「线索不等于证据」的分级纪律；object 范例须标注档位下限的依据。",
+  "compliance": [
+    "考生数据属未成年人个人信息（《个人信息保护法》第 28、31 条），训练数据须去标识：剔除姓名、考号与座位号，仅保留性别年龄段与指标数值（需专家复核去标识口径）",
+    "不得输出「该生作弊」「违纪成立」等定性结论，只输出指标是否超阈与复核时限建议",
+    "雷同卷比对仅保留相似度数值与错法形态描述，不保留答卷原文",
+    "违纪记录与处分的通报范围遵循本校学生管理规定，模型不生成处分决定文本"
+  ],
+  "acceptance": [
+    "cheat_flag accuracy ≥0.96，漏报率（应复核判排除）≤2%（漏报损害考试公平，代价高于误复核打扰）",
+    "review_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "signal_category 七类 macro-F1 ≥0.88",
+    "score_jump 单信号子集 review_tier ≤2 比例 =1.0（硬规则验收）",
+    "object 单信号子集 review_tier ≥1 比例 =1.0（硬规则验收）",
+    "贴边未触发子集（相似度 60-68%）cheat_flag=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: review_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交或区间内整数点过少（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical",
+    "score_jump 单信号样本被赋档 0/1 → rules 缺少线索分级分支，检查 then 顺序是否先判 object/answer_similarity 再判其余",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "机考重合被误判雷同 → context 未写明线上/机考，相似度阈值上浮口径未生效，检查 few-shot 是否保留考试类型",
+    "矛盾信号样本 signal_category 漂移 → answer_similarity 与 timing 双触发必须取相似度，检查 rules 分支顺序"
+  ],
+  "expert_review": [
+    "相似度 70/90%、用时偏离 60/85%、违纪记录 2/5 次的档位与本校考试违纪处理办法的对应",
+    "线上与机考相似度阈值上浮 5 个百分点的口径与监考平台重合率基线核对",
+    "object 类至少档 1 的实体证据分级与纪律委员会受理条件一致性",
+    "成绩跃升作为复核线索（不作为证据）的口径与家长沟通边界",
+    "违纪前科在复核分级中的权重（是否构成累犯加重）"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "同场答案相似度", "unit": "%", "decimals": 1, "normal": [0.0, 40.0],
+       "critical": {"high": [[70.0, 100.0]]}, "category": "answer_similarity"},
+      {"name": "答题用时偏离度", "unit": "%", "decimals": 1, "normal": [0.0, 20.0],
+       "critical": {"high": [[60.0, 100.0]]}, "category": "timing"},
+      {"name": "监考异常事件数", "unit": "次", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "proctor"},
+      {"name": "违禁物品检出数", "unit": "件", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "object"},
+      {"name": "近12月违纪记录数", "unit": "次", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[2.0, 1000000000.0]]}, "category": "history"},
+      {"name": "成绩异常跃升幅度", "unit": "%", "decimals": 1, "normal": [0.0, 15.0],
+       "critical": {"high": [[40.0, 1000000000.0]]}, "category": "score_jump"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "同场答案相似度": [[90.0, 100.0]],
+        "答题用时偏离度": [[85.0, 100.0]],
+        "监考异常事件数": [[4.0, 1000000000.0]],
+        "违禁物品检出数": [[3.0, 1000000000.0]],
+        "近12月违纪记录数": [[5.0, 1000000000.0]],
+        "成绩异常跃升幅度": [[70.0, 1000000000.0]]
+      },
+      "1": {
+        "同场答案相似度": [[80.0, 89.9]],
+        "答题用时偏离度": [[70.0, 84.9]],
+        "监考异常事件数": [[2.0, 3.0]],
+        "违禁物品检出数": [[2.0, 2.0]],
+        "近12月违纪记录数": [[3.0, 4.0]],
+        "成绩异常跃升幅度": [[50.0, 69.9]]
+      },
+      "2": {
+        "同场答案相似度": [[70.0, 79.9]],
+        "答题用时偏离度": [[60.0, 69.9]],
+        "监考异常事件数": [[1.0, 1.0]],
+        "违禁物品检出数": [[1.0, 1.0]],
+        "近12月违纪记录数": [[2.0, 2.0]],
+        "成绩异常跃升幅度": [[40.0, 49.9]]
+      }
+    },
+    "contexts": [
+      "期末机考，与后桌答题节奏高度同步",
+      "线上居家考，前后交卷时间接近",
+      "常规期末笔试，监考双人制",
+      "补考场，考生上学期有缓考记录",
+      "学业水平仿真考，题库随机抽题",
+      "常规月份模拟测，全部指标平稳",
+      "考中举报引发的全场复检",
+      "成绩下发后家长申诉触发回溯复核",
+      "无背景说明，仅一项指标贴线",
+      "监考轮换交接日，记录可能缺页"
+    ],
+    "patients": [
+      "male 17 高二", "female 16 高一", "male 18 高三", "female 15 初三",
+      "male 19 本科大一", "female 14 初二", "male 20 本科大二", "female 17 高三"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "cheat_flag", "value": false},
+          {"label": "review_tier", "value": 3},
+          {"label": "signal_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "cheat_flag", "value": true},
+          {"label": "review_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "signal_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "cheat_flag",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"answer_similarity": 0.21, "timing": 0.19, "proctor": 0.17, "object": 0.12, "history": 0.15, "score_jump": 0.16},
+          "tier_split": {
+            "answer_similarity": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "timing": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "proctor": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "object": [[0, 0.3], [1, 0.4], [2, 0.3]],
+            "history": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "score_jump": [[0, 0.1], [1, 0.3], [2, 0.6]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "同场答案相似度": "answer_similarity",
+      "答题用时偏离度": "timing",
+      "监考异常事件数": "proctor",
+      "违禁物品检出数": "object",
+      "近12月违纪记录数": "history",
+      "成绩异常跃升幅度": "score_jump"
+    }
+  }
+}

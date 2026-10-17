@@ -6,6 +6,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useLang } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { ProjectSwitcher, useProjects } from "@/components/studio/ProjectSwitcher";
+import { useSelectedProject } from "@/lib/project-context";
 
 const NAV = [
   { href: "/console", key: "console.nav.overview", exact: true },
@@ -28,6 +30,9 @@ const NAV = [
 export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { t } = useLang();
+  // /console 的写入口需要一个当前项目：与 /studio 共享单一 localStorage key（D12）。
+  const [projectId, setProjectId] = useSelectedProject();
+  const { projects } = useProjects();
 
   return (
     <TooltipProvider>
@@ -49,6 +54,9 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
               >
                 {t("console.nav.studio")}
               </Link>
+            </div>
+            <div className="mt-3">
+              <ProjectSwitcher projectId={projectId} onChange={setProjectId} projects={projects} />
             </div>
           </div>
           <nav className="flex flex-1 flex-col gap-0.5 p-2">

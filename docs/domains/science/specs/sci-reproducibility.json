@@ -1,0 +1,237 @@
+{
+  "name": "sci-reproducibility",
+  "domain": "科研机构的可复现性审查与实验核验排期。审稿人或研究诚信岗对一篇论文或一份实验报告做可复现性预检：统计功效是否达标、p 值分布是否可疑、关键方法细节缺失项数、数据可用性评分、样本量相对功效计算所需样本量的比值。口径设计参照 FAIR 数据原则（可发现、可访问、可互操作、可重用）与可复现性研究的通行判据；阈值为示例口径，实际以本机构研究诚信规范为准。",
+  "state": "一份待审研究记录的可复现性预检摘要：研究类型（实验/观察/计算）、报告的统计功效（%）、关键检验的 p 值、关键方法细节缺失项数（试剂批号/仪器参数/随机化方案/盲法设计等）、数据可用性评分（0-10）、实际样本量相对功效计算所需样本量的比值（倍）。字段值为中文叙述夹数字，比值为百分数或倍数。",
+  "state_example": {
+    "study": "female lead PI-07, 生物学实验",
+    "context": "投稿前内审，数据已上传至机构仓库",
+    "indicators": {
+      "统计功效": "82.0 %",
+      "关键检验p值": "0.031",
+      "方法细节缺失项数": "1.0 项",
+      "数据可用性评分": "8.0 分",
+      "样本量比值": "1.4 倍"
+    },
+    "ref_criteria_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "is_reproducible": {
+      "type": "noul",
+      "instructions": "依据现有信息，该研究的关键结果是否具备可复现条件（而不是存在明显硬伤）？",
+      "criteria": {
+        "true": "全部指标在判据阈值内，方法与数据要素齐备",
+        "false": "至少一项指标超出阈值，存在复现硬伤"
+      }
+    },
+    "verify_tier": {
+      "type": "score",
+      "instructions": "复现核验应在多长时间内启动？",
+      "criteria": [
+        "立即启动独立复现（多项硬伤并存）",
+        "本评审周期内启动核验",
+        "纳入季度抽检名单",
+        "无需核验（全部指标正常）"
+      ]
+    },
+    "gap_category": {
+      "type": "choice",
+      "instructions": "触发预检告警的指标属于哪一类？",
+      "criteria": {
+        "none": "无（全部指标正常）",
+        "power": "功效类：统计功效过低",
+        "pvalue": "统计类：p 值贴线或过高",
+        "materials": "材料类：关键方法细节缺失过多",
+        "data": "数据类：数据可用性评分过低",
+        "sample": "样本类：样本量低于功效计算所需",
+        "code": "代码类：分析代码与随机种子不可得"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "报告是否提供了判定所需的全部要素（指标名、数值、单位、判据口径）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照判据判定",
+        "false": "缺少数值、口径或指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "is_reproducible 的唯一判据是任一监测指标超出本表阈值。阈值（示例口径，实际以本机构研究诚信规范为准，需专家复核）：统计功效 <40% 触警、<13% 最高档；p 值 >0.045 触警（贴线）、>0.5 最高档（关键检验不显著却报告为阳性发现）；方法细节缺失 ≥3 项触警、≥8 项最高档；数据可用性评分 <3 分触警、<1 分最高档；样本量比值 <0.8 触警、<0.26 最高档。verify_tier 由最快触发的指标决定，等级从 0（立即独立复现）到 3（无需核验）：多项硬伤并存时取最快一档，gap_category 取最快档中的指标类别；分析代码不可得（无代码、无随机种子、无运行环境说明）按代码类触发，但若数据与方法要素齐全且样本量充足，可降为一档而非最高档。p 值判定的方向性必须注意：p 恰在 0.045-0.05 之间是最典型的贴线可疑区（tier 2），而 p>0.5 且正文仍宣称阳性发现是更严重的统计口径问题（tier 0/1）——生成样本时 p 值档位必须与结论声明一致，正文宣称与统计结果矛盾的情形须在 context 中写明。evidence_sufficient 为 false 时（缺数值、缺判据口径、缺指标名），is_reproducible 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 gap_category 不得凭猜测填写。观察性研究没有统计功效与样本量比值口径，字段缺省时按 context 声明的研究类型豁免，不得按实验研究口径判警。",
+  "variety": [
+    "研究类型：湿实验（生物/化学）、干实验（计算/仿真）、观察性研究（队列/横断面）、临床试验、元分析",
+    "触发类别（gap_category 六选项逐一覆盖）：power（功效 13/28/39%）、pvalue（贴线 0.046-0.05、可疑 0.15-0.45、口径矛盾 >0.5）、materials（缺失 3/5/8 项）、data（评分 1/2/3 分）、sample（比值 0.26/0.54/0.78）、none（全部正常）",
+    "核验时限档（verify_tier 四档全覆盖）：0 立即独立复现（功效 <13%、p>0.5 口径矛盾、缺失 ≥8 项、评分 <1 分、比值 <0.26）、1 本评审周期、2 季度抽检、3 无需核验（is_reproducible=false 时必须为 3）",
+    "贴边未触警对照（is_reproducible=true 专门生成）：功效 41-69%、p 值 0.02-0.04、缺失 1-2 项、评分 4-6 分、比值 0.85-0.99",
+    "p 值形态谱系（tier 分层的关键）：显著远离阈值（0.001-0.02）、贴线（0.045-0.05）、不显著但正文宣称阳性（>0.5 且 context 写明矛盾）、多重比较未校正的边缘显著",
+    "数据与材料谱系：数据已在 FAIR 仓库公开（评分 9-10）、仅 upon request（评分 4-6）、完全不可得（评分 0-2）、方法细节含试剂批号与随机化方案 vs 只有笼统描述",
+    "研究阶段：投稿前内审、审稿中、已发表后质疑、实验室例行自查",
+    "文本风格：投稿系统导出体、审稿意见引用体、实验室记录本体、中英混排（power/p-value/blind/preregistration）",
+    "易错陷阱：贴线 p 值 0.046-0.05 是 tier 2 不是 tier 0、观察性研究豁免功效口径、正文宣称与统计结果矛盾是统计类最高档、数据 upon request 不等于不可得"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为可复现性预检与核验排期建议，不构成对研究不端的认定；涉嫌造假与抄袭由研究诚信委员会处理，模型只负责把指标异常排入核验队列。低置信转人工。"
+  },
+  "smoke_probe": {
+    "state": {
+      "study": "male lead PI-12, 心理学实验",
+      "context": "审稿人质疑样本量与功效，作者未提供功效计算",
+      "indicators": "统计功效 31.0 %, 关键检验p值 0.048, 样本量比值 0.62 倍",
+      "ref_criteria_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "is_reproducible", "type": "noul",
+       "instructions": "依据现有信息，该研究的关键结果是否具备可复现条件？"}
+    ],
+    "expected_label": {"is_reproducible": "false"}
+  },
+  "sampling": {
+    "n": 700,
+    "notes": "plan_targets 保留 35% 触警样本（tier 0-2 约 2:2:1），其余为正常对照；对照中至少 20% 为贴边未触警样本（功效 41-69%、p 0.046-0.049 属触警不算、比值 0.85-0.99）。观察性研究豁免样本单独 10%，context 必须写明研究类型。p 值口径矛盾样本（正文宣称与统计不符）单独 6%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 verify_tier 四档与 gap_category 六类）作为 --examples 输入；few-shot 范例必须保留研究类型与判据口径字段——缺研究类型的范例会教出对观察性研究误用实验口径；贴线 p 值与口径矛盾两类范例必须同时出现，防止模型把所有 p 值问题都归为同一档。",
+  "compliance": [
+    "输出仅为指标层面的可复现性预检与核验排期建议，不得输出对研究者或团队的诚信指控与不端认定",
+    "涉嫌学术不端（造假、篡改、剽窃）的报告一律转研究诚信委员会，样本中此类记录的标签是「转交诚信委员会」而非继续预检",
+    "未发表稿件与审稿意见属保密信息，训练数据须去除作者、机构与可识别的课题信息",
+    "人类受试与动物实验研究的伦理判据不在本场景范围，样本中此类记录只做数据与方法要素检查"
+  ],
+  "acceptance": [
+    "is_reproducible accuracy ≥0.95，误警率 ≤3%（核验资源有限，误警挤占抽检容量）",
+    "verify_tier 在触警样本上的 ECE ≤0.02、Brier ≤0.05",
+    "gap_category 六类 macro-F1 ≥0.90",
+    "贴线 p 值子集（0.045-0.05）verify_tier=2 的准确率 ≥0.9（贴线判层验收）",
+    "观察性研究子集零误用实验口径（power/sample 字段缺省时不触发）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: verify_tier 无 2 档记录 → tier_windows[\"2\"] 区间与 fields.critical 不相交（常见于 p_value 的 decimals 3 精度与窗口端点错位），检查 realize_tier 命中率",
+    "观察性研究被误判功效不足 → 检查 fields 是否因缺省值落入 critical，guidance 的研究类型豁免需在 rules 之外由 context 过滤",
+    "贴线 p 值被判 tier 0 → tier_windows[\"2\"] 的 p_value 窗口 [0.046,0.12] 与 tier0 [0.5,1.0] 顺序颠倒（min_tier 按声明顺序先匹配 tier0）",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid"
+  ],
+  "expert_review": [
+    "统计功效 40%/13% 两档、样本量比值 0.8/0.26 两档与机构研究诚信规范的对应（不同学科的通行功效口径 0.8 需专家确认映射）",
+    "p 值贴线区间 0.045-0.05 的判定口径与多重比较校正的豁免条件",
+    "数据可用性评分 0-10 的量表定义（建议对齐 FAIR 四原则的机构评分细则）",
+    "观察性研究对 power/sample 字段的豁免清单",
+    "核验时限四档与机构研究诚信流程（内审/评审期/季度抽检）的对应"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "统计功效", "unit": "%", "decimals": 0, "normal": [70.0, 95.0],
+       "critical": {"low": [[0.0, 40.0]]}, "category": "power"},
+      {"name": "关键检验p值", "unit": "", "decimals": 3, "normal": [0.001, 0.04],
+       "critical": {"high": [[0.045, 1.0]]}, "category": "pvalue"},
+      {"name": "方法细节缺失项数", "unit": "项", "decimals": 0, "normal": [0.0, 1.0],
+       "critical": {"high": [[3.0, 1000000000.0]]}, "category": "materials"},
+      {"name": "数据可用性评分", "unit": "分", "decimals": 1, "normal": [7.0, 10.0],
+       "critical": {"low": [[0.0, 3.0]]}, "category": "data"},
+      {"name": "样本量比值", "unit": "倍", "decimals": 2, "normal": [1.0, 3.0],
+       "critical": {"low": [[0.0, 0.8]]}, "category": "sample"},
+      {"name": "分析代码可得性评分", "unit": "分", "decimals": 1, "normal": [5.0, 10.0],
+       "critical": {"low": [[0.0, 2.0]]}, "category": "code"}
+    ],
+    "selectors": [{"min": 3, "max": 5}],
+    "tier_windows": {
+      "0": {
+        "统计功效": [[0.0, 13.0]],
+        "关键检验p值": [[0.5, 1.0]],
+        "方法细节缺失项数": [[8.0, 1000000000.0]],
+        "数据可用性评分": [[0.0, 1.0]],
+        "样本量比值": [[0.0, 0.26]],
+        "分析代码可得性评分": [[0.0, 0.66]]
+      },
+      "1": {
+        "统计功效": [[14.0, 27.0]],
+        "关键检验p值": [[0.15, 0.45]],
+        "方法细节缺失项数": [[5.0, 8.0]],
+        "数据可用性评分": [[1.1, 2.0]],
+        "样本量比值": [[0.27, 0.53]],
+        "分析代码可得性评分": [[0.67, 1.33]]
+      },
+      "2": {
+        "统计功效": [[28.0, 40.0]],
+        "关键检验p值": [[0.046, 0.12]],
+        "方法细节缺失项数": [[3.0, 5.0]],
+        "数据可用性评分": [[2.1, 3.0]],
+        "样本量比值": [[0.54, 0.8]],
+        "分析代码可得性评分": [[1.34, 2.0]]
+      }
+    },
+    "contexts": [
+      "投稿前内审，数据已上传至机构仓库",
+      "审稿人质疑样本量与功效，作者未提供功效计算",
+      "已发表后读者来信质疑，期刊要求回应",
+      "临床多中心试验，方案预注册完整",
+      "观察性队列研究，无功效计算口径",
+      "计算仿真研究，代码与随机种子已公开",
+      "实验室例行自查，试剂批号与仪器参数齐全",
+      "方法节仅有笼统描述，盲法与随机化未说明",
+      "数据仅 upon request，仓库评分按机构口径折算",
+      "多重比较未校正，三个边缘显著结果并列报告"
+    ],
+    "patients": [
+      "male lead PI-07 生物", "female lead PI-12 心理", "male lead PI-03 临床",
+      "female lead PI-09 材料", "male lead PI-15 计算", "female lead PI-05 流行病",
+      "male lead PI-11 化学", "female lead PI-08 社会"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "is_reproducible", "value": true},
+          {"label": "verify_tier", "value": 3},
+          {"label": "gap_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "is_reproducible", "value": false},
+          {"label": "verify_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "gap_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "is_reproducible",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"power": 0.2, "pvalue": 0.2, "materials": 0.2, "data": 0.1, "sample": 0.15, "code": 0.15},
+          "tier_split": {
+            "power": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "pvalue": [[0, 0.3], [1, 0.3], [2, 0.4]],
+            "materials": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "data": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "sample": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "code": [[0, 0.3], [1, 0.35], [2, 0.35]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "统计功效": "power",
+      "关键检验p值": "pvalue",
+      "方法细节缺失项数": "materials",
+      "数据可用性评分": "data",
+      "样本量比值": "sample",
+      "分析代码可得性评分": "code"
+    }
+  }
+}

@@ -1,0 +1,51 @@
+# surgical-checklist — 生成式 SFT 蒸馏轨（medical 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/medical/specs/surgical-checklist.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/surgical-checklist.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/surgical-checklist.seed.jsonl
+  output_dir: data/sft/surgical-checklist
+
+system_prompt: >-
+  你是手术室管理的核查表审查助手。基于手术安全核查表记录输出：核查是否通过放行、处置档（0-3 档：暂停手术/补核后开始/记录在案/放行）、缺陷类别（none/key_item/signature/timing/team_brief/specimen/incomplete 七选一）、核查记录是否足以判定。关键项（身份/部位/过敏史）遗漏一律档 0——关键项是最后防线；签名缺失档 1 当场补核；接台压力不降档；术中标本不符档 0、离室前待确认档 1；缺陷按最先阻断放行者取类，关键项优先。信息不足时标记待补录并按档 2 暂存，不得凭部分信息放行。输出为审查建议，暂停与放行由手术团队三方共同决定。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/surgical-checklist/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/surgical-checklist/generated.jsonl
+  - stage: judge
+    output: data/sft/surgical-checklist/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/surgical-checklist/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/surgical-checklist/surgical-checklist.sft.jsonl
+
+resume: true

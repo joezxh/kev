@@ -1,0 +1,18 @@
+schema_version: 1
+module_path: deploy
+title: Kev 模型部署与编排（Docker + Compose + 跨平台脚本）
+scope:
+    - Dockerfile
+    - docker-compose.yml
+    - .dockerignore
+    - DEPLOYMENT_README.md
+    - DOCKER_DEPLOYMENT_GUIDE.md
+    - LOCAL_DEPLOYMENT_GUIDE.md
+    - QUICK_START.md
+    - deploy.sh
+    - deploy-windows.ps1
+source_files: []
+depends_on: []
+related_to:
+    - path: deploy_scripts
+    - path: playground

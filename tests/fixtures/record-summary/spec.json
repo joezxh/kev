@@ -164,7 +164,7 @@
         "when": "state['missing_element'] == 'mismatch'",
         "then": [
           {"label": "missing_element", "value": "none"},
-          {"label": "needs_coder_review", "value": true},
+          {"label": "needs_coder_review", "value": True},
           {"label": "severity", "value": 2},
           {"label": "coding_confidence", "value": 1}
         ]

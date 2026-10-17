@@ -1,0 +1,160 @@
+{
+  "name": "欠交作业升级",
+  "domain": "PR3：bands 形状（三档 choice + noul）",
+  "state": "一门课的欠交记录",
+  "state_example": {
+    "缺交次数": "3 次",
+    "连续未交天数": "5 日",
+    "单元测验均分": "76.5 分",
+    "家长已读回执": true
+  },
+  "questions": {
+    "escalation": {
+      "type": "choice",
+      "instructions": "这条欠交记录该怎么处理？",
+      "criteria": {
+        "keep": "继续观察",
+        "remind": "系统提醒",
+        "conference": "约谈"
+      }
+    },
+    "at_risk": {
+      "type": "noul",
+      "instructions": "是否需要列入风险名单？",
+      "criteria": {
+        "true": "是",
+        "false": "否"
+      }
+    }
+  },
+  "guidance": "PR3 的 G4 场景：只交 spec，不写 Python。约谈要欠交与成绩同时下滑；风险名单看家长是否已读和成绩是否掉到 60 分以下。",
+  "variety": [
+    "g4"
+  ],
+  "generator": {
+    "fields": [
+      {
+        "name": "缺交次数",
+        "unit": "次",
+        "decimals": 0,
+        "normal": [
+          0,
+          8
+        ],
+        "category": "record",
+        "critical": {
+          "high": [
+            [
+              4,
+              1000000000.0
+            ]
+          ]
+        }
+      },
+      {
+        "name": "连续未交天数",
+        "unit": "日",
+        "decimals": 0,
+        "normal": [
+          0,
+          14
+        ],
+        "category": "record"
+      },
+      {
+        "name": "单元测验均分",
+        "unit": "分",
+        "decimals": 1,
+        "normal": [
+          40,
+          100
+        ],
+        "category": "performance"
+      },
+      {
+        "name": "家长已读回执",
+        "type": "bool",
+        "category": "contact"
+      }
+    ],
+    "selectors": [
+      {
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "rules": [
+      {
+        "id": "conference",
+        "when": "state['缺交次数'] >= 4 and state['单元测验均分'] < 70",
+        "then": [
+          {
+            "label": "escalation",
+            "value": "conference"
+          },
+          {
+            "label": "at_risk",
+            "value": "not state['家长已读回执'] or state['单元测验均分'] < 60"
+          }
+        ]
+      },
+      {
+        "id": "remind",
+        "when": "state['缺交次数'] >= 2 or state['连续未交天数'] >= 7",
+        "then": [
+          {
+            "label": "escalation",
+            "value": "remind"
+          },
+          {
+            "label": "at_risk",
+            "value": "not state['家长已读回执'] or state['单元测验均分'] < 60"
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "when": "state['缺交次数'] < 2 and state['连续未交天数'] < 7",
+        "then": [
+          {
+            "label": "escalation",
+            "value": "keep"
+          },
+          {
+            "label": "at_risk",
+            "value": "not state['家长已读回执'] or state['单元测验均分'] < 60"
+          }
+        ]
+      }
+    ],
+    "augmentation": {
+      "minimal_pair": {
+        "rate": 0.35,
+        "strategy": "boundary_flip"
+      }
+    },
+    "plan_targets": {
+      "floor": 0.05,
+      "by_label": {
+        "escalation:conference & at_risk:false": {
+          "weight": 8
+        },
+        "escalation:conference & at_risk:true": {
+          "weight": 17
+        },
+        "escalation:remind & at_risk:false": {
+          "weight": 20
+        },
+        "escalation:remind & at_risk:true": {
+          "weight": 25
+        },
+        "escalation:keep & at_risk:false": {
+          "weight": 12
+        },
+        "escalation:keep & at_risk:true": {
+          "weight": 18
+        }
+      }
+    }
+  }
+}

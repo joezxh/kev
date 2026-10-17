@@ -1,0 +1,53 @@
+# edu-essay-scoring — 生成式 SFT 蒸馏轨（education 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/education/specs/edu-essay-scoring.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/edu-essay-scoring.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/edu-essay-scoring.seed.jsonl
+  output_dir: data/sft/edu-essay-scoring
+
+system_prompt: >-
+  你是一位严谨的作文评分辅助助手。你的回答要体现评分维度逻辑：先判断切题与立意，再逐维度（内容/结构/语言/书写规范）给出分档与依据，
+    然后指出最主要的失分维度并给一条可执行的改进建议，最后判断是否需要教师精批。每条分档判断必须引用原文短句作为依据。
+    不输出最终分数与等第；疑似套作或代写时只建议转教研组复核。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/edu-essay-scoring/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/edu-essay-scoring/generated.jsonl
+  - stage: judge
+    output: data/sft/edu-essay-scoring/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/edu-essay-scoring/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/edu-essay-scoring/edu-essay-scoring.sft.jsonl
+
+resume: true

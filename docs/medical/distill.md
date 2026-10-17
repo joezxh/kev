@@ -49,7 +49,7 @@ python3 $D/make_seeds.py --all --n 500 --out-dir data/seeds
 **On failure**:
 - `planned targets could not be realized` → rerun with a different `--seed`; if it happens at scale, check the rule
   table against the quota
-- `no spec at ...` → the scenario's spec is missing from `docs/medical/specs/`
+- `no spec at ...` → the scenario's spec is missing from `docs/domains/medical/specs/`
 
 ---
 

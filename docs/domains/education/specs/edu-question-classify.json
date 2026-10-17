@@ -1,0 +1,241 @@
+{
+  "name": "edu-question-classify",
+  "domain": "K12 与高校的命题质量审核（组卷前）。教研组长把一道待入卷题目的命题要素清单交给助手：预估难度系数 P、干扰项同质度、题干歧义标记数、超纲知识点数、答案校验错误数、题干长度。审核判据为课程标准与命题双向细目表的示例口径，实际以本校命题审核制度为准。",
+  "state": "一道待入卷题目的命题要素清单：学段与学科、题型（选择/填空/解答）、预估难度系数 P（0-1，越低越难）、干扰项同质度（%）、题干歧义标记数（处）、超纲知识点数（个）、答案校验错误数（处）、题干长度（字）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "item": "female 教师 B, 高二数学",
+    "context": "期中卷第 12 题，双向细目表目标难度 0.55",
+    "indicators": {
+      "预估难度系数P": "0.18 P",
+      "干扰项同质度": "72.0 %",
+      "题干歧义标记数": "1.0 处",
+      "超纲知识点数": "0.0 个",
+      "答案校验错误数": "0.0 处",
+      "题干长度": "310.0 字"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "item_accept": {
+      "type": "noul",
+      "instructions": "该题目是否达到入卷标准（而不是退回修改）？",
+      "criteria": {
+        "true": "全部命题要素在审核阈值内",
+        "false": "至少一项要素超出命题审核阈值"
+      }
+    },
+    "revise_tier": {
+      "type": "score",
+      "instructions": "退回修改应在多长时间内完成？",
+      "criteria": [
+        "当日重制（错误答案、严重超纲等硬伤）",
+        "48 小时内修改完成并复审",
+        "下次组卷前完成打磨，轻度瑕疵",
+        "达到入卷标准，无需修改"
+      ]
+    },
+    "defect_category": {
+      "type": "choice",
+      "instructions": "触发退回的主要缺陷属于哪一类？",
+      "criteria": {
+        "none": "无（达到入卷标准）",
+        "difficulty": "难度类：预估难度偏离细目表目标区间",
+        "distractor": "干扰项类：干扰项同质度过高，区分度失效",
+        "ambiguity": "歧义类：题干存在歧义表述",
+        "scope": "超纲类：涉及未教知识点",
+        "answer_key": "答案类：参考答案或评分标准有误",
+        "wording": "表述类：题干过长或表述不规范"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "要素清单是否提供了判定所需的全部要素（指标名、数值、目标难度、题型）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照命题审核阈值判定",
+        "false": "缺目标难度、缺数值或缺题型，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "item_accept 的唯一判据是任一命题要素超出本表阈值（示例口径，实际以本校命题审核制度为准，需专家复核）：预估难度系数 P <0.2 触退、<0.05 最高档（难度远偏离细目表目标且超出学段）；干扰项同质度 ≥60% 触退、≥85% 最高档（干扰项与正确项结构雷同，区分度失效）；题干歧义标记 ≥1 处触退、≥4 处最高档；超纲知识点 ≥1 个触退、≥3 个最高档；答案校验错误 ≥1 处触退、≥3 处最高档；题干长度 ≥600 字触退、≥1200 字最高档。revise_tier 由最快触发的缺陷决定，等级从 0（当日重制）到 3（入卷）：answer_key 与 scope 双触发时按 answer_key 优先取档——答案错误是硬伤，超纲可视组卷用途降档；判断题与填空题没有干扰项，干扰项同质度字段应缺席而非填 0，缺席不参与触发。revise_tier=3 时 defect_category 必须为 none。difficulty 类的判定必须同时参考 context 中的细目表目标难度——P=0.18 对期末压轴题是贴边可保留，对单元基础测是硬伤；context 未给目标难度时按表格阈值判定并在 evidence_sufficient=false 子集中处理。evidence_sufficient 为 false 时（缺目标难度、缺题型、缺指标名），item_accept 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 defect_category 不得凭猜测填写。",
+  "variety": [
+    "学段与学科：小学高段数学、初中物理、高中数学、高中语文、大学英语、高职专业课；选择题、填空题、解答题三种题型",
+    "触发类别（defect_category 七选项逐一覆盖）：difficulty（P 0.04/0.18）、distractor（同质度 65/88%）、ambiguity（歧义 1/5 处）、scope（超纲 1/3 个）、answer_key（错误 1/3 处）、wording（题干 650/1300 字）、none（全部达标）",
+    "修改时限档（revise_tier 四档全覆盖）：0 当日重制（答案错误 ≥3、超纲 ≥3、P <0.05）、1 48 小时、2 打磨、3 入卷（item_accept=true 时必须为 3）",
+    "缺陷组合形态：单缺陷、双缺陷同档、多缺陷跨档、缺陷互相冲突（答案错误但难度完美）——跨档形态 signal 取最快档，answer_key 与 scope 并存按 answer_key 优先",
+    "题型与字段缺席：判断题/填空题缺席干扰项同质度字段（不触发、不计入面板）、解答题缺席干扰项与同质度，缺席是合法形态不是缺证",
+    "贴边未触退对照（item_accept=true 须专门生成）：P 0.22、同质度 55%、题干 580 字、超纲 0 个",
+    "要素完整度（evidence_sufficient）：齐全、缺目标难度、缺题型、缺指标名、缺单位、多项缺失",
+    "呈现风格：命题审核单、双向细目表摘录体、教研组批注体、题库导出 JSON 体",
+    "易错陷阱：判断题没有干扰项不算缺陷、P 贴边须结合细目表目标难度判、answer_key 优先于 scope、答案错误是硬伤不因其他要素优秀而放过"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为命题质量审核与修改时限建议，入卷与重制决定由教研组长作出；涉及课程标准争议（是否超纲）的情形一律转学科教研组复核，模型不给出超纲与否的最终结论。"
+  },
+  "smoke_probe": {
+    "state": {
+      "item": "male 教师 A, 初二物理",
+      "context": "单元基础测第 5 题，细目表目标难度 0.70",
+      "indicators": "预估难度系数P 0.12 P, 干扰项同质度 86.0 %, 答案校验错误数 1.0 处",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "item_accept", "type": "noul",
+       "instructions": "该题目是否达到入卷标准？"},
+      {"qid": "defect_category", "type": "choice",
+       "instructions": "触发退回的主要缺陷属于哪一类？"}
+    ],
+    "expected_label": {"item_accept": "false", "defect_category": "answer_key"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触退样本（tier 0-2 约 2:2:1），其余为入卷对照；对照中至少 15% 为贴边未触退样本（P 0.22-0.30、同质度 45-55%、题干 450-580 字）。题型缺席样本（判断/填空/解答缺干扰项字段）单独 12%；answer_key 与 scope 双触发样本单独 6% 并强制按 answer_key 取类。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 revise_tier 四档与 defect_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留题型字段——判断题与填空题的范例若带干扰项同质度会教出对缺席字段误判；answer_key 与 scope 双触发的范例必须与单一触发范例成对出现，训练「硬伤优先」的取类规则。",
+  "compliance": [
+    "题目样本仅保留命题要素结构，剔除可识别特定学校、教师与在用教材版本的表述",
+    "涉及版权的原文题干（教辅摘录、竞赛真题）只保留要素指标，不保留原文",
+    "输出仅为命题质量审核建议，不构成对教师命题能力的评价",
+    "超纲判定样本保留课程标准依据的类别标记，不保留具体争议表述原文"
+  ],
+  "acceptance": [
+    "item_accept accuracy ≥0.96，误收率（应退判入卷）≤2%（误收的命题缺陷直达考生，代价高于误退打扰）",
+    "revise_tier 在触退样本上的 ECE ≤0.02、Brier ≤0.05",
+    "defect_category 七类 macro-F1 ≥0.88",
+    "题型缺席子集（判断/填空）干扰项误报率 ≤1%（字段缺席一致性验收）",
+    "贴边未触退子集（P 0.22-0.30）item_accept=true 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: revise_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 区间",
+    "判断题样本干扰项误报 → generator 缺字段缺席机制，检查 selectors 是否允许缺席与 panel_category 是否按缺席字段对齐",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "answer_key 与 scope 并存时取类漂移 → 检查 rules 的 then 是否按 answer_key 优先的分支顺序书写",
+    "P 贴边样本被退 → 细目表目标难度在 context 中未生成，difficulty 类判据退化到纯阈值口径"
+  ],
+  "expert_review": [
+    "P 0.2/0.05、同质度 60/85%、题干 600/1200 字的档位与本校命题审核细则的对应",
+    "难度偏离的判定是否必须结合细目表目标难度（纯阈值口径 vs 相对偏离口径）",
+    "answer_key 优先于 scope 的规则与实际组卷流程的修改优先级一致性",
+    "「超纲」判定的课程标准依据口径与教材版本差异",
+    "题干长度的学段差异化阈值（小学与高中的阅读负荷不同）"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "预估难度系数P", "unit": "P", "decimals": 2, "normal": [0.45, 0.8],
+       "critical": {"low": [[0.0, 0.2]]}, "category": "difficulty"},
+      {"name": "干扰项同质度", "unit": "%", "decimals": 1, "normal": [0.0, 30.0],
+       "critical": {"high": [[60.0, 100.0]]}, "category": "distractor"},
+      {"name": "题干歧义标记数", "unit": "处", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "ambiguity"},
+      {"name": "超纲知识点数", "unit": "个", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "scope"},
+      {"name": "答案校验错误数", "unit": "处", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "answer_key"},
+      {"name": "题干长度", "unit": "字", "decimals": 0, "normal": [30.0, 300.0],
+       "critical": {"high": [[600.0, 1000000000.0]]}, "category": "wording"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "预估难度系数P": [[0.0, 0.04]],
+        "干扰项同质度": [[85.0, 100.0]],
+        "题干歧义标记数": [[4.0, 1000000000.0]],
+        "超纲知识点数": [[3.0, 1000000000.0]],
+        "答案校验错误数": [[3.0, 1000000000.0]],
+        "题干长度": [[1200.0, 1000000000.0]]
+      },
+      "1": {
+        "预估难度系数P": [[0.05, 0.12]],
+        "干扰项同质度": [[70.0, 84.9]],
+        "题干歧义标记数": [[2.0, 3.0]],
+        "超纲知识点数": [[2.0, 2.0]],
+        "答案校验错误数": [[2.0, 2.0]],
+        "题干长度": [[900.0, 1199.0]]
+      },
+      "2": {
+        "预估难度系数P": [[0.13, 0.2]],
+        "干扰项同质度": [[60.0, 69.9]],
+        "题干歧义标记数": [[1.0, 1.0]],
+        "超纲知识点数": [[1.0, 1.0]],
+        "答案校验错误数": [[1.0, 1.0]],
+        "题干长度": [[600.0, 899.0]]
+      }
+    },
+    "contexts": [
+      "期中卷压轴题，细目表目标难度 0.40",
+      "单元基础测，细目表目标难度 0.70",
+      "学业水平仿真卷，细目表目标难度 0.60",
+      "竞赛选拔附加题，不设细目表目标",
+      "常规月份组卷，全部要素平稳",
+      "新教师命题首审，表述待打磨",
+      "题库旧题复用，当年教材版本已更换",
+      "双语卷翻译稿，题干长度膨胀",
+      "无背景说明，仅一项要素贴线",
+      "审题会前集中送审的三题之一"
+    ],
+    "patients": [
+      "female 教师 A, 高一数学", "male 教师 B, 初二物理", "female 教师 C, 高三语文",
+      "male 教师 D, 高二化学", "female 教师 E, 初一英语", "male 教师 F, 小学六年级数学",
+      "female 教师 G, 高职会计", "male 教师 H, 高一地理"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "item_accept", "value": true},
+          {"label": "revise_tier", "value": 3},
+          {"label": "defect_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "item_accept", "value": false},
+          {"label": "revise_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "defect_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "item_accept",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"difficulty": 0.22, "distractor": 0.22, "ambiguity": 0.16, "scope": 0.12, "answer_key": 0.13, "wording": 0.15},
+          "tier_split": {
+            "difficulty": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "distractor": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "ambiguity": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "scope": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "answer_key": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "wording": [[0, 0.25], [1, 0.35], [2, 0.4]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "预估难度系数P": "difficulty",
+      "干扰项同质度": "distractor",
+      "题干歧义标记数": "ambiguity",
+      "超纲知识点数": "scope",
+      "答案校验错误数": "answer_key",
+      "题干长度": "wording"
+    }
+  }
+}

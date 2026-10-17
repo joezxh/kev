@@ -44,7 +44,7 @@ def _python() -> str:
 
 def _resolve_spec_path(scenario: str) -> Path | None:
     """场景 spec 文件绝对路径：优先从 DB（scenarios.spec_json）物化到运行时文件
-    data/console/specs/<slug>.json；DB 为空时回退 docs/medical/specs/<slug>.json；
+    data/console/specs/<slug>.json；DB 为空时回退 docs/domains/medical/specs/<slug>.json；
     都没有返回 None。无运行时 store 时（单测直调 stage 而不经 create_app）走回退分支。
     """
     try:

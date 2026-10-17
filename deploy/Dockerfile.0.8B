@@ -41,6 +41,7 @@ COPY kev ./kev
 # Console orchestration depends on the generators pipeline (run_matrix) and the
 # kev-finetune skill scripts at runtime; bring them into the image.
 COPY docs/medical ./docs/medical
+COPY docs/domains ./docs/domains
 COPY skills/kev-finetune ./skills/kev-finetune
 ENV PYTHONPATH=/kev:/kev/kev/console/generators:/kev/skills/kev-finetune/scripts
 RUN pip install --no-cache-dir ".[serve]"

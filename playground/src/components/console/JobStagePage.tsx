@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { ApiError, api, type JobTemplate } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
+import { useSelectedProject } from "@/lib/project-context";
 import { ArgvPreview } from "./ArgvPreview";
 import { GatePanel } from "./GatePanel";
 import { ScenarioCascade } from "./ScenarioCascade";
@@ -72,6 +73,8 @@ export function JobStagePage({
 }) {
   const router = useRouter();
   const { lang } = useLang();
+  // /console 是唯一写入口，每个作业必须归属一个项目（D12/D14）；未选项目时禁止提交。
+  const [projectId] = useSelectedProject();
   const [values, setValues] = useState<Record<string, string>>(() => {
     // 默认值优先级：schema.default（单一真相源）> 调用方 initial > 下拉首个选项 / 空串。
     // 既兼容其余 4 个阶段页（字段无 default、用 initial），也让 datasets 的默认值可配置。
@@ -189,6 +192,7 @@ export function JobStagePage({
     try {
       const job = await api.submit({
         kind, scenario: values.scenario, run_name: values.run_name, params,
+        project_id: projectId ?? "",
         ...(enableTemplates && activeTemplateId ? { template_id: activeTemplateId } : {}),
       });
       const goTo = jobHref ?? ((id: string) => `/console/jobs/${id}`);
@@ -227,8 +231,9 @@ export function JobStagePage({
     </div>
   );
   const submitButton = (
-    <Button onClick={() => void submit()} disabled={busy} className="w-full lg:w-auto">
+    <Button onClick={() => void submit()} disabled={busy || !projectId} className="w-full lg:w-auto">
       {busy ? (lang === "zh" ? "提交中…" : "Submitting…")
+        : !projectId ? (lang === "zh" ? "先选项目" : "Select a project first")
         : submitLabel ?? (lang === "zh" ? "提交作业" : "Submit job")}
     </Button>
   );

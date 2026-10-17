@@ -1,0 +1,244 @@
+{
+  "name": "sci-software-archive",
+  "domain": "科研软件存档库的代码发布审查。存档审查员把一份软件发布审查要素单交给助手：测试覆盖率、未修复缺陷数、依赖漏洞数、文档缺口数、许可证冲突数、复现失败环境数。阈值为示例口径（以科研软件可持续性与 FORCE11 软件引用原则的通行审查维度为基线），实际以本机构软件存档政策为准。",
+  "state": "一份软件发布审查要素单：软件类型（分析管线/仿真代码/数据处理工具/可视化库/仪器驱动）、测试覆盖率（%）、未修复缺陷数（个）、依赖漏洞数（个）、文档缺口数（节）、许可证冲突数（项）、复现失败环境数（个）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "case": "female 审查员 A, 计算平台存档组",
+    "context": "课题组申请版本发布，准备分配 DOI",
+    "software_type": "分析管线",
+    "indicators": {
+      "测试覆盖率": "85.0 %",
+      "未修复缺陷数": "1.0 个",
+      "依赖漏洞数": "0.0 个",
+      "文档缺口数": "1.0 节",
+      "许可证冲突数": "0.0 项",
+      "复现失败环境数": "0.0 个"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "archive_flag": {
+      "type": "noul",
+      "instructions": "该软件是否需要暂缓存档发布（而不是准予发布）？",
+      "criteria": {
+        "true": "至少一项要素超出发布阈值",
+        "false": "全部要素在阈值内，准予存档发布"
+      }
+    },
+    "action_tier": {
+      "type": "score",
+      "instructions": "处置应在什么层级与时限完成？",
+      "criteria": [
+        "暂停发布并启动安全评估（依赖高危漏洞或许可冲突多项）",
+        "两周内整改后复审",
+        "纳入下次发布迭代",
+        "准予存档发布"
+      ]
+    },
+    "risk_category": {
+      "type": "choice",
+      "instructions": "触发暂缓的主要风险属于哪一类？",
+      "criteria": {
+        "none": "无（准予发布）",
+        "test_cov": "测试类：测试覆盖率不足",
+        "open_bugs": "缺陷类：未修复缺陷超限",
+        "dep_vulns": "依赖类：依赖组件存在漏洞",
+        "doc_gaps": "文档类：安装/使用文档缺口",
+        "license_conflicts": "许可类：依赖许可证与分发许可冲突",
+        "repro_failures": "复现类：复现环境构建失败"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "审查要素单是否提供了判定所需的全部要素（软件类型、指标数值、统计口径）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照阈值判定",
+        "false": "缺统计口径、缺软件类型或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "archive_flag 的唯一判据是任一要素超出本表阈值（示例口径，实际以本机构软件存档政策为准，需专家复核）：测试覆盖率 <80% 触发、<40% 最高档；未修复缺陷 ≥1 个触发、≥10 个最高档；依赖漏洞 ≥1 个触发、≥5 个最高档；文档缺口 ≥1 节触发、≥5 节最高档；许可证冲突 ≥1 项触发、≥3 项最高档；复现失败环境 ≥1 个触发、≥3 个最高档。action_tier 由最快触发的风险决定，等级从 0（暂停发布）到 3（准予发布）：dep_vulns ≥5 单独即档 0——已知高危漏洞不得进入长期存档；license_conflicts 与 dep_vulns 并存时升档 0——许可与安全双风险须合规评估；license_conflicts 与其他类并存按 license_conflicts 取——许可冲突的再分发风险优先；test_cov 单独触发通常档 1（覆盖率是可维护性基础）；doc_gaps 单独触发档 2（文档可在下一迭代补齐）；repro_failures 单独触发档 1（不可复现的存档无意义）。risk_category 取最快档中的风险类别。archive_flag=false 时 action_tier 必须为 3 且 risk_category 为 none。evidence_sufficient 为 false 时（缺统计口径、缺软件类型、缺指标名），archive_flag 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 risk_category 不得凭猜测填写。",
+  "variety": [
+    "软件类型与场景：分析管线（依赖树深）、仿真代码（数值复现）、数据处理工具（接口文档）、可视化库（前端依赖）、仪器驱动（硬件环境）——不同类型的复现与许可重心不同",
+    "风险类别（risk_category 七选项逐一覆盖）：test_cov（覆盖率 35%/65%）、open_bugs（缺陷 12/2 个）、dep_vulns（漏洞 6/1 个）、doc_gaps（缺口 6/2 节）、license_conflicts（冲突 3/1 项）、repro_failures（失败 4/1 个）、none（全部达标）",
+    "处置档（action_tier 四档全覆盖）：0 暂停发布（漏洞 ≥5、许可+漏洞并存）、1 两周复审（覆盖率/复现失败）、2 下次迭代（文档缺口）、3 准予发布（archive_flag=false 时必须为 3）",
+    "组合形态：单风险、双风险同档、多风险跨档、风险互相掩盖（覆盖率高但依赖有洞——按最快档判）",
+    "许可冲突对照（专门生成）：GPL 依赖混入宽松许可分发的样本与兼容许可的对照——冲突是再分发问题",
+    "贴边未触发对照（archive_flag=false 须专门生成）：覆盖率 82-88%、缺陷 0 个、文档缺口 0 节",
+    "要素完整度（evidence_sufficient）：齐全、缺统计口径、缺软件类型、缺指标名、多项缺失",
+    "呈现风格：存档平台导出体、审查员批注体、软件说明文档摘录体、发布评审记录体",
+    "易错陷阱：高危漏洞不进存档、许可冲突优先取类、覆盖率是 low 侧字段、复现失败不是文档问题、文档可后补档 2"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为存档审查建议，发布与撤回决定由存档负责人按软件存档政策作出；依赖漏洞的安全公告与上游社区披露流程不属本场景，转安全团队通道；模型不生成对课题组工程能力的定性评价。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "male 审查员 B, 计算平台存档组",
+      "context": "仿真代码申请发布，文档待补",
+      "software_type": "仿真代码",
+      "indicators": "测试覆盖率 72.0 %, 未修复缺陷数 2.0 个, 依赖漏洞数 1.0 个, 文档缺口数 3.0 节, 许可证冲突数 0.0 项, 复现失败环境数 0.0 个",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "action_tier", "type": "score",
+       "instructions": "处置应在什么层级与时限完成？"},
+      {"qid": "risk_category", "type": "choice",
+       "instructions": "触发暂缓的主要风险属于哪一类？"}
+    ],
+    "expected_label": {"action_tier": "1", "risk_category": "doc_gaps"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 暂缓发布样本（tier 0-2 约 2:2:1），其余为准予发布对照；对照中至少 15% 为贴边未触发样本（覆盖率 82-88%、缺陷 0 个、文档缺口 0 节）。dep_vulns 样本单独 8%（各档均有，档 0 为主）；license_conflicts 样本单独 7%（与 dep_vulns 并存的强制档 0）；许可冲突与兼容对照单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 action_tier 四档与 risk_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留软件类型与统计口径——缺类型的范例会教出跨类型套用复现要求；「许可+漏洞升档 0」并存范例必须与单一触发成对出现；license_conflicts 范例需写出「再分发风险优先」的取类推理。",
+  "compliance": [
+    "软件样本须去标识：剔除课题组名称、内部代码库名与人员姓名，仅保留类型与指标结构",
+    "漏洞描述只保留数量与严重度大类，不保留可利用细节",
+    "输出仅为存档审查建议，不构成软件发布许可，不生成对课题组的定性评价",
+    "涉许可证诉讼与专利纠纷的样本转法务通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "archive_flag accuracy ≥0.96，漏报率（应暂缓判准予）≤1.5%（漏洞入库的长期风险高于暂缓成本）",
+    "action_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "risk_category 七类 macro-F1 ≥0.88",
+    "dep_vulns ≥5 子集 action_tier=0 比例 =1.0（硬规则验收）",
+    "license_conflicts 子集取类比例 ≥0.9（取类验收）",
+    "贴边未触发子集 archive_flag=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: action_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "test_cov 样本档位漂移 → 测试覆盖率是 low 侧字段，检查窗口方向",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "repro_failures 被赋档 2 → 复现失败档 1 口径未进标签，检查 sampling 对照",
+    "跨类型复现要求误判 → 标签未按软件类型区分，检查 software_type 字段保留"
+  ],
+  "expert_review": [
+    "测试覆盖率 40/80% 的档位与本机构软件存档政策的对应",
+    "依赖漏洞严重度分级（CVSS 口径）与档位的映射",
+    "许可证冲突判定（GPL/LGPL/Apache/MIT 兼容矩阵）与再分发场景",
+    "复现环境失败的认定标准（构建/运行/结果一致）与容器化要求",
+    "文档缺口 1/5 节的档位与软件可持续性等级的对应"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "测试覆盖率", "unit": "%", "decimals": 1, "normal": [80.0, 100.0],
+       "critical": {"low": [[0.0, 79.9]]}, "category": "test_cov"},
+      {"name": "未修复缺陷数", "unit": "个", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 60.0]]}, "category": "open_bugs"},
+      {"name": "依赖漏洞数", "unit": "个", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 30.0]]}, "category": "dep_vulns"},
+      {"name": "文档缺口数", "unit": "节", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 12.0]]}, "category": "doc_gaps"},
+      {"name": "许可证冲突数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 10.0]]}, "category": "license_conflicts"},
+      {"name": "复现失败环境数", "unit": "个", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 8.0]]}, "category": "repro_failures"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "测试覆盖率": [[0.0, 39.9]],
+        "未修复缺陷数": [[10.0, 60.0]],
+        "依赖漏洞数": [[5.0, 30.0]],
+        "文档缺口数": [[5.0, 12.0]],
+        "许可证冲突数": [[3.0, 10.0]],
+        "复现失败环境数": [[3.0, 8.0]]
+      },
+      "1": {
+        "测试覆盖率": [[40.0, 59.9]],
+        "未修复缺陷数": [[4.0, 9.0]],
+        "依赖漏洞数": [[2.0, 4.0]],
+        "文档缺口数": [[3.0, 4.0]],
+        "许可证冲突数": [[2.0, 2.0]],
+        "复现失败环境数": [[2.0, 2.0]]
+      },
+      "2": {
+        "测试覆盖率": [[60.0, 79.9]],
+        "未修复缺陷数": [[1.0, 3.0]],
+        "依赖漏洞数": [[1.0, 1.0]],
+        "文档缺口数": [[1.0, 2.0]],
+        "许可证冲突数": [[1.0, 1.0]],
+        "复现失败环境数": [[1.0, 1.0]]
+      }
+    },
+    "contexts": [
+      "课题组申请版本发布，准备分配 DOI",
+      "期刊投稿要求软件可用性声明",
+      "基金结题要求成果存档",
+      "上游依赖大版本更新，待回归",
+      "常规发布复核，全要素平稳",
+      "老版本重新打包，许可链待查",
+      "新环境（OS/编译器）适配测试",
+      "文档由研究生代写，结构不全",
+      "无背景说明，仅一项要素贴线",
+      "季度存档质量抽查复盘"
+    ],
+    "patients": [
+      "male 审查员 A, 计算平台存档组", "female 审查员 B, 计算平台存档组", "male 审查员 C, 数据工具存档组",
+      "female 审查员 D, 仪器驱动存档组", "male 审查员 E, 仿真代码存档组", "female 审查员 F, 可视化库存档组",
+      "male 审查员 G, 许可合规组", "female 审查员 H, 长期保存组"
+    ],
+    "rules": [
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "archive_flag", "value": true},
+          {"label": "action_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "risk_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "archive_flag", "value": false},
+          {"label": "action_tier", "value": 3},
+          {"label": "risk_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "archive_flag",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"test_cov": 0.18, "open_bugs": 0.15, "dep_vulns": 0.18, "doc_gaps": 0.14, "license_conflicts": 0.17, "repro_failures": 0.18},
+          "tier_split": {
+            "test_cov": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "open_bugs": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "dep_vulns": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "doc_gaps": [[0, 0.15], [1, 0.4], [2, 0.45]],
+            "license_conflicts": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "repro_failures": [[0, 0.2], [1, 0.4], [2, 0.4]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "测试覆盖率": "test_cov",
+      "未修复缺陷数": "open_bugs",
+      "依赖漏洞数": "dep_vulns",
+      "文档缺口数": "doc_gaps",
+      "许可证冲突数": "license_conflicts",
+      "复现失败环境数": "repro_failures"
+    }
+  }
+}

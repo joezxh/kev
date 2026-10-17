@@ -1,0 +1,244 @@
+{
+  "name": "law-regulation-watch",
+  "domain": "企业法务部的法规变动监测分诊。法务专员把一份法规变动影响评估要素单交给助手：违规影响敞口、过渡期剩余天数、受影响业务条线数、制度修订缺口数、历史违规记录数、合规评估完成度。阈值为示例口径（以合规管理的通行分诊维度为基线），实际以本机构合规管理制度与行业监管要求为准。",
+  "state": "一份法规变动影响评估要素单：法规名称与效力层级（法律/行政法规/部门规章/规范性文件）、违规影响敞口（万元）、过渡期剩余天数（天）、受影响业务条线数（条）、制度修订缺口数（项）、历史违规记录数（次）、合规评估完成度（%）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "case": "female 法务专员 A, 合规管理部",
+    "context": "新出台数据安全管理办法，征求意见稿转正式稿",
+    "regulation": "部门规章《××数据安全管理办法》",
+    "indicators": {
+      "违规影响敞口": "80.0 万元",
+      "过渡期剩余天数": "120.0 天",
+      "受影响业务条线数": "1.0 条",
+      "制度修订缺口数": "1.0 项",
+      "历史违规记录数": "0.0 次",
+      "合规评估完成度": "82.0 %"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "compliance_flag": {
+      "type": "noul",
+      "instructions": "该法规变动是否需要启动合规应对（而不是持续监测）？",
+      "criteria": {
+        "true": "至少一项要素超出分诊阈值",
+        "false": "全部要素在阈值内，持续监测即可"
+      }
+    },
+    "action_tier": {
+      "type": "score",
+      "instructions": "合规应对应在什么层级与时限启动？",
+      "criteria": [
+        "立即启动专项合规应对并上报管理层（大敞口+短过渡或违规史叠加）",
+        "两周内完成差距分析与整改计划",
+        "纳入季度合规更新",
+        "持续监测，暂不应对"
+      ]
+    },
+    "risk_category": {
+      "type": "choice",
+      "instructions": "触发应对的主要风险属于哪一类？",
+      "criteria": {
+        "none": "无（持续监测）",
+        "exposure": "敞口类：违规影响敞口超限",
+        "transition_days": "过渡类：过渡期临近届满",
+        "affected_lines": "条线类：受影响业务条线过多",
+        "policy_gaps": "制度类：内部制度修订缺口",
+        "past_violations": "记录类：历史违规记录叠加",
+        "assessment_cov": "评估类：合规评估完成度不足"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "评估要素单是否提供了判定所需的全部要素（法规层级、指标数值、统计口径）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照阈值判定",
+        "false": "缺法规层级、缺统计口径或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "compliance_flag 的唯一判据是任一要素超出本表阈值（示例口径，实际以本机构合规制度为准，需专家复核）：违规影响敞口 ≥50 万元触发、≥500 万元最高档；过渡期剩余 <90 天触发、<15 天最高档；受影响条线 ≥2 条触发、≥5 条最高档；制度修订缺口 ≥1 项触发、≥5 项最高档；历史违规 ≥1 次触发、≥3 次最高档；合规评估完成度 <80% 触发、<40% 最高档。action_tier 由最快触发的风险决定，等级从 0（专项应对）到 3（持续监测）：exposure ≥500 与 transition_days ≤14 并存时升档 0——大敞口撞短过渡期是最危险的合规组合；past_violations ≥3 单独即档 0——再犯将面临从重处罚；past_violations 与其他类并存按 past_violations 取——再犯风险优先于单案特征；exposure 单独触发通常档 1（两周内出差距分析）；transition_days 单独触发档 1-2（倒排整改时间表）；assessment_cov 单独触发档 2（评估排期即可）。risk_category 取最快档中的风险类别。compliance_flag=false 时 action_tier 必须为 3 且 risk_category 为 none。evidence_sufficient 为 false 时（缺法规层级、缺统计口径、缺指标名），compliance_flag 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 risk_category 不得凭猜测填写。",
+  "variety": [
+    "法规层级与场景：法律（数据安全/个保法配套）、行政法规、部门规章（金融/医疗/教培行业新规）、规范性文件——不同层级的过渡期与罚则结构不同",
+    "风险类别（risk_category 七选项逐一覆盖）：exposure（敞口 600/60 万元）、transition_days（剩余 10/60 天）、affected_lines（条线 6/2 条）、policy_gaps（缺口 6/1 项）、past_violations（记录 3/1 次）、assessment_cov（完成度 35%/65%）、none（全部达标）",
+    "处置档（action_tier 四档全覆盖）：0 专项应对（大敞口+短过渡、违规史 ≥3）、1 两周差距分析、2 季度更新、3 持续监测（compliance_flag=false 时必须为 3）",
+    "组合形态：单风险、双风险同档、多风险跨档、风险互相掩盖（敞口大但过渡期长——按最快档判）",
+    "过渡期倒排对照（专门生成）：过渡期充裕与临近届满的成对样本——倒排时间表是过渡类风险的核心动作",
+    "贴边未触发对照（compliance_flag=false 须专门生成）：敞口 30-45 万元、过渡期 100-120 天、条线 1 条",
+    "要素完整度（evidence_sufficient）：齐全、缺法规层级、缺统计口径、缺指标名、多项缺失",
+    "呈现风格：法规监测简报体、法务专员批注体、合规委员会汇报体、监管问询答复体",
+    "易错陷阱：大敞口+短过渡升档 0、违规史优先取类、过渡期要倒排、制度缺口先查配套、敞口估算口径要注明"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为法规变动分诊建议，合规应对方案与上报决定由法务负责人与合规委员会作出；监管处罚的申辩与行政复议不在本场景范围，转外部律师通道；模型不生成对法规效力的解释性意见。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "male 法务专员 B, 合规管理部",
+      "context": "行业新规发布，两业务条线受影响，敞口初步估算偏大",
+      "regulation": "部门规章《××行业合规指引》",
+      "indicators": "违规影响敞口 120.0 万元, 过渡期剩余天数 40.0 天, 受影响业务条线数 2.0 条, 制度修订缺口数 1.0 项, 历史违规记录数 0.0 次, 合规评估完成度 85.0 %",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "action_tier", "type": "score",
+       "instructions": "合规应对应在什么层级与时限启动？"},
+      {"qid": "risk_category", "type": "choice",
+       "instructions": "触发应对的主要风险属于哪一类？"}
+    ],
+    "expected_label": {"action_tier": "1", "risk_category": "exposure"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 启动应对样本（tier 0-2 约 2:2:1），其余为持续监测对照；对照中至少 15% 为贴边未触发样本（敞口 30-45 万元、过渡期 100-120 天、条线 1 条）。exposure ≥500+transition_days ≤14 并存样本单独 6% 并强制档 0；past_violations 样本单独 7%（各档均有）；过渡期倒排对照单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 action_tier 四档与 risk_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留法规层级与统计口径——缺层级的范例会教出跨层级套用敞口阈值；「大敞口+短过渡升档 0」并存范例必须与单一触发成对出现；past_violations 范例需写出「再犯从重」的取类推理。",
+  "compliance": [
+    "法规监测样本须去标识：剔除公司名称、内部系统名与经办人姓名，仅保留法规层级与指标结构",
+    "违规影响敞口只保留数量级与口径说明，不保留具体客户与合同信息",
+    "输出仅为分诊建议，不构成法律意见，不生成对法规效力的解释",
+    "涉监管调查与诉讼的样本转外部律师通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "compliance_flag accuracy ≥0.96，漏报率（应应对判监测）≤1.5%（漏报的处罚风险高于应对成本）",
+    "action_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "risk_category 七类 macro-F1 ≥0.88",
+    "exposure ≥500+transition_days ≤14 并存子集 action_tier=0 比例 ≥0.95（升档验收）",
+    "past_violations ≥3 子集 action_tier=0 比例 =1.0（硬规则验收）",
+    "贴边未触发子集 compliance_flag=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: action_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "transition_days 样本档位漂移 → 过渡期剩余是 low 侧字段，检查窗口方向",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "assessment_cov 样本档位漂移 → 评估完成度是 low 侧字段，检查窗口方向",
+    "跨层级敞口误判 → 标签未按法规层级区分罚则结构，检查 regulation 字段保留"
+  ],
+  "expert_review": [
+    "违规影响敞口 50/500 万元的档位与本机构风险偏好与处罚案例的对应",
+    "过渡期剩余 15/90 天的档位与整改项目典型周期的匹配",
+    "历史违规记录的统计口径（行政处罚/监管措施/自查发现）与从重情节认定",
+    "合规评估完成度的评估方法（差距分析覆盖度）与内部审计标准的衔接",
+    "受影响条线数的计算口径（法条适用范围 vs 业务流程拆分）"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "违规影响敞口", "unit": "万元", "decimals": 0, "normal": [0.0, 49.0],
+       "critical": {"high": [[50.0, 50000.0]]}, "category": "exposure"},
+      {"name": "过渡期剩余天数", "unit": "天", "decimals": 0, "normal": [90.0, 3650.0],
+       "critical": {"low": [[0.0, 89.0]]}, "category": "transition_days"},
+      {"name": "受影响业务条线数", "unit": "条", "decimals": 0, "normal": [0.0, 1.0],
+       "critical": {"high": [[2.0, 20.0]]}, "category": "affected_lines"},
+      {"name": "制度修订缺口数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 15.0]]}, "category": "policy_gaps"},
+      {"name": "历史违规记录数", "unit": "次", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 8.0]]}, "category": "past_violations"},
+      {"name": "合规评估完成度", "unit": "%", "decimals": 1, "normal": [80.0, 100.0],
+       "critical": {"low": [[0.0, 79.9]]}, "category": "assessment_cov"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "违规影响敞口": [[500.0, 50000.0]],
+        "过渡期剩余天数": [[0.0, 14.0]],
+        "受影响业务条线数": [[5.0, 20.0]],
+        "制度修订缺口数": [[5.0, 15.0]],
+        "历史违规记录数": [[3.0, 8.0]],
+        "合规评估完成度": [[0.0, 39.9]]
+      },
+      "1": {
+        "违规影响敞口": [[100.0, 499.0]],
+        "过渡期剩余天数": [[15.0, 45.0]],
+        "受影响业务条线数": [[3.0, 4.0]],
+        "制度修订缺口数": [[2.0, 4.0]],
+        "历史违规记录数": [[2.0, 2.0]],
+        "合规评估完成度": [[40.0, 59.9]]
+      },
+      "2": {
+        "违规影响敞口": [[50.0, 99.0]],
+        "过渡期剩余天数": [[46.0, 89.0]],
+        "受影响业务条线数": [[2.0, 2.0]],
+        "制度修订缺口数": [[1.0, 1.0]],
+        "历史违规记录数": [[1.0, 1.0]],
+        "合规评估完成度": [[60.0, 79.9]]
+      }
+    },
+    "contexts": [
+      "新出台数据安全管理办法，征求意见稿转正式稿",
+      "行业专项整治行动启动，监管约谈前自查",
+      "跨部门新规联合发布，适用范围待厘清",
+      "法规年检与合规年审重叠期",
+      "常规法规监测，全要素平稳",
+      "既有制度与新规冲突，配套细则未出",
+      "监管处罚案例通报后对标检查",
+      "集团多主体适用差异待评估",
+      "无背景说明，仅一项要素贴线",
+      "季度合规委员会例行汇报"
+    ],
+    "patients": [
+      "male 法务专员 A, 合规管理部", "female 法务专员 B, 合规管理部", "male 法务专员 C, 数据合规组",
+      "female 法务专员 D, 劳动合规组", "male 法务专员 E, 反垄断组", "female 法务专员 F, 金融合规组",
+      "male 法务专员 G, 医疗合规组", "female 法务专员 H, 集团法务部"
+    ],
+    "rules": [
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "compliance_flag", "value": true},
+          {"label": "action_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "risk_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "compliance_flag", "value": false},
+          {"label": "action_tier", "value": 3},
+          {"label": "risk_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "compliance_flag",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"exposure": 0.2, "transition_days": 0.18, "affected_lines": 0.14, "policy_gaps": 0.14, "past_violations": 0.16, "assessment_cov": 0.18},
+          "tier_split": {
+            "exposure": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "transition_days": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "affected_lines": [[0, 0.15], [1, 0.4], [2, 0.45]],
+            "policy_gaps": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "past_violations": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "assessment_cov": [[0, 0.15], [1, 0.4], [2, 0.45]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "违规影响敞口": "exposure",
+      "过渡期剩余天数": "transition_days",
+      "受影响业务条线数": "affected_lines",
+      "制度修订缺口数": "policy_gaps",
+      "历史违规记录数": "past_violations",
+      "合规评估完成度": "assessment_cov"
+    }
+  }
+}

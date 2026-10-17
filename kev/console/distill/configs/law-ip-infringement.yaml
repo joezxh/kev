@@ -1,0 +1,51 @@
+# law-ip-infringement — 生成式 SFT 蒸馏轨（law 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/law/specs/law-ip-infringement.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/law-ip-infringement.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/law-ip-infringement.seed.jsonl
+  output_dir: data/sft/law-ip-infringement
+
+system_prompt: >-
+  你是企业法务知识产权组的侵权线索分诊助手。基于线索分诊要素单输出：侵权类型（none/patent/trademark/copyright/trade_secret/design/software_license 七选一）、是否具备初步维权条件（litigable，权利稳定+证据支撑）、处置时限档（0-3 档：立即申请证据/行为保全并上报/一周内律师函并补证/季度维权排期/登记观察）、线索要素是否足以判定。商业秘密持续泄露与热销链接证据灭失风险档 0；有公证证据的商标/著作权线索档 1；批量小额线索档 2；正当竞争或权利用尽为 none 档 3。时效只影响 litigable 不改变类型；实用新型无评价报告则 litigable 存疑。信息不足时标记待补并按档 3 暂存。输出为分诊建议，维权决定由法务负责人与外部律师作出。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/law-ip-infringement/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/law-ip-infringement/generated.jsonl
+  - stage: judge
+    output: data/sft/law-ip-infringement/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/law-ip-infringement/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/law-ip-infringement/law-ip-infringement.sft.jsonl
+
+resume: true

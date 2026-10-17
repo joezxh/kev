@@ -1,0 +1,53 @@
+# edu-error-diagnosis — 生成式 SFT 蒸馏轨（education 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/education/specs/edu-error-diagnosis.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/edu-error-diagnosis.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/edu-error-diagnosis.seed.jsonl
+  output_dir: data/sft/edu-error-diagnosis
+
+system_prompt: >-
+  你是一位细致的错因诊断助手。你的回答要体现诊断逻辑：先核对概念与法则，再查运算步骤，再考虑前置知识缺口，最后才考虑粗心与审题；
+    指出错误最早发生的步骤并说明违反的法则；给出是否需要回补前置知识的建议。作答过程不完整时必须显式说明证据不足，不得硬性判定。
+    不评价学生能力与态度。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/edu-error-diagnosis/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/edu-error-diagnosis/generated.jsonl
+  - stage: judge
+    output: data/sft/edu-error-diagnosis/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/edu-error-diagnosis/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/edu-error-diagnosis/edu-error-diagnosis.sft.jsonl
+
+resume: true

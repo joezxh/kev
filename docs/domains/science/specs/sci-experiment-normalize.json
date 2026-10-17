@@ -1,0 +1,241 @@
+{
+  "name": "sci-experiment-normalize",
+  "domain": "科研机构实验室的实验记录规范复核（数据完整性与可重复性管理）。质控员把一条实验记录的偏差清单交给助手：温度偏差、pH 偏差、平行样缺失数、记录延迟、仪器校准超期天数、关键参数缺失数。阈值为示例口径（以 GLP/GMP 数据可靠性原则为基线），实际以本机构 SOP 为准。",
+  "state": "一条实验记录的偏差清单：实验类型（细胞培养/化学合成/动物实验/仪器分析/田间试验）、温度偏差（°C，对方案设定值）、pH 偏差（pH）、平行样缺失数（组）、记录延迟（小时，实验完成到录入）、仪器校准超期天数（天）、关键参数缺失数（项）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "record": "female 技术员 B, 仪器分析",
+    "context": "HPLC 含量测定，色谱柱更换后未重新校准",
+    "indicators": {
+      "温度偏差": "1.2 °C",
+      "pH偏差": "0.3 pH",
+      "平行样缺失数": "1.0 组",
+      "记录延迟": "30.0 小时",
+      "仪器校准超期天数": "18.0 天",
+      "关键参数缺失数": "0.0 项"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "record_accept": {
+      "type": "noul",
+      "instructions": "该实验记录是否达到数据可靠性标准（而不是需要整改）？",
+      "criteria": {
+        "true": "全部偏差项在 SOP 容差内",
+        "false": "至少一项偏差超出 SOP 容差"
+      }
+    },
+    "rework_tier": {
+      "type": "score",
+      "instructions": "整改应在多长时间内启动？",
+      "criteria": [
+        "立即重做实验（数据不可信）",
+        "48 小时内补做或复测",
+        "记录补正后复核，轻度偏差",
+        "记录合格，无需整改"
+      ]
+    },
+    "defect_category": {
+      "type": "choice",
+      "instructions": "触发整改的主要缺陷属于哪一类？",
+      "criteria": {
+        "none": "无（记录合格）",
+        "temperature": "温度类：实验温度偏差超限",
+        "ph": "pH 类：pH 偏差超限",
+        "replication": "平行样类：平行样缺失，重复性无支撑",
+        "latency": "记录类：录入延迟过长，来源记录缺失风险",
+        "calibration": "校准类：仪器校准超期，量值溯源性存疑",
+        "missing": "完整性类：关键参数缺失"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "记录是否提供了判定所需的全部要素（指标名、数值、单位、SOP 容差）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照 SOP 判定",
+        "false": "缺 SOP 容差、缺单位或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "record_accept 的唯一判据是任一偏差项超出本表容差（示例口径，实际以本机构 SOP 为准，需专家复核）：温度偏差 ≥3°C 触整改、≥8°C 最高档；pH 偏差 ≥0.5 触整改、≥1.5 最高档；平行样缺失 ≥1 组触整改、≥3 组最高档；记录延迟 ≥24 小时触整改、≥72 小时最高档；校准超期 ≥1 天触整改、≥30 天最高档；关键参数缺失 ≥1 项触整改、≥3 项最高档。rework_tier 由最快触发的缺陷决定，等级从 0（立即重做）到 3（合格）：calibration 与 temperature/ph 双触发时按 calibration 优先取档——量值溯源存疑时温度读数本身不可信；记录延迟单独触发通常档 2（补正来源记录即可），但延迟伴随原始记录缺失（context 说明）升档 0——数据可靠性原则下「没有原始记录」比「晚录入」严重。rework_tier=3 时 defect_category 必须为 none。田间试验的温度容差按 SOP 放宽口径在 context 中说明，样本生成时 context 必须写明实验类型。evidence_sufficient 为 false 时（缺 SOP 容差、缺单位、缺指标名），record_accept 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 defect_category 不得凭猜测填写。",
+  "variety": [
+    "实验类型：细胞培养（温度/pH 敏感）、化学合成（温度关键）、仪器分析（校准关键）、动物实验（平行样与伦理记录）、田间试验（宽容差）",
+    "触发类别（defect_category 七选项逐一覆盖）：temperature（偏差 3.5/8.5°C）、ph（偏差 0.6/1.8）、replication（缺 1/3 组）、latency（延迟 30/80 小时）、calibration（超期 5/35 天）、missing（缺 1/3 项）、none（全部合格）",
+    "整改时限档（rework_tier 四档全覆盖）：0 立即重做（校准+温度双触发、原始记录缺失、平行样 ≥3 组缺失）、1 48 小时补做、2 记录补正、3 合格（record_accept=true 时必须为 3）",
+    "偏差组合形态：单偏差、双偏差同档、多偏差跨档、偏差间互相掩盖（温度偏差但校准也超期——读数不可信，按 calibration 优先）",
+    "贴边未触发对照（record_accept=true 须专门生成）：温度偏差 2.5°C、pH 偏差 0.4、延迟 20 小时、校准剩 3 天到期",
+    "来源记录形态：原始记录纸完整、原始记录纸丢失仅电子版、代录他人实验、事后凭记忆补录——后三种在 context 中注明并影响 latency 档位",
+    "要素完整度（evidence_sufficient）：齐全、缺 SOP 容差、缺单位、缺指标名、多项缺失",
+    "呈现风格：实验记录本质检页、ELN 电子记录导出体、质控员批注体、审计追踪摘要体",
+    "易错陷阱：校准超期时温度读数本身不可信、原始记录缺失比晚录入严重、田间试验宽容差须在 context 写明、平行样缺失是重复性缺陷不是完整性缺陷"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为实验记录质检与整改时限建议，数据可用性判定与重做决定由课题负责人与质控负责人作出；涉数据造假嫌疑（代录、凭记忆补录关键数据）的情形一律转科研诚信委员会，模型不给出诚信结论。"
+  },
+  "smoke_probe": {
+    "state": {
+      "record": "male 技术员 C, 细胞培养",
+      "context": "培养箱温度记录仪故障三天，期间读数为人工估读",
+      "indicators": "温度偏差 5.2 °C, 仪器校准超期天数 22.0 天, 记录延迟 40.0 小时",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "record_accept", "type": "noul",
+       "instructions": "该实验记录是否达到数据可靠性标准？"},
+      {"qid": "defect_category", "type": "choice",
+       "instructions": "触发整改的主要缺陷属于哪一类？"}
+    ],
+    "expected_label": {"record_accept": "false", "defect_category": "calibration"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触发整改样本（tier 0-2 约 2:2:1），其余为合格对照；对照中至少 15% 为贴边未触发样本（温度偏差 2-2.8°C、pH 偏差 0.35-0.45、延迟 16-22 小时）。calibration 与 temperature 双触发样本单独 6% 并强制按 calibration 取类；原始记录缺失样本单独 5% 并强制档 0 或升档。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 rework_tier 四档与 defect_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留实验类型与 context 的原始记录说明——田间试验范例缺宽容差说明会教出按常规口径误判；calibration 与 temperature 双触发范例必须与单一触发成对出现，训练「溯源优先」的取类规则。",
+  "compliance": [
+    "实验记录样本须去标识：剔除实验员姓名、课题编号与委托方信息，仅保留实验类型与偏差数值",
+    "涉未发表成果的记录只保留偏差结构，不保留实验设计与结果数据本身",
+    "输出仅为记录质检建议，不构成数据可用性结论，不生成科研诚信评价",
+    "动物实验样本的伦理审批信息只保留「已批/未批」标记，不保留批号与实验细节"
+  ],
+  "acceptance": [
+    "record_accept accuracy ≥0.96，误收率（应整改判合格）≤2%（误收损害数据可靠性，代价高于误整改）",
+    "rework_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "defect_category 七类 macro-F1 ≥0.88",
+    "calibration+temperature 双触发子集按 calibration 取类比例 ≥0.95（硬规则验收）",
+    "贴边未触发子集（温度偏差 2-2.8°C）record_accept=true 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: rework_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical",
+    "calibration+temperature 双触发取类漂移 → rules 分支顺序必须溯源优先，检查 then 顺序",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "田间试验被误判 → context 未写明宽容差口径，检查 few-shot 是否保留实验类型",
+    "原始记录缺失样本未升档 → sidecar 未标注来源记录形态，检查 context 生成是否携带该信息"
+  ],
+  "expert_review": [
+    "温度 3/8°C、pH 0.5/1.5、延迟 24/72 小时、校准超期 1/30 天的档位与本机构 SOP 的对应",
+    "calibration 优先于温度/pH 的溯源规则与 GLP 审计口径一致性",
+    "原始记录缺失（仅电子版/凭记忆补录）的分级处理是否需单列 defect 类别",
+    "田间试验与现场试验的容差放宽边界",
+    "代录他人实验的诚信嫌疑移交口径"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "温度偏差", "unit": "°C", "decimals": 1, "normal": [-1.0, 1.0],
+       "critical": {"high": [[3.0, 1000000000.0]]}, "category": "temperature"},
+      {"name": "pH偏差", "unit": "pH", "decimals": 2, "normal": [0.0, 0.1],
+       "critical": {"high": [[0.5, 1000000000.0]]}, "category": "ph"},
+      {"name": "平行样缺失数", "unit": "组", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "replication"},
+      {"name": "记录延迟", "unit": "小时", "decimals": 0, "normal": [0.0, 4.0],
+       "critical": {"high": [[24.0, 1000000000.0]]}, "category": "latency"},
+      {"name": "仪器校准超期天数", "unit": "天", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "calibration"},
+      {"name": "关键参数缺失数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "missing"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "温度偏差": [[8.0, 1000000000.0]],
+        "pH偏差": [[1.5, 1000000000.0]],
+        "平行样缺失数": [[3.0, 1000000000.0]],
+        "记录延迟": [[72.0, 1000000000.0]],
+        "仪器校准超期天数": [[30.0, 1000000000.0]],
+        "关键参数缺失数": [[3.0, 1000000000.0]]
+      },
+      "1": {
+        "温度偏差": [[5.0, 7.9]],
+        "pH偏差": [[1.0, 1.49]],
+        "平行样缺失数": [[2.0, 2.0]],
+        "记录延迟": [[48.0, 71.0]],
+        "仪器校准超期天数": [[15.0, 29.0]],
+        "关键参数缺失数": [[2.0, 2.0]]
+      },
+      "2": {
+        "温度偏差": [[3.0, 4.9]],
+        "pH偏差": [[0.5, 0.99]],
+        "平行样缺失数": [[1.0, 1.0]],
+        "记录延迟": [[24.0, 47.0]],
+        "仪器校准超期天数": [[1.0, 14.0]],
+        "关键参数缺失数": [[1.0, 1.0]]
+      }
+    },
+    "contexts": [
+      "HPLC 含量测定，色谱柱更换后未重新校准",
+      "培养箱温度记录仪故障三天，期间读数为人工估读",
+      "化学合成放大试验，反应温度手动控制",
+      "动物实验，平行样按伦理最小量设计",
+      "田间试验，极端天气期宽容差批准备案",
+      "常规月份质控抽检，全部偏差平稳",
+      "ELN 系统升级切换期，录入延迟集中",
+      "新入职技术员首月记录，代导师录入一次",
+      "无背景说明，仅一项偏差贴线",
+      "外部稽核前的全面自查"
+    ],
+    "patients": [
+      "female 技术员 A, 细胞培养", "male 技术员 B, 化学合成", "female 技术员 C, 仪器分析",
+      "male 技术员 D, 动物实验", "female 研究生 E, 分子生物学", "male 研究员 F, 环境监测",
+      "female 技术员 G, 微生物检验", "male 博士后 H, 材料表征"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "record_accept", "value": true},
+          {"label": "rework_tier", "value": 3},
+          {"label": "defect_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "record_accept", "value": false},
+          {"label": "rework_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "defect_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "record_accept",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"temperature": 0.15, "ph": 0.14, "replication": 0.15, "latency": 0.17, "calibration": 0.24, "missing": 0.15},
+          "tier_split": {
+            "temperature": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "ph": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "replication": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "latency": [[0, 0.15], [1, 0.35], [2, 0.5]],
+            "calibration": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "missing": [[0, 0.25], [1, 0.35], [2, 0.4]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "温度偏差": "temperature",
+      "pH偏差": "ph",
+      "平行样缺失数": "replication",
+      "记录延迟": "latency",
+      "仪器校准超期天数": "calibration",
+      "关键参数缺失数": "missing"
+    }
+  }
+}

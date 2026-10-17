@@ -1,0 +1,155 @@
+{
+  "_meta": {
+    "purpose": "争议焦点识别与案件分诊 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/law-dispute-focus.yaml"
+  },
+  "name": "law-dispute-focus",
+  "label_zh": "争议焦点",
+  "label_en": "Dispute Focus",
+  "domain": "企业法务与争议解决团队的案件材料分诊。法务人员把一份新收案件的争议摘要（起诉状、仲裁申请书、律师函或内部争议报告）提交给助手，助手判断争议焦点类型（合同履行/责任归属/证据争议/程序与管辖/损害赔偿数额/合同效力）、案件类别（合同/劳动/侵权/知识产权/公司商事/劳动人事）、是否需要执业律师立即介入，并判断摘要材料是否要素齐全。焦点类型为示例口径，需执业律师复核。",
+  "state": "一份新收案件的争议摘要：案件来源（法院起诉状副本/仲裁通知/律师函/内部报告）、当事人立场（原告方/被告方/仲裁被申请人/内部合规）、争议摘要原文（2-8 句）、涉及金额档、是否已有诉讼或仲裁程序启动、是否涉及保全或紧急措施请求、材料是否附有合同与证据清单。",
+  "state_example": {
+    "case": "male 45, 采购合同纠纷",
+    "source": "法院起诉状副本",
+    "our_side": "被告方",
+    "summary": "原告主张我方逾期交付违约金 80 万元；我方认为逾期系原告三次变更设计要求所致，且合同对交付期限约定为「视设计确认进度顺延」，存在解释争议。",
+    "amount_tier": "50万-500万",
+    "proceeding_started": true,
+    "emergency_relief": false,
+    "attachments_complete": true
+  },
+  "questions": {
+    "focus_type": {
+      "type": "choice",
+      "instructions": "该争议的核心焦点属于哪一类？",
+      "criteria": {
+        "contract_performance": "合同履行：交付、验收、付款、变更与顺延等履行争议",
+        "liability_allocation": "责任归属：违约或侵权责任由谁承担、过错与因果关系",
+        "evidence_dispute": "证据争议：事实主张的证据基础、证据真实性与完整性",
+        "procedure_jurisdiction": "程序与管辖：管辖权异议、仲裁条款效力、时效抗辩",
+        "damages_amount": "损害赔偿数额：损失计算方式、违约金调整、赔偿范围",
+        "contract_validity": "合同效力：合同或条款是否成立、生效、可撤销或无效"
+      }
+    },
+    "case_category": {
+      "type": "choice",
+      "instructions": "该案件属于哪一类别？",
+      "criteria": {
+        "commercial_contract": "商事合同：采购、销售、服务、经销等商事合同纠纷",
+        "labor_employment": "劳动人事：劳动合同、竞业限制、工伤、社保",
+        "tort": "侵权：人身财产损害、名誉、产品责任",
+        "ip": "知识产权：专利、商标、著作权、商业秘密",
+        "corporate": "公司商事：股权、公司决议、股东出资、合伙",
+        "construction_realestate": "建设工程与不动产：工程款、质量、租赁"
+      }
+    },
+    "needs_lawyer_urgent": {
+      "type": "noul",
+      "instructions": "该案件是否需要执业律师立即介入（而不是进入常规法务登记流程）？",
+      "criteria": {
+        "true": "程序已启动且有答辩/举证期限、涉保全或紧急措施、或涉刑事风险线索",
+        "false": "尚未进入程序或期限充裕，可先内部核查"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "摘要材料是否要素齐全，足以识别焦点（合同文本、程序状态、金额档）？",
+      "criteria": {
+        "true": "摘要、程序状态与合同证据信息齐全",
+        "false": "缺合同文本、程序状态不明或金额不明，需先补材料"
+      }
+    }
+  },
+  "guidance": "争议焦点识别是案件分诊参考，不是法律分析——输出仅为焦点类型、案件类别与律师介入建议，实体争议的法律判断由承办律师作出。focus_type 按摘要中双方实际交锋的核心问题归类：一方主张赔偿而另一方以履行抗辩回应的，焦点是 contract_performance（履行争议）而非 damages_amount（数额争议），只有双方对「损失如何计算/违约金是否过高」本身交锋时才归 damages_amount；程序性主张（管辖权异议、时效抗辩、仲裁条款效力）出现在摘要中时优先归 procedure_jurisdiction——程序焦点决定后续一切实体审理，优先级最高。needs_lawyer_urgent=true 的判据：proceeding_started 为真且存在答辩期/举证期、emergency_relief 为真（保全/行为保全/先予执行）、或摘要中出现刑事风险表述（报案、移送、涉嫌犯罪）；金额档本身不触发紧急介入，但超过机构法务授权上限（示例 500 万）时在回答中提示走重大案件流程。case_category 按法律关系归类，同一事实涉及多类时按主要法律关系归类（如劳动争议中的竞业限制条款纠纷归 labor_employment 而非 ip）。evidence_sufficient=false 时（无合同文本、程序状态不明、金额不明），focus_type 仍可按摘要给出初步判断但必须在回答中标注「待补材料后修正」，needs_lawyer_urgent 在程序状态不明时按保守口径处理（提示核实期限）——分诊工具宁可多提示、不可漏期限。",
+  "variety": [
+    "焦点类型（focus_type 六选项逐一覆盖）：履行争议（逾期/质量/变更顺延）、责任归属（多方过错/因果关系）、证据争议（单方记录真实性/单据缺失）、程序管辖（管辖权异议/仲裁条款/时效）、数额争议（违约金过高/损失计算口径）、效力争议（格式条款效力/无权代理/阴阳合同）",
+    "案件类别（case_category 六选项逐一覆盖）：商事合同、劳动人事（含竞业限制）、侵权、知识产权、公司商事、建设工程与不动产",
+    "紧急介入场景（needs_lawyer_urgent=true 专门生成）：答辩期剩余 3 天、财产保全已申请、仲裁通知送达、涉嫌刑事移送表述、行为保全（停止侵权）",
+    "常规分诊对照（needs_lawyer_urgent=false）：律师函尚在回复期、内部争议报告未进入程序、时效远未届满",
+    "立场视角（同案双视角生成）：原告方与被告方对同一摘要的焦点归类必须一致——焦点是案件的客观属性，不随立场翻转（与合同风险分档不同）",
+    "材料完整度（evidence_sufficient）：齐全、缺合同文本、程序状态不明、金额不明、未附证据清单、多项缺失",
+    "案件来源：起诉状副本、仲裁通知、律师函、内部争议报告、监管问询函、调解邀请",
+    "文本风格：起诉状摘录体、律师函正式体、内部报告口语体、中英混排（涉外合同）、仲裁规则术语体",
+    "易错陷阱：履行抗辩不是数额争议、程序焦点优先于实体焦点、焦点不随立场翻转、刑事表述触发紧急介入、程序状态不明时按保守口径提示核实期限"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "输出仅为焦点识别与分诊建议，不构成法律意见；答辩、举证与实体策略由承办律师决定。涉及刑事风险线索的立即转刑事合规律师，不在本模型继续处理。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "female 38, 劳动人事争议",
+      "source": "仲裁通知",
+      "our_side": "仲裁被申请人（用人单位）",
+      "summary": "申请人主张违法解除劳动合同赔偿金 12 万元；我方认为解除依据的规章制度经民主程序制定并已公示，解除合法。另发现仲裁申请已过一年时效，拟提出时效抗辩。",
+      "amount_tier": "10万-50万",
+      "proceeding_started": true,
+      "emergency_relief": false,
+      "attachments_complete": false
+    },
+    "questions": [
+      {
+        "qid": "focus_type",
+        "type": "choice",
+        "instructions": "该争议的核心焦点属于哪一类？"
+      }
+    ],
+    "expected_label": {
+      "focus_type": "procedure_jurisdiction"
+    }
+  },
+  "sampling": {
+    "n": 660,
+    "notes": "蒸馏轨样本分布建议：focus_type 六类均衡（每类 ≥13%，procedure_jurisdiction 类保底 18% 因其优先级规则最易错）；case_category 六类均衡；needs_lawyer_urgent=true 占比 30%；evidence_sufficient=false 占比 20%。立场双视角对（同摘要原告/被告两份样本）单独 12%。涉及刑事表述的样本单独 5% 并强制 needs_lawyer_urgent=true。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 focus_type 六类中至少五类与 needs_lawyer_urgent 两态）作为 --examples 输入；few-shot 范例必须保留 proceeding_started 与 emergency_relief 字段——缺程序状态的范例会教出对答辩期漏判；程序焦点优先级（管辖/时效/仲裁条款）的范例必须与实体焦点范例成对出现，训练「先程序后实体」的归类纪律。立场双视角对的范例必须展示焦点一致、needs_lawyer_urgent 一致。",
+  "compliance": [
+    "案件材料属敏感法律信息，训练数据须按案件脱敏：去除当事人、案号、代理人、金额精确值（保留金额档）与可识别的交易细节",
+    "输出仅为焦点识别与分诊建议，不构成法律意见，不预测案件结果，不输出任何实体权利义务判断",
+    "涉刑事线索样本一律标注「转刑事合规律师」，模型不生成刑事风险评估",
+    "涉及国家秘密、未成年人案件与个人隐私的材料类别，样本中只保留类别标记不保留内容"
+  ],
+  "acceptance": [
+    "focus_type 六类 macro-F1 ≥0.85，procedure_jurisdiction 优先级规则准确率 ≥0.95（程序焦点被实体焦点掩盖是核心失败模式）",
+    "case_category 六类 macro-F1 ≥0.88",
+    "needs_lawyer_urgent 召回 ≥0.98（漏介入的期限失权风险远高于过介入）",
+    "立场无关性：同案双视角样本的 focus_type 预测一致率 ≥0.97",
+    "evidence_sufficient=false 子集上「待补材料后修正」标注率 =1.0（硬规则验收）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "procedure_jurisdiction 被实体焦点掩盖 → few-shot 缺少程序与实体并存的对照范例，补充「履行争议 + 时效抗辩」双焦点样本并核对 sidecar 的优先级标注",
+    "焦点随立场翻转 → sidecar 双视角标注不一致，检查标注规范是否按案件客观属性标注",
+    "needs_lawyer_urgent 漏报 → 检查蒸馏数据中 proceeding_started/emergency_relief 字段是否被脱敏误删",
+    "刑事表述样本未触发紧急介入 → compliance 的转介口径未进 few-shot，补足",
+    "evidence_sufficient=false 时仍输出确定焦点 → 「待补材料后修正」标注路径失效，检查 sidecar 是否保留不确定样本"
+  ],
+  "expert_review": [
+    "focus_type 六分类与诉讼/仲裁实务中争议焦点的归纳口径（需执业律师复核，各地法院庭审焦点归纳习惯不同）",
+    "程序焦点优先于实体焦点的归类规则是否与承办团队的分诊习惯一致",
+    "needs_lawyer_urgent 的触发清单（答辩期、保全、刑事表述）与机构重大案件流程的衔接",
+    "case_category 六类与机构案件台账类目的映射",
+    "刑事风险表述的识别口径（报案/移送/涉嫌犯罪等表述的清单化）"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；争议焦点归纳无法用数值区间规则表达，标签由执业律师标注 sidecar 提供。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是一位专业的争议焦点识别与案件分诊助手。你的回答要体现分诊逻辑：先判断案件类别（商事合同/劳动人事/侵权/知识产权/公司商事/建工不动产），\n  再归纳争议核心焦点（履行/责任归属/证据/程序管辖/赔偿数额/合同效力），注意程序性主张（管辖、时效、仲裁条款）优先于实体焦点；\n  然后判断是否需要执业律师立即介入（程序已启动且有期限、涉保全、涉刑事表述）。材料要素不全时必须标注「待补材料后修正」。不构成法律意见，不预测案件结果。",
+      "en": "You are a professional dispute-focus identification and case-intake triage assistant. Your reply must reflect triage logic: classify the case category first,\n  then identify the core dispute focus (performance/liability/evidence/procedure/quantum/validity), remembering procedural claims (jurisdiction, limitation, arbitration clause) take priority over substantive ones;\n  then decide whether an attorney must step in immediately (proceedings started with deadlines, interim relief, or criminal-risk wording). If the materials are incomplete you must mark the triage as provisional. No legal advice, no outcome predictions."
+    },
+    "ask_template": "请基于以下案件争议摘要给出焦点识别与分诊建议：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "案件争议焦点的归纳（履行/责任/证据/程序/数额/效力）",
+      "案件类别判断与程序性主张的优先级处理",
+      "律师紧急介入判断与材料补齐提示"
+    ],
+    "kev_track": false
+  }
+}

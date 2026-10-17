@@ -1,0 +1,246 @@
+{
+  "name": "sci-topic-identification",
+  "domain": "科研机构的课题立项与中期评审初筛。科研管理处把一份课题申报/在研课题的评审要素清单交给助手：创新性评分、可行性评分、预算偏差率、进度滞后天数、伦理风险项数、样本量缺口。阈值为示例口径（以同行评议通行的分档逻辑为基线），实际以本机构科研管理办法与基金指南为准。",
+  "state": "一份课题评审要素清单：课题类型（新申报/中期检查/结题初审）、学科门类、创新性评分（分）、可行性评分（分）、预算偏差率（%，实际支出对预算）、进度滞后天数（天）、伦理风险项数（项）、样本量缺口（%，实际入组对方案要求）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "project": "male PI A, 临床医学",
+    "context": "中期检查，方案变更一次未备案",
+    "project_type": "中期检查",
+    "discipline": "临床医学",
+    "indicators": {
+      "创新性评分": "72.0 分",
+      "可行性评分": "65.0 分",
+      "预算偏差率": "28.0 %",
+      "进度滞后天数": "95.0 天",
+      "伦理风险项数": "1.0 项",
+      "样本量缺口": "18.0 %"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "topic_advance": {
+      "type": "noul",
+      "instructions": "该课题是否通过本轮评审（立项/继续资助/结题放行）？",
+      "criteria": {
+        "true": "全部评审要素在阈值内",
+        "false": "至少一项要素超出评审阈值"
+      }
+    },
+    "review_tier": {
+      "type": "score",
+      "instructions": "评审结论应在多长时间内执行？",
+      "criteria": [
+        "立即叫停并启动重组评估（重大风险）",
+        "一个月内提交整改方案并复评",
+        "记录在案，纳入下一轮常规监测",
+        "通过评审，按计划推进"
+      ]
+    },
+    "risk_category": {
+      "type": "choice",
+      "instructions": "触发未通过的主要风险属于哪一类？",
+      "criteria": {
+        "none": "无（通过评审）",
+        "novelty": "创新性类：创新性评分过低，重复已有工作",
+        "feasibility": "可行性类：技术路线或团队能力存疑",
+        "budget": "预算类：预算偏差超限或支出结构异常",
+        "schedule": "进度类：滞后超限，里程碑未达成",
+        "ethics": "伦理类：伦理风险项未备案或未批先做",
+        "sample": "样本量类：入组缺口影响统计效力"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "要素清单是否提供了评审所需的全部要素（指标名、数值、口径基准）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照评审阈值判定",
+        "false": "缺口径基准、缺数值或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "topic_advance 的唯一判据是任一评审要素超出本表阈值（示例口径，实际以本机构管理办法与基金指南为准，需专家复核）：创新性评分 <60 分触发、<35 分最高档；可行性评分 <55 分触发、<35 分最高档；预算偏差率 >20% 触发、>50% 最高档；进度滞后 >90 天触发、>180 天最高档；伦理风险项 ≥1 项触发、≥3 项最高档；样本量缺口 >15% 触发、>40% 最高档。review_tier 由最快触发的风险决定，等级从 0（立即叫停）到 3（通过）：ethics 类无论项数多少至少档 1——未批先做是红线，超过 1 项或涉人体样本升档 0；中期检查的进度滞后单独触发按档 2 处理（课题执行常见波动），滞后伴随预算偏差同档触发时升档 1——进度与预算同时失控是执行力问题。结题初审的创新性阈值放宽 10 分（结题看完成度不看新颖性），context 未写明课题类型时按新申报口径判。risk_category 取最快档中的风险类别，ethics 与 schedule 并存按 ethics 取——伦理是红线不是权衡项。topic_advance=true 时 review_tier 必须为 3 且 risk_category 为 none。evidence_sufficient 为 false 时（缺口径基准、缺指标名），topic_advance 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 risk_category 不得凭猜测填写。",
+  "variety": [
+    "课题类型：新申报、中期检查、结题初审（结题创新性阈值放宽 10 分的口径在 context 写明）",
+    "学科门类：临床医学、生物科学、信息科学、材料工程、社会科学（伦理项在社科主要指知情同意）",
+    "风险类别（risk_category 七选项逐一覆盖）：novelty（评分 45/30 分）、feasibility（评分 48/32 分）、budget（偏差 25/55%）、schedule（滞后 100/200 天）、ethics（1/3 项）、sample（缺口 20/45%）、none（全部达标）",
+    "评审档（review_tier 四档全覆盖）：0 立即叫停（ethics ≥2 项、创新 <35、滞后 >180 且预算 >50%）、1 一个月整改复评、2 记录在案、3 通过（topic_advance=true 时必须为 3）",
+    "组合形态：单风险、双风险同档、多风险跨档、风险互相掩盖（进度滞后但创新性极强——按最快档判不因优点抵扣）",
+    "贴边未触发对照（topic_advance=true 须专门生成）：创新 62 分、可行性 58 分、预算偏差 18%、滞后 85 天、缺口 14%",
+    "要素完整度（evidence_sufficient）：齐全、缺口径基准、缺课题类型、缺指标名、多项缺失",
+    "呈现风格：申报书摘要体、中期检查表体、科研处批注体、基金指南对照表体",
+    "易错陷阱：伦理是红线至少档 1、进度+预算双失控升档、结题初审创新性放宽、最快档取类不因优点抵扣、社科的伦理项是知情同意"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为评审初筛建议，立项、资助与叫停决定由学术委员会按评审程序作出；涉伦理违规的情形一律转伦理委员会，模型不给出伦理审查结论；评审打分本身由同行评议专家作出，模型不替代专家评分。"
+  },
+  "smoke_probe": {
+    "state": {
+      "project": "female PI B, 社会科学",
+      "context": "中期检查，问卷调研未重新取得知情同意即扩展人群",
+      "project_type": "中期检查",
+      "discipline": "社会科学",
+      "indicators": "创新性评分 78.0 分, 可行性评分 70.0 分, 伦理风险项数 2.0 项",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "topic_advance", "type": "noul",
+       "instructions": "该课题是否通过本轮评审？"},
+      {"qid": "review_tier", "type": "score",
+       "instructions": "评审结论应在多长时间内执行？"}
+    ],
+    "expected_label": {"topic_advance": "false", "review_tier": "1"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 未通过样本（tier 0-2 约 2:2:1），其余为通过对照；对照中至少 15% 为贴边未触发样本（创新 60-65 分、可行性 55-60 分、滞后 80-90 天、缺口 13-15%）。ethics 类样本单独 8% 且强制 review_tier ≥1；进度+预算双失控样本单独 5% 并强制档 1；结题初审样本单独 10% 且 context 注明放宽口径。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 review_tier 四档与 risk_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留课题类型字段——结题范例缺类型会教出按新申报口径误杀；ethics 与 schedule 双触发范例必须与单一触发成对出现，训练「红线优先」的取类规则；贴边通过范例需标注「贴边不等于不通过」。",
+  "compliance": [
+    "课题信息须去标识：剔除 PI 姓名、依托单位与在研基金编号，仅保留学科门类与要素数值",
+    "涉未公开技术方案的内容只保留评分结构，不保留技术路线细节",
+    "伦理风险描述只保留类别标记（未备案/未批先做/知情同意缺失），不保留受试者信息",
+    "输出仅为评审初筛建议，不构成资助决定，不替代同行评议专家评分"
+  ],
+  "acceptance": [
+    "topic_advance accuracy ≥0.95，误放行率（应不通过判通过）≤2%（误放行的科研经费与伦理风险代价高）",
+    "review_tier 在未通过样本上的 ECE ≤0.02、Brier ≤0.05",
+    "risk_category 七类 macro-F1 ≥0.88",
+    "ethics 类样本 review_tier ≥1 比例 =1.0（红线硬规则验收）",
+    "结题初审子集创新性放宽口径遵守率 ≥0.95（类型一致性验收）",
+    "贴边未触发子集 topic_advance=true 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: review_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "ethics 样本被赋档 2/3 → rules 缺少红线分支，检查 then 顺序是否先判 ethics",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "结题样本按新申报口径误杀 → context 未写明课题类型，检查 few-shot 是否保留类型字段",
+    "进度+预算双失控未升档 → 组合形态样本的 sidecar 标注缺失，检查升档规则是否进 guidance 与蒸馏标签"
+  ],
+  "expert_review": [
+    "创新 60/35 分、可行性 55/35 分、预算 20/50%、滞后 90/180 天的档位与本机构管理办法的对应",
+    "ethics 红线至少档 1 的口径与伦理委员会移交程序的衔接",
+    "结题初审创新性放宽 10 分的依据（完成度导向评审的通行做法核对）",
+    "进度滞后与预算偏差双失控的升档判据（是否与经费管理办法的预警机制一致）",
+    "样本量缺口的统计效力阈值（15% 为示例值，需按学科检验效能口径校准）"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "创新性评分", "unit": "分", "decimals": 0, "normal": [60.0, 100.0],
+       "critical": {"low": [[0.0, 59.0]]}, "category": "novelty"},
+      {"name": "可行性评分", "unit": "分", "decimals": 0, "normal": [55.0, 100.0],
+       "critical": {"low": [[0.0, 54.0]]}, "category": "feasibility"},
+      {"name": "预算偏差率", "unit": "%", "decimals": 1, "normal": [-10.0, 10.0],
+       "critical": {"high": [[20.0, 1000000000.0]]}, "category": "budget"},
+      {"name": "进度滞后天数", "unit": "天", "decimals": 0, "normal": [0.0, 30.0],
+       "critical": {"high": [[90.0, 1000000000.0]]}, "category": "schedule"},
+      {"name": "伦理风险项数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "ethics"},
+      {"name": "样本量缺口", "unit": "%", "decimals": 1, "normal": [0.0, 5.0],
+       "critical": {"high": [[15.0, 100.0]]}, "category": "sample"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "创新性评分": [[0.0, 34.0]],
+        "可行性评分": [[0.0, 34.0]],
+        "预算偏差率": [[50.0, 1000000000.0]],
+        "进度滞后天数": [[180.0, 1000000000.0]],
+        "伦理风险项数": [[3.0, 1000000000.0]],
+        "样本量缺口": [[40.0, 100.0]]
+      },
+      "1": {
+        "创新性评分": [[35.0, 49.0]],
+        "可行性评分": [[35.0, 44.0]],
+        "预算偏差率": [[35.0, 49.9]],
+        "进度滞后天数": [[120.0, 179.0]],
+        "伦理风险项数": [[2.0, 2.0]],
+        "样本量缺口": [[25.0, 39.9]]
+      },
+      "2": {
+        "创新性评分": [[50.0, 59.0]],
+        "可行性评分": [[45.0, 54.0]],
+        "预算偏差率": [[20.0, 34.9]],
+        "进度滞后天数": [[90.0, 119.0]],
+        "伦理风险项数": [[1.0, 1.0]],
+        "样本量缺口": [[15.0, 24.9]]
+      }
+    },
+    "contexts": [
+      "中期检查，方案变更一次未备案",
+      "新申报，技术路线为两条并行验证",
+      "结题初审，成果与考核指标基本对应",
+      "新申报，团队核心成员同时承担三个课题",
+      "中期检查，疫情导致的场地不可用已获批延期",
+      "常规年度检查，全部要素平稳",
+      "结题初审，部分成果延后发表",
+      "新申报，预实验数据仅一组",
+      "无背景说明，仅一项要素贴线",
+      "学术委员会复审前的形式审查"
+    ],
+    "patients": [
+      "male PI A, 临床医学", "female PI B, 社会科学", "male PI C, 信息科学",
+      "female PI D, 生物科学", "male PI E, 材料工程", "female PI F, 公共卫生",
+      "male PI G, 化学", "female PI H, 农学"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "topic_advance", "value": true},
+          {"label": "review_tier", "value": 3},
+          {"label": "risk_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "topic_advance", "value": false},
+          {"label": "review_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "risk_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "topic_advance",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"novelty": 0.14, "feasibility": 0.16, "budget": 0.17, "schedule": 0.14, "ethics": 0.24, "sample": 0.15},
+          "tier_split": {
+            "novelty": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "feasibility": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "budget": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "schedule": [[0, 0.2], [1, 0.35], [2, 0.45]],
+            "ethics": [[0, 0.3], [1, 0.4], [2, 0.3]],
+            "sample": [[0, 0.25], [1, 0.35], [2, 0.4]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "创新性评分": "novelty",
+      "可行性评分": "feasibility",
+      "预算偏差率": "budget",
+      "进度滞后天数": "schedule",
+      "伦理风险项数": "ethics",
+      "样本量缺口": "sample"
+    }
+  }
+}

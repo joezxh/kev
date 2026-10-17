@@ -1,0 +1,159 @@
+{
+  "_meta": {
+    "purpose": "作文多维评分与讲评 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/edu-essay-scoring.yaml"
+  },
+  "name": "edu-essay-scoring",
+  "label_zh": "作文评分",
+  "label_en": "Essay Scoring",
+  "domain": "中学语文与英语考试的作文评分辅助与讲评。阅卷教师或学生收到一篇作文后，助手按维度给出分档评价（内容、结构、语言、书写规范），指出最主要的失分维度，并判断是否需要教师精批（AI 辅助评分只出分档与讲评建议，最终分数由教师确认）。评分维度设计参照 ASAP（Automated Student Assessment Prize）数据集的 trait 评分传统与 ASAP++ 的论说文 trait 扩展，分档阈值为示例口径。",
+  "state": "一篇待评作文的结构化摘要：学段与题型（记叙文/议论文/说明文/应用文；中文或英文）、题目要求简述、作文全文或节选（300-800 字）、有无明显离题、字数与要求字数的偏差、有无跑题段或空段。",
+  "state_example": {
+    "student": "male 15, 初三",
+    "task_type": "议论文（中文）",
+    "prompt": "以「坚持」为题，不少于 600 字",
+    "essay": "坚持是通往成功的必经之路。……（全文约 540 字，第三段论证与主题关联较弱）",
+    "word_count_deviation": "-60 字（未达下限）",
+    "off_topic": false,
+    "empty_paragraph": false
+  },
+  "questions": {
+    "content_band": {
+      "type": "score",
+      "instructions": "内容维度的分档是？",
+      "criteria": [
+        "0：切题立意深刻，材料充实典型",
+        "1：切题立意明确，材料具体但欠典型",
+        "2：基本切题，内容较空泛或例证陈旧",
+        "3：偏题或内容单薄，需重写"
+      ]
+    },
+    "structure_band": {
+      "type": "score",
+      "instructions": "结构维度的分档是？",
+      "criteria": [
+        "0：结构严谨，过渡自然，详略得当",
+        "1：结构完整，层次清楚但过渡平淡",
+        "2：结构基本完整，有明显失衡段",
+        "3：结构残缺或混乱"
+      ]
+    },
+    "language_band": {
+      "type": "score",
+      "instructions": "语言维度的分档是？",
+      "criteria": [
+        "0：语言流畅生动，句式富于变化",
+        "1：语言通顺，偶有佳句",
+        "2：语言基本通顺，病句或错别字较多",
+        "3：语病密集，影响理解"
+      ]
+    },
+    "weakest_dimension": {
+      "type": "choice",
+      "instructions": "最主要的失分维度是哪一个？",
+      "criteria": {
+        "content": "内容（切题、立意、材料）",
+        "structure": "结构（布局、过渡、详略）",
+        "language": "语言（通顺、句式、修辞）",
+        "mechanics": "书写规范（错别字、标点、格式、字数）",
+        "none": "无明显失分维度（各维度均在一档及以上）"
+      }
+    },
+    "needs_teacher_review": {
+      "type": "noul",
+      "instructions": "该作文是否需要教师精批（而不是仅给出分档讲评）？",
+      "criteria": {
+        "true": "分档低于二档、疑似套作或代写、或评分者之间分歧风险高",
+        "false": "分档清晰，标准讲评即可"
+      }
+    }
+  },
+  "guidance": "作文评分辅助只输出维度分档、主要失分维度与是否需精批，不输出最终分数与等第——最终分数由任课教师确认，这是模型的硬边界。content_band 的首要判据是切题：偏题作文 content_band 必为 3，即使语言华丽；立意与材料只在切题前提下分档。structure_band 看布局与详略，跑题段按结构失衡计。language_band 只评语言本身，与内容观点无关。weakest_dimension 取分档最低的维度；同档时按 content > language > structure > mechanics 的失分权重取。needs_teacher_review 为 true 的判据：任一维度为 3 档、字数未达下限 20% 以上、疑似套作（开头结尾与题目明显脱钩的通用模板）、错别字密集（每百字 ≥3 个）。evidence 不足（essay 为节选且标注不完整、题目要求缺失）时，分档必须降为待定并在回答中显式说明——不完整文本不得给满分档。英文作文的 mechanics 含拼写与语法，中文作文的 mechanics 含错别字与标点。",
+  "variety": [
+    "题型覆盖（每类须专门生成）：中文记叙文、中文议论文、中文说明文、英文应用文（书信/邮件）、英文议论文、读后感",
+    "分档组合（五维问题逐一覆盖）：全优、单项掉档、双项掉档、三项以上掉档、偏题全低、内容好结构差、语言好内容空",
+    "失分维度（weakest_dimension 五选项逐一覆盖）：content/structure/language/mechanics/none——贴档样本专门生成",
+    "字数情形：达标、略超、明显不足（-20%/-40%）、严重超长；未达下限触发 needs_teacher_review",
+    "套作与真实性（needs_teacher_review=true 专门生成）：模板化开头结尾、例证与题目脱钩、疑似家长代笔（语气突变）、疑似 AI 生成痕迹",
+    "文本质量谱系：病句密集、错别字多、标点混乱、标点正确但句式单一、语言流畅",
+    "学段：初一至高三、中考作文、高考模拟作文、雅思托福风格英文作文",
+    "文本形态：全文、节选（标注起止）、含教师旁批原文、扫描转写（含错字噪声）",
+    "易错陷阱：偏题时 content 必为 3 不因语言好而抬档、weakest_dimension 同档按 content>language>structure>mechanics 取、节选文本不给满分档、不输出最终分数"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "needs_teacher_review",
+    "note": "AI 评分辅助只输出分档与讲评建议，最终分数与等第由任课教师确认；疑似套作/代写转教研组复核，不做学术不端认定。"
+  },
+  "smoke_probe": {
+    "state": {
+      "student": "female 17, 高二",
+      "task_type": "议论文（中文）",
+      "prompt": "以「边界」为话题，自拟标题，不少于 800 字",
+      "essay": "边界无处不在……（全文约 780 字；第二段用爱迪生例证，与「边界」关联牵强；末段突兀收尾）",
+      "word_count_deviation": "-20 字",
+      "off_topic": false,
+      "empty_paragraph": false
+    },
+    "questions": [
+      {
+        "qid": "weakest_dimension",
+        "type": "choice",
+        "instructions": "最主要的失分维度是哪一个？"
+      }
+    ],
+    "expected_label": {
+      "weakest_dimension": "structure"
+    }
+  },
+  "sampling": {
+    "n": 680,
+    "notes": "蒸馏轨样本分布建议：三个 band 各四档覆盖（1 档与 2 档占比最高，贴近真实分布的长尾由 3 档样本补足至 15%）；weakest_dimension 五类均衡（每类 ≥12%）；needs_teacher_review=true 占比 25%；偏题样本单独 8%。英文作文样本占比不低于 20%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖三个 band 的不同档位组合与 weakest_dimension 五类中至少四类）作为 --examples 输入；few-shot 范例必须保留题目要求与字数偏差字段——缺题面要求的范例会教出「不切题也评优」的漂移；范例的评语必须引用原文短句作为依据，避免只给档位不给理由。",
+  "compliance": [
+    "学生作文属个人信息，训练数据须去标识：剔除姓名、学校与可识别的的个人经历叙述，保留文本本体与结构特征",
+    "不得输出最终分数、等第与排名，只输出维度分档与讲评建议（评分权在任课教师）",
+    "疑似代写、套作或 AI 生成只触发「转教研组复核」，不得在输出中做学术不端认定",
+    "讲评语言不得含人格贬损（「笨」「没天赋」），只针对文本特征"
+  ],
+  "acceptance": [
+    "三个 band 与人工双评的 QWK（quadratic weighted kappa）≥0.70（参照 ASAP 惯例）",
+    "weakest_dimension 五类 macro-F1 ≥0.85",
+    "needs_teacher_review 召回 ≥0.95（漏精批的分数误判代价高于过精批）",
+    "偏题子集 content_band=3 的准确率 ≥0.95",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "band 分布塌缩到中档 → 检查 topics 是否覆盖两极端档位的生成指令，蒸馏 few-shot 中 0 档与 3 档范例缺失是常见原因",
+    "偏题作文 content_band 虚高 → guidance 的「偏题必 3」优先级在 few-shot 中未体现，补充偏题但语言好的对照范例",
+    "weakest_dimension 漂移 → sidecar 逐条标签与 guidance 的失分权重口径不一致，以 sidecar 为准修 guidance",
+    "英文作文 mechanics 判定混乱 → 拼写与语法口径未在 guidance 区分中英文，补足"
+  ],
+  "expert_review": [
+    "四档分档量表与本地中考/高考作文评分细则的映射（各地区细则不同，需专家逐条复核）",
+    "套作与 AI 生成痕迹的识别口径（触发精批的证据标准）",
+    "needs_teacher_review 的字数下限偏差阈值（-20%）",
+    "QWK ≥0.70 的验收线是否与本地阅卷一致性水平匹配"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；作文评分无法用数值区间规则表达，标签由教师双评 sidecar 提供。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是一位严谨的作文评分辅助助手。你的回答要体现评分维度逻辑：先判断切题与立意，再逐维度（内容/结构/语言/书写规范）给出分档与依据，\n  然后指出最主要的失分维度并给一条可执行的改进建议，最后判断是否需要教师精批。每条分档判断必须引用原文短句作为依据。\n  不输出最终分数与等第；疑似套作或代写时只建议转教研组复核。",
+      "en": "You are a rigorous essay scoring assistant. Your reply must reflect dimension-based scoring logic: judge topic relevance and thesis first, then give a band and evidence for each dimension (content/structure/language/mechanics),\n  then name the weakest dimension with one actionable improvement suggestion, and finally decide whether the essay needs detailed teacher review. Every band judgment must cite a short quote from the essay.\n  Never output a final score or grade; flag suspected formulaic or ghost-written work for departmental review only."
+    },
+    "ask_template": "请基于以下作文与题目要求给出分维度评分与讲评建议：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "中学作文的分维度评分（内容/结构/语言/书写规范）",
+      "切题判断、主要失分维度识别与可执行改进建议",
+      "套作与真实性风险的精批转介判断"
+    ],
+    "kev_track": false
+  }
+}

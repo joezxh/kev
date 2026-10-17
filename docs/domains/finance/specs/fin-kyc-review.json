@@ -1,0 +1,247 @@
+{
+  "name": "fin-kyc-review",
+  "domain": "银行与支付机构的客户尽调（KYC）资料复核。合规人员把一份客户尽调档案的结构化摘要交给助手：证件有效期剩余天数、受益所有人穿透层数、地址证明缺失份数、客户风险评分、资金来源证明缺失份数、高风险行业特征数、距上次尽调天数。监管基线为《反洗钱法》客户尽职调查要求与人民银行令〔2021〕第 3 号的风险为本原则。阈值为示例口径，实际以本机构客户接纳政策为准。",
+  "state": "一份待复核客户尽调档案的结构化摘要：客户身份（个人/个体工商户/企业）、证件有效期剩余天数（天）、受益所有人穿透层数（层）、地址证明缺失份数（份）、客户风险评分（分）、资金来源证明缺失份数（份）、高风险行业特征数（项）、距上次尽调天数（天）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "customer": "male 44, 外贸公司法人",
+    "context": "贸易类客户年检尽调，股权结构含两层离岸壳公司",
+    "profile": {
+      "证件剩余有效天数": "210.0 天",
+      "受益所有人穿透层数": "4.0 层",
+      "地址证明缺失份数": "0.0 份",
+      "客户风险评分": "62.0 分",
+      "资金来源证明缺失份数": "1.0 份",
+      "高风险行业特征数": "1.0 项",
+      "距上次尽调天数": "500.0 天"
+    },
+    "ref_policy_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "kyc_pass": {
+      "type": "noul",
+      "instructions": "该客户尽调档案是否齐全达标，可以通过复核（而不是退回补件或升级）？",
+      "criteria": {
+        "true": "全部材料齐全，各项指标均在尽调政策阈值内",
+        "false": "存在材料缺失，或至少一项指标超出尽调阈值"
+      }
+    },
+    "escalate_tier": {
+      "type": "score",
+      "instructions": "应在多长时间内采取处置动作？",
+      "criteria": [
+        "立即升级反洗钱合规岗（高风险情形）",
+        "三个工作日内补件或重新识别",
+        "纳入季度集中复检，轻度越界",
+        "通过复核，无需处置"
+      ]
+    },
+    "gap_category": {
+      "type": "choice",
+      "instructions": "触发处置的主要问题属于哪一类？",
+      "criteria": {
+        "none": "无（档案齐全达标）",
+        "identity": "身份类：证件即将或已经失效",
+        "ubo": "受益人类：穿透层数异常或无法穿透",
+        "document": "地址类：地址证明缺失",
+        "risk": "风险类：客户风险评分过高",
+        "source": "来源类：资金来源证明缺失",
+        "industry": "行业类：高风险行业特征过多",
+        "refresh": "时效类：尽调更新超期"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "档案是否提供了判定所需的全部要素（指标名、数值、单位、政策口径）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照尽调政策判定",
+        "false": "缺口径、缺单位或指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "kyc_pass 的唯一判据是材料齐全且任一指标均未超出本表阈值（示例口径，需反洗钱合规专家复核）：证件剩余有效天数 ≤30 天触发、=0 天或已过期最高档；受益所有人穿透层数 ≥5 层触发、≥8 层最高档；地址证明缺失 ≥1 份触发、≥3 份最高档；客户风险评分 ≥70 分触发、≥90 分最高档；资金来源证明缺失 ≥1 份触发、≥3 份最高档；高风险行业特征 ≥2 项触发、≥4 项最高档；距上次尽调 ≥730 天触发、≥1095 天最高档。escalate_tier 由最快触发的问题决定，等级从 0（立即升级反洗钱岗）到 3（通过复核）：风险评分与高风险行业同时触发时按风险评分优先取 tier 0——评分已是全要素综合结果；证件即将过期但其余齐全按 tier 2 处理（轻度越界）。gap_category 取最快档中的问题类别。kyc_pass=false 不等于拒绝客户——处置动作是补件、重新识别或升级复核，开户与退出决定由合规岗作出，guidance 与 routing 均不得出现「拒绝开户」类结论。个人零售客户的受益所有人层数恒为 1 层，样本中个人客户出现 ≥5 层即为 state 与身份矛盾的脏数据，evidence_sufficient 应按 false 处理。evidence_sufficient 为 false 时（缺政策口径、缺单位、缺指标名），kyc_pass 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 gap_category 不得凭猜测填写。",
+  "variety": [
+    "客户类型：个人零售、个体工商户、内资企业、外贸企业、离岸架构企业、NGO 与协会类组织",
+    "触发类别（gap_category 八选项逐一覆盖）：identity（剩余 30/0 天）、ubo（5/8 层）、document（缺 1/3 份）、risk（70/90 分）、source（缺 1/3 份）、industry（2/4 项）、refresh（730/1095 天）、none（全部达标）",
+    "处置档（escalate_tier 四档全覆盖）：0 立即升级（评分 ≥90、行业 ≥4 项、ubo ≥8 层、证件过期）、1 三个工作日补件、2 季度复检、3 通过（kyc_pass=true 时必须为 3）",
+    "档案完整度谱系（对应 evidence_sufficient）：齐全、缺政策口径、缺指标单位、缺股权结构图、多项同时缺失；evidence_sufficient=false 时 kyc_pass 用软标签且 gap_category 不猜",
+    "业务场景：开户尽调、年检复检、触发式重识别（大额交易后）、风险等级重评、受益所有人变更后更新",
+    "合法对照场景（kyc_pass=true 须专门生成）：档案齐全、指标贴边但未越界（剩余 35 天、评分 68 分、距上次尽调 700 天）",
+    "档案呈现风格：合规审查批注体、系统核对清单体、客户经理提交说明体、中英混排（UBO/CDD/EDD）",
+    "易错陷阱：个人客户不存在受益所有人穿透问题、贴边但未越界必须判 true、多问题同时触发取最快档且 gap_category 与之一致、证件临近过期只触发 identity 类不与缺失份数混淆"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为尽调完整性与处置时限建议，客户接纳、退出与可疑行为上报由反洗钱合规岗按授权作出；涉及可疑行为报告的情形一律转合规复核，模型不生成上报结论。"
+  },
+  "smoke_probe": {
+    "state": {
+      "customer": "male 51, 离岸架构企业",
+      "context": "触发式重识别，股权含三层 BVI 壳公司，最终受益人未落地",
+      "profile": "受益所有人穿透层数 6.0 层, 客户风险评分 82.0 分, 距上次尽调天数 850.0 天",
+      "ref_policy_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "escalate_tier", "type": "score",
+       "instructions": "应在多长时间内采取处置动作？"}
+    ],
+    "expected_label": {"escalate_tier": "1"}
+  },
+  "sampling": {
+    "n": 760,
+    "notes": "plan_targets 保留 38% 触发处置样本（tier 0-2 约 2:2:1），其余为达标对照；对照中至少 20% 为贴边未越界样本（剩余 30-45 天、评分 65-70 分、距上次尽调 650-730 天），防止模型把接近阈值当作越界。离岸架构企业样本单独 12% 且必须带 ubo 或 risk 触发；个人零售客户样本占比 ≥30%（其 ubo 恒为 1 层）。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 escalate_tier 四档与 gap_category 八类中至少六类）作为 --examples 输入；few-shot 范例必须保留客户类型与股权结构说明——个人客户缺 ubo 说明的范例会教出对个人客户误报穿透异常；评分与行业双触发的范例必须与单一触发范例成对出现，训练「取最快档」的规则。",
+  "compliance": [
+    "客户身份与受益所有人信息按 JR/T 0171-2020 脱敏：剔除证件号、账号、股权比例精确值，只保留层数与结构特征",
+    "输出仅为尽调完整性与处置时限建议，客户接纳与退出决定由合规岗作出，模型不得输出「客户为洗钱高风险人员」等定性标签",
+    "外国政要、制裁名单等强化尽调（EDD）情形的样本只保留触发类别标记，不保留姓名与国别细节",
+    "不得基于 nationality、宗教等禁用特征生成差异化的风险描述；行业特征以经济行为为准"
+  ],
+  "acceptance": [
+    "kyc_pass accuracy ≥0.96，漏报率（应处置判通过）≤1.5%（漏报的反洗钱风险远高于补件打扰）",
+    "escalate_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "gap_category 八类 macro-F1 ≥0.88",
+    "贴边未越界子集（剩余 30-45 天、评分 65-70 分）kyc_pass=true 比例 ≥0.9",
+    "个人客户子集 ubo 误报率 ≤1%（身份一致性验收）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: escalate_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交或与 tier 1 重叠（realize_tier 需要 min_tier 恰好等于 2），检查各字段三档窗口是否互斥地分割 critical 区间",
+    "贴边样本被判处置 → 检查 fields.normal 上界与 critical 下界之间的过渡带（如评分 normal 上界 40 与 critical 70 之间的 40-70 区间必须被采样覆盖）",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "个人客户样本大量 ubo 误报 → patients 的个人类型与 context 未写明自然人身份，guidance 的「个人 ubo 恒为 1 层」条款需在蒸馏标签中体现",
+    "distill 轨 label 漂移 → guidance 阈值口径与 generator.tier_windows 必须逐字一致，不一致以 generator 为准"
+  ],
+  "expert_review": [
+    "证件 30 天、ubo 5/8 层、评分 70/90 分、尽调 730/1095 天等分档（依据风险为本原则的示例值，需按机构客户结构校准，需专家复核）",
+    "风险评分与高风险行业组合时评分优先的规则与机构处置授权的对应",
+    "触发式重识别（大额交易后）与年检复检的阈值是否应有差异",
+    "个人零售客户简化尽调（SDD）的豁免边界与样本中的表达方式",
+    "高风险行业特征清单（现金密集、跨境贸易、贵重品交易等）的口径"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "证件剩余有效天数", "unit": "天", "decimals": 0, "normal": [180.0, 3650.0],
+       "critical": {"low": [[0.0, 30.0]]}, "category": "identity"},
+      {"name": "受益所有人穿透层数", "unit": "层", "decimals": 0, "normal": [1.0, 3.0],
+       "critical": {"high": [[5.0, 1000000000.0]]}, "category": "ubo"},
+      {"name": "地址证明缺失份数", "unit": "份", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "document"},
+      {"name": "客户风险评分", "unit": "分", "decimals": 0, "normal": [0.0, 40.0],
+       "critical": {"high": [[70.0, 1000000000.0]]}, "category": "risk"},
+      {"name": "资金来源证明缺失份数", "unit": "份", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "source"},
+      {"name": "高风险行业特征数", "unit": "项", "decimals": 0, "normal": [0.0, 1.0],
+       "critical": {"high": [[2.0, 1000000000.0]]}, "category": "industry"},
+      {"name": "距上次尽调天数", "unit": "天", "decimals": 0, "normal": [30.0, 365.0],
+       "critical": {"high": [[730.0, 1000000000.0]]}, "category": "refresh"}
+    ],
+    "selectors": [{"min": 3, "max": 7}],
+    "tier_windows": {
+      "0": {
+        "证件剩余有效天数": [[0.0, 0.0]],
+        "受益所有人穿透层数": [[8.0, 1000000000.0]],
+        "地址证明缺失份数": [[3.0, 1000000000.0]],
+        "客户风险评分": [[90.0, 1000000000.0]],
+        "资金来源证明缺失份数": [[3.0, 1000000000.0]],
+        "高风险行业特征数": [[4.0, 1000000000.0]],
+        "距上次尽调天数": [[1095.0, 1000000000.0]]
+      },
+      "1": {
+        "证件剩余有效天数": [[7.0, 30.0]],
+        "受益所有人穿透层数": [[6.0, 7.0]],
+        "地址证明缺失份数": [[2.0, 2.0]],
+        "客户风险评分": [[80.0, 89.0]],
+        "资金来源证明缺失份数": [[2.0, 2.0]],
+        "高风险行业特征数": [[3.0, 3.0]],
+        "距上次尽调天数": [[850.0, 1095.0]]
+      },
+      "2": {
+        "证件剩余有效天数": [[1.0, 6.0]],
+        "受益所有人穿透层数": [[5.0, 5.0]],
+        "地址证明缺失份数": [[1.0, 1.0]],
+        "客户风险评分": [[70.0, 79.0]],
+        "资金来源证明缺失份数": [[1.0, 1.0]],
+        "高风险行业特征数": [[2.0, 2.0]],
+        "距上次尽调天数": [[730.0, 849.0]]
+      }
+    },
+    "contexts": [
+      "贸易类客户年检尽调，股权结构含两层离岸壳公司",
+      "个人零售客户开户，证件临近有效期但其余材料齐全",
+      "触发式重识别：该客户上月单笔转账超过 500 万元",
+      "个体工商户申请收单商户，地址证明待补",
+      "离岸架构企业受益所有人变更后未及时更新档案",
+      "客户风险评分季度重评后升至高风险档",
+      "NGO 客户年度尽调，资金来源为会员会费",
+      "档案缺少该客户的股权结构图与最终受益人声明",
+      "新市民客户简化尽调，材料齐全但评分贴边",
+      "客户为现金密集型行业（废旧物资回收），行业特征贴边"
+    ],
+    "patients": [
+      "male 44 外贸公司法人", "female 29 个人零售", "male 51 离岸架构企业实控人",
+      "female 37 个体工商户", "male 62 NGO 理事长", "female 45 内资企业财务负责人",
+      "male 33 新市民", "female 58 现金密集行业经营者"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "kyc_pass", "value": true},
+          {"label": "escalate_tier", "value": 3},
+          {"label": "gap_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "kyc_pass", "value": false},
+          {"label": "escalate_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "gap_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "kyc_pass",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.38},
+      "by_category": {
+        "critical": {
+          "quota": {"identity": 0.15, "ubo": 0.15, "document": 0.1, "risk": 0.2, "source": 0.15, "industry": 0.1, "refresh": 0.15},
+          "tier_split": {
+            "identity": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "ubo": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "document": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "risk": [[0, 0.35], [1, 0.35], [2, 0.3]],
+            "source": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "industry": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "refresh": [[0, 0.3], [1, 0.35], [2, 0.35]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "证件剩余有效天数": "identity",
+      "受益所有人穿透层数": "ubo",
+      "地址证明缺失份数": "document",
+      "客户风险评分": "risk",
+      "资金来源证明缺失份数": "source",
+      "高风险行业特征数": "industry",
+      "距上次尽调天数": "refresh"
+    }
+  }
+}

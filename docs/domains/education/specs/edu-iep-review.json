@@ -1,0 +1,158 @@
+{
+  "_meta": {
+    "purpose": "特殊教育的个别化教育计划（IEP）完成度审查与会议分诊 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/edu-iep-review.yaml"
+  },
+  "name": "edu-iep-review",
+  "label_zh": "IEP 审查",
+  "label_en": "IEP Review Triage",
+  "domain": "特殊教育学校的个别化教育计划审查。资源教师把一份 IEP 审查要素单交给助手：学生障碍类别、学年目标数、短期目标与测评基线齐备度、相关服务配置、行为支持与安全计划、家长知情同意状态、上次进展复核时间。助手判断 IEP 是否完备可用（iep_pass）、会议档（meeting_tier 四档）、缺口类别（gap_category 七选一），以及审查要素是否足以判定（review_evidence）。口径以《残疾人教育条例》与「一人一案」要求为基线，阈值为示例口径，需特教管理人员与资源教师复核。",
+  "state": "一份 IEP 审查要素单：学生障碍类别（自闭症/智力障碍/听力障碍/视力障碍/学习障碍/情绪行为障碍）、学年目标数（个）、短期目标与测评基线齐备度（齐备/部分缺失/全缺）、相关服务配置（言语治疗/作业治疗/物理治疗/心理咨询及其周次）、行为支持与安全计划（有且具体/有但笼统/无）、家长知情同意状态（已签署/待签署/未取得）、上次进展复核时间（月前）。",
+  "state_example": {
+    "desk": "female 资源教师 A, 资源教室",
+    "context": "新学期 IEP 检查，自闭症学生",
+    "student": "障碍类别：自闭症谱系",
+    "annual_goals": "3.0 个",
+    "short_term_basis": "短期目标有，测评基线部分缺失（言语未测）",
+    "related_services": "言语治疗每周 2 次，心理咨询缺",
+    "behavior_plan": "有但笼统，未写触发情境与应对步骤",
+    "parent_consent": "已签署",
+    "last_review": "2.0 月前"
+  },
+  "questions": {
+    "iep_pass": {
+      "type": "noul",
+      "instructions": "该 IEP 是否完备可用（而不是需要修订或重新制定）？",
+      "criteria": {
+        "true": "目标、基线、服务、行为支持与家长同意齐备",
+        "false": "存在目标缺失、基线缺失、服务不匹配、安全计划缺失或家长未同意"
+      }
+    },
+    "meeting_tier": {
+      "type": "score",
+      "instructions": "IEP 会议应在什么时限内召开？",
+      "criteria": [
+        "立即召开 IEP 修订会议（安全计划缺失或家长未同意，实施前必须解决）",
+        "一周内召开修订会议（目标/基线/服务缺口）",
+        "例行学期复核（进展记录超期等轻度问题）",
+        "通过，按现有计划执行"
+      ]
+    },
+    "gap_category": {
+      "type": "choice",
+      "instructions": "触发会议的主要缺口属于哪一类？",
+      "criteria": {
+        "none": "无（完备可用）",
+        "safety_risk": "安全类：行为支持与安全计划缺失或不可执行",
+        "parent_consent": "同意类：家长知情同意未取得或待签署",
+        "goal_missing": "目标类：学年/短期目标缺失",
+        "service_gap": "服务类：相关服务与评估需求不匹配",
+        "assessment_missing": "基线类：测评基线缺失，目标不可测",
+        "progress_stale": "进展类：上次复核超期，进展记录陈旧"
+      }
+    },
+    "review_evidence": {
+      "type": "noul",
+      "instructions": "审查要素单是否提供了判定所需的全部要素（目标、基线、同意状态）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照「一人一案」口径判定",
+        "false": "缺目标数、缺基线状态或缺同意状态，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "iep_pass 的唯一判据是要素齐备（示例口径，需特教管理人员复核）：行为支持与安全计划缺失或不可执行 → 不通过且 meeting_tier=0——安全与行为支持是实施前提；家长知情同意未取得或待签署 → 档 0——无同意不得实施 IEP；学年目标缺失或短期目标无测评基线 → 档 1（一周内修订复会）——不可测的目标不是目标；相关服务与评估需求不匹配 → 档 1（服务缺口须团队会商）；进展复核超期超过 6 个月 → 档 2 例行复核；仅格式问题 → 档 2。meeting_tier=3 时 iep_pass 必须为 true 且 gap_category 为 none。gap_category 按「最先阻断实施」取类，优先级：safety_risk > parent_consent > goal_missing > service_gap > assessment_missing > progress_stale——安全与同意优先于教学设计。安全与基线双缺口时档位取更急者（安全档 0 覆盖基线档 1）。review_evidence=false 时（缺目标数、缺基线状态、缺同意状态），iep_pass 与 meeting_tier 不得凭猜测填写，标记待补并按档 2 暂存。",
+  "variety": [
+    "障碍类别与需求谱系：自闭症（行为支持为主）、听力障碍（言语服务为主）、学习障碍（学业目标为主）、情绪行为障碍（心理服务为主）——不同类别的服务配置不同",
+    "缺口类别（gap_category 七选项逐一覆盖）：safety_risk（行为计划无应对步骤）、parent_consent（转学后未重签）、goal_missing（学年目标全缺）、service_gap（评估建议 OT 但未配置）、assessment_missing（言语基线未测）、progress_stale（复核 8 月前）、none",
+    "会议档（meeting_tier 四档全覆盖）：0 立即（安全缺失/家长未同意）、1 一周内（目标/基线/服务缺口）、2 学期复核（进展超期）、3 通过（iep_pass=true 必须为 3）",
+    "服务匹配对照（专门生成）：评估建议与配置匹配的样本与错配的对照——服务缺口按评估依据判定",
+    "同意状态对照（专门生成）：已签署与待签署/未取得的成对样本——未同意一律不得实施",
+    "要素完整度（review_evidence）：齐全、缺目标数、缺基线状态、缺同意状态、多项缺失",
+    "呈现风格：IEP 文本摘录体、资源教师批注体、IEP 会议纪要体、督导检查通报体",
+    "易错陷阱：安全缺失档 0、无同意不得实施、无基线目标不可测、服务缺口看评估依据、复核超期 6 个月档 2"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "review_evidence",
+    "note": "模型输出仅为 IEP 审查建议，IEP 的制定与修订由 IEP 团队（教师、家长、专业人员）会议决定；学生伤害事件与行为危机处置不属本场景，转安全与心理危机通道；模型不生成对学生的能力定性评价。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 资源教师 B, 资源教室",
+      "context": "转入学生首次 IEP 检查，情绪行为障碍",
+      "student": "障碍类别：情绪行为障碍",
+      "annual_goals": "2.0 个",
+      "short_term_basis": "短期目标与基线齐备",
+      "related_services": "心理咨询每周 1 次，与评估建议匹配",
+      "behavior_plan": "无",
+      "parent_consent": "待签署",
+      "last_review": "0.0 月前"
+    },
+    "questions": [
+      {"qid": "iep_pass", "type": "noul",
+       "instructions": "该 IEP 是否完备可用？"},
+      {"qid": "meeting_tier", "type": "score",
+       "instructions": "IEP 会议应在什么时限内召开？"}
+    ],
+    "expected_label": {"iep_pass": "false", "meeting_tier": "0"}
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：gap_category 七类中 none 24%、safety_risk 14%、parent_consent 12%、goal_missing 16%、service_gap 12%、assessment_missing 12%、progress_stale 10%；meeting_tier 四档 14/34/22/30；iep_pass=false 70%、true 30%；review_evidence=false 占比 15%。安全计划齐备/缺失对照对单独 6%；「同意已签 vs 待签」对照对单独 5%；双缺口取更急者样本单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 gap_category 七类中至少五类与 meeting_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 parent_consent 字段——缺同意状态的范例会教出忽视实施前提；「安全档 0 vs 基线档 1」对照范例必须成对出现并标注阻断逻辑；服务缺口范例需写出评估依据与配置的比对推理。",
+  "compliance": [
+    "IEP 样本须去标识：剔除学生姓名、学籍号与可识别的个案描述，仅保留障碍类别与要素结构",
+    "评估数据只保留基线齐备度，不保留具体分数与诊断细节",
+    "输出仅为审查建议，不构成对学生的能力评价，不替代 IEP 团队会议决定",
+    "涉监护权争议与伤害事件的样本转法务与安全通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "iep_pass accuracy ≥0.96，误放行率（应立即开会判通过）≤1.5%（无安全计划实施的风险高于误开会成本）",
+    "meeting_tier 四档 QWK ≥0.75",
+    "gap_category 七类 macro-F1 ≥0.85，safety_risk 漏检率 ≤2%（安全零容忍）",
+    "safety_risk 与 parent_consent=false 子集 meeting_tier=0 比例 =1.0（硬规则验收）",
+    "assessment_missing 子集 goal/基线口径取类比例 ≥0.9",
+    "review_evidence=false 子集上不强行判定率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "safety_risk 被归 goal_missing → 「行为计划有无」判据在 sidecar 缺失，检查行为支持描述完整性",
+    "parent_consent 未档 0 → 「未同意不得实施」口径未进蒸馏标签，检查对照样本",
+    "assessment_missing 被归 goal_missing → 基线与目标的区分缺失，检查标注",
+    "双缺口样本取了次要类 → 「最先阻断实施」优先级未进标签，检查取类推理",
+    "review_evidence=false 仍判定 → 违反软标签纪律，检查待补标注"
+  ],
+  "expert_review": [
+    "行为支持计划的可执行性标准（触发情境/应对步骤/人员分工）与本校规程的对应",
+    "家长知情同意的取得方式与《残疾人教育条例》要求的匹配",
+    "相关服务配置与专业评估建议的对应关系",
+    "进展复核周期（6 个月）与学期安排的衔接",
+    "IEP 团队构成与会议召集时限的合规边界"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；IEP 审查依赖目标可测性与服务匹配的语义判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是特殊教育学校的 IEP 审查助手。基于 IEP 审查要素单输出：IEP 是否完备可用、会议档（0-3 档：立即召开修订会议/一周内修订/学期例行复核/通过）、缺口类别（none/safety_risk/parent_consent/goal_missing/service_gap/assessment_missing/progress_stale 七选一）、审查要素是否足以判定。行为支持与安全计划缺失档 0——安全是实施前提；家长知情同意未取得或待签署档 0——无同意不得实施；目标缺失或无测评基线、服务与评估需求不匹配档 1；进展复核超期 6 个月档 2。缺口按最先阻断实施者取类，安全与同意优先于教学设计。信息不足时标记待补并按档 2 暂存，不得凭部分信息放行。输出为审查建议，IEP 由团队会议决定。",
+      "en": "You are a special-education IEP reviewer. From an IEP review sheet, output: whether the IEP is complete and usable, the meeting tier (0-3: immediate revision meeting / within one week / routine term review / pass), the gap category (none/safety_risk/parent_consent/goal_missing/service_gap/assessment_missing/progress_stale), and whether the evidence suffices. A missing or unenforceable behavior-support plan is tier 0 - safety precedes implementation; missing or unsigned parent consent is tier 0; missing goals or baselines and service mismatches are tier 1; a review overdue beyond 6 months is tier 2. Classify by the first gap that blocks implementation. Mark missing elements and hold rather than guessing. Output is review advice; the IEP is decided by the team meeting."
+    },
+    "ask_template": "请根据以下 IEP 审查要素单完成审查：\n\n审查要素单：\n{{ state }}\n\n请逐项输出：\n1. iep_pass：该 IEP 是否完备可用（true/false）。\n2. meeting_tier：会议档（0-3），列明缺口依据与阻断逻辑。\n3. gap_category：主要缺口类别（七选一），说明取类优先级推理（安全 > 同意 > 目标 > 服务 > 基线 > 进展）。\n4. review_evidence：审查要素是否足以判定（true/false），false 时列出缺失要素与暂存处置。",
+    "topics": [
+      "行为支持与安全计划的完备性",
+      "家长知情同意状态与实施前提",
+      "学年目标与短期目标的可测性",
+      "测评基线与目标对应",
+      "相关服务与评估需求的匹配",
+      "进展复核周期的超期判断",
+      "转学与新生的 IEP 重建",
+      "双缺口并存时的档位取舍"
+    ],
+    "kev_track": false
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "_meta": {
+    "purpose": "企业法务部的知识产权侵权线索初步分诊 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/law-ip-infringement.yaml"
+  },
+  "name": "law-ip-infringement",
+  "label_zh": "侵权线索分诊",
+  "label_en": "IP Infringement Triage",
+  "domain": "企业法务部的知识产权侵权线索初步分诊。法务专员把一份侵权线索分诊要素单交给助手：线索来源、涉嫌侵权类型描述、权利基础、侵权规模、证据现状、时效状态。助手判断侵权类型（infringement_type 七选一）、是否具备初步维权条件（litigable）、处置时限档（urgency_tier 四档），以及线索要素是否足以判定（case_evidence）。口径以《民法典》知识产权编与各单行法侵权认定为基线，阈值为示例口径，需法务负责人与外部律师复核。",
+  "state": "一份侵权线索分诊要素单：线索编号、线索来源（市场巡查/举报/电商监测/竞品分析/展会发现）、涉嫌侵权类型描述、权利基础（发明专利/实用新型/商标/著作权/商业秘密及稳定性评估）、侵权规模（渠道数/销售额级/传播范围）、证据现状（公证书/购买样品/网页截图/邮件记录/无）、时效状态（距知晓侵权月数）。",
+  "state_example": {
+    "desk": "female 法务专员 A, 知识产权组",
+    "context": "电商监测发现同款产品低价销售",
+    "lead": "线索号 IP-2026-0089",
+    "source": "电商监测",
+    "infringement_desc": "疑似仿冒注册商标的产品链接 12 条",
+    "rights_basis": "注册商标（第 9 类，稳定性高，续展有效期内）",
+    "scale": "月销量估算约 8000 件，3 个店铺",
+    "evidence": "网页截图与链接存证，未公证",
+    "timeliness": "1.0 月前"
+  },
+  "questions": {
+    "infringement_type": {
+      "type": "choice",
+      "instructions": "该线索主要涉及哪一类侵权？",
+      "criteria": {
+        "none": "无实质侵权线索（正当竞争或不构成侵权）",
+        "patent": "专利侵权：未经许可实施专利技术方案",
+        "trademark": "商标侵权：仿冒/假冒注册商标",
+        "copyright": "著作权侵权：复制发行作品或软件盗版",
+        "trade_secret": "商业秘密侵权：披露/使用不正当获取的秘密信息",
+        "design": "外观设计侵权：仿冒外观设计专利",
+        "software_license": "许可违约型：违反软件许可条款的使用"
+      }
+    },
+    "litigable": {
+      "type": "noul",
+      "instructions": "该线索是否具备初步维权条件（权利稳定 + 证据支撑）？",
+      "criteria": {
+        "true": "权利基础稳定且已有可采信证据",
+        "false": "权利效力存疑、证据不足或时效已过"
+      }
+    },
+    "urgency_tier": {
+      "type": "score",
+      "instructions": "处置应在什么时限内启动？",
+      "criteria": [
+        "立即申请证据保全/行为保全并上报（证据灭失风险或商业秘密持续泄露）",
+        "一周内发律师函并补充取证",
+        "纳入季度维权评估（批量线索排期）",
+        "登记观察（线索价值不足）"
+      ]
+    },
+    "case_evidence": {
+      "type": "noul",
+      "instructions": "线索要素是否提供了判定所需的全部要素（权利基础、侵权规模、证据现状）？",
+      "criteria": {
+        "true": "要素齐全，可对照侵权构成初步判断",
+        "false": "缺权利基础、缺规模描述或缺证据现状，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "infringement_type 的判据是涉嫌行为与权利类型的对应（示例口径，需法务负责人复核）：仿冒标识 → trademark；技术方案相同或等同 → patent；产品造型抄袭 → design；作品复制/软件盗版 → copyright；秘密信息被披露或使用 → trade_secret；超出许可范围使用 → software_license；正当竞争、描述性使用或权利用尽 → none。litigable 的判据是权利稳定与证据支撑的叠加：权利在有效期且稳定性高（发明专利/注册商标续展）、已有公证书或购买样品 → true；权利效力存疑（实用新型未做评价报告）、仅截图无公证、时效临近（距知晓接近 3 年诉讼时效的 80%）→ false。urgency_tier：trade_secret 且证据显示持续泄露 → 档 0（商业秘密一经公开不可逆）；电商链接仍在架且销量快速增长 → 档 0（证据灭失与规模扩大风险）；trademark/copyright 有公证证据 → 档 1（律师函+平台投诉）；批量小额线索 → 档 2 排期；none → 档 3 登记。类型与时效并存按类型取——时效只影响 litigable 不改变类型。case_evidence=false 时（缺权利基础、缺规模、缺证据现状），infringement_type 与 litigable 不得凭猜测填写，标记待补并按档 3 暂存。",
+  "variety": [
+    "线索来源谱系：电商监测（链接在架）、展会发现（样品比对）、竞品分析（技术拆解）、举报（前员工）、市场巡查（线下门店）——不同来源的证据形态不同",
+    "侵权类型（infringement_type 七选项逐一覆盖）：patent（方法专利被使用）、trademark（标识近似的仿品）、copyright（盗版软件销售）、trade_secret（前员工带走客户名单）、design（外观仿冒）、software_license（超授权数部署）、none（正当竞争/权利用尽）",
+    "处置档（urgency_tier 四档全覆盖）：0 立即保全（商业秘密泄露、链接热销）、1 一周律师函、2 季度排期、3 登记观察（none 必须为 3）",
+    "权利稳定性对照（专门生成）：发明专利/注册商标（稳定）与实用新型无评价报告（存疑）的成对样本——litigable 的核心判据",
+    "时效对照（专门生成）：距知晓 6 个月与 30 个月的成对样本——时效影响维权条件不改变类型",
+    "证据形态谱系：公证书、购买样品、网页截图、邮件记录、无——证据决定 litigable 与档位",
+    "呈现风格：线索登记单体、法务批注体、外部律师意见体、维权委员会汇报体",
+    "易错陷阱：商业秘密持续泄露档 0、热销链接证据灭失风险档 0、实用新型需评价报告、权利用尽不是侵权、时效只影响 litigable"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "case_evidence",
+    "note": "模型输出仅为线索分诊建议，维权决定（律师函/投诉/诉讼/刑事报案）由法务负责人与外部律师作出；侵权构成与赔偿数额的认定属司法裁判范围，模型不作侵权定性；涉刑事线索（假冒注册商标罪）转公安通道，不在本场景范围。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 法务专员 B, 知识产权组",
+      "context": "前员工离职后带走客户资料，现竞对公司出现相同报价单",
+      "lead": "线索号 IP-2026-0102",
+      "source": "举报",
+      "infringement_desc": "竞对使用与我司一致的客户名单与报价策略，涉经营信息",
+      "rights_basis": "商业秘密（客户名单已采取保密措施，有保密协议）",
+      "scale": "已流失 2 个大客户，估算年损失约 300 万元",
+      "evidence": "邮件记录与离职审计报告，未公证",
+      "timeliness": "2.0 月前"
+    },
+    "questions": [
+      {"qid": "infringement_type", "type": "choice",
+       "instructions": "该线索主要涉及哪一类侵权？"},
+      {"qid": "urgency_tier", "type": "score",
+       "instructions": "处置应在什么时限内启动？"}
+    ],
+    "expected_label": {"infringement_type": "trade_secret", "urgency_tier": "0"}
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：infringement_type 七类中 none 14%、patent 14%、trademark 20%、copyright 14%、trade_secret 14%、design 12%、software_license 12%；urgency_tier 四档 12/34/22/32；litigable true 58%、false 42%；case_evidence=false 占比 15%。「商业秘密持续泄露 vs 一般商标线索」档位对照对单独 6%；「权利稳定 vs 效力存疑」litigable 对照对单独 6%；时效临近样本单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 infringement_type 七类中至少五类与 urgency_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 rights_basis 字段——缺权利基础的范例会教出凭行为猜类型；「档 0 vs 档 1」对照范例必须成对出现并标注灭失/泄露风险判据；none 范例需写出权利用尽或正当竞争的推理。",
+  "compliance": [
+    "线索样本须去标识：剔除公司名称、产品型号与人员姓名，仅保留权利类型与要素结构",
+    "商业秘密线索只保留类型与规模结构，不保留具体技术细节与客户信息",
+    "输出仅为分诊建议，不构成侵权认定或法律意见",
+    "涉刑事线索与跨境维权的样本转公安与外部律师通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "infringement_type 七类 macro-F1 ≥0.85，none 误判率（正当竞争判侵权）≤3%（误发律师函的商誉风险）",
+    "litigable accuracy ≥0.93",
+    "urgency_tier 四档 QWK ≥0.75",
+    "trade_secret 持续泄露子集 urgency_tier=0 比例 ≥0.95（升档验收）",
+    "none 子集 urgency_tier=3 比例 =1.0（硬规则验收）",
+    "case_evidence=false 子集上不强行判定率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "trade_secret 被归 copyright → 「秘密性+保密措施」判据在 sidecar 缺失，检查权利基础描述完整性",
+    "trade_secret 未档 0 → 「持续泄露」语境缺失，检查 scale 与 evidence 字段",
+    "none 被归 patent → 权利用尽/正当竞争的对照缺失，检查对照样本",
+    "litigable 误判 true → 实用新型评价报告的语境缺失，检查 rights_basis 字段",
+    "case_evidence=false 仍判定 → 违反软标签纪律，检查待补标注"
+  ],
+  "expert_review": [
+    "权利稳定性评估口径（评价报告/无效宣告风险）与诉讼实务的对应",
+    "商业秘密「采取保密措施」的认定标准与保密协议、分级管理的衔接",
+    "电商平台投诉与律师函的先后策略（先投诉下架 vs 先取证）",
+    "诉讼时效起算点（知晓之日）与线索发现时点的对应",
+    "外观设计与商标保护的竞合（可同时主张）与分诊单选类的边界"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；侵权类型与维权条件判定依赖权利基础与证据形态的语义判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是企业法务知识产权组的侵权线索分诊助手。基于线索分诊要素单输出：侵权类型（none/patent/trademark/copyright/trade_secret/design/software_license 七选一）、是否具备初步维权条件（litigable，权利稳定+证据支撑）、处置时限档（0-3 档：立即申请证据/行为保全并上报/一周内律师函并补证/季度维权排期/登记观察）、线索要素是否足以判定。商业秘密持续泄露与热销链接证据灭失风险档 0；有公证证据的商标/著作权线索档 1；批量小额线索档 2；正当竞争或权利用尽为 none 档 3。时效只影响 litigable 不改变类型；实用新型无评价报告则 litigable 存疑。信息不足时标记待补并按档 3 暂存。输出为分诊建议，维权决定由法务负责人与外部律师作出。",
+      "en": "You are an IP-intake triage assistant in corporate legal. From a lead triage sheet, output: the infringement type (none/patent/trademark/copyright/trade_secret/design/software_license), whether preliminary enforcement conditions are met (litigable: stable rights + supporting evidence), the handling tier (0-3: immediate evidence/behavior preservation / demand letter within one week / quarterly batch review / log only), and whether the lead suffices. Ongoing trade-secret leakage and fast-selling listings risk evidence loss are tier 0; notarized trademark/copyright leads are tier 1; small batch leads are tier 2; legitimate competition or exhaustion is none at tier 3. Limitations affect litigability only, not the type. Mark missing elements and hold at tier 3. Output is triage advice; enforcement decisions rest with legal leadership and outside counsel."
+    },
+    "ask_template": "请根据以下侵权线索分诊要素单完成分诊：\n\n线索要素单：\n{{ state }}\n\n请逐项输出：\n1. infringement_type：侵权类型（七选一），说明行为与权利类型的对应推理。\n2. litigable：是否具备初步维权条件（true/false），注明权利稳定性与证据支撑判断。\n3. urgency_tier：处置时限档（0-3），列明档位依据（灭失/泄露风险、证据形态、规模）。\n4. case_evidence：线索要素是否足以判定（true/false），false 时列出缺失要素与暂存处置。",
+    "topics": [
+      "商标仿冒与近似认定线索",
+      "专利技术方案比对线索",
+      "商业秘密的保密措施与泄露",
+      "著作权与软件盗版线索",
+      "外观设计仿冒线索",
+      "软件许可违约型线索",
+      "权利稳定性与评价报告",
+      "权利用尽与正当竞争的排除"
+    ],
+    "kev_track": false
+  }
+}

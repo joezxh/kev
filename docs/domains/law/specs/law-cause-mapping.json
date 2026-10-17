@@ -1,0 +1,163 @@
+{
+  "_meta": {
+    "purpose": "法律咨询初筛中的案由映射 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/law-cause-mapping.yaml"
+  },
+  "name": "law-cause-mapping",
+  "label_zh": "案由映射",
+  "label_en": "Cause of Action Mapping",
+  "domain": "法律咨询平台与律所前台的案由初筛。咨询助理把一份案情要素摘要交给助手：纠纷标的、双方关系、争议行为、损失类型、证据形式、诉求方向。助手判断案由大类（cause_of_action 六选一）、是否建议进入诉讼或仲裁（litigation_advisable）、证据链强度（evidence_strength 四档），以及案情要素是否足以判定（fact_sufficient）。案由口径以《民事案件案由规定》的通行大类为基线，阈值为示例口径，需执业律师复核。",
+  "state": "一份案情要素摘要：纠纷标的（货款/人身损害/工资/房屋/专利/股权等）、双方关系（有书面合同/有事实交易/劳动关系/亲属邻里/陌生主体/股东出资）、争议行为（不履行/违约损害/侵权行为/决议瑕疵等）、损失类型（金钱/人身/物的使用/商誉）、证据形式（书面合同/转账记录/聊天记录/证人/无）、诉求方向（要钱/要物/要行为/确认关系）。",
+  "state_example": {
+    "desk": "female 咨询助理 A, 线上法律咨询",
+    "context": "货款拖欠，双方有购销合同与对账单",
+    "subject": "货款 38 万元",
+    "relationship": "有书面合同",
+    "disputed_act": "对方收货后未按约付款",
+    "loss_type": "金钱损失",
+    "evidence_forms": "书面合同, 转账记录, 聊天记录",
+    "claim_direction": "要求支付欠款"
+  },
+  "questions": {
+    "cause_of_action": {
+      "type": "choice",
+      "instructions": "本案由应归入哪一大类？",
+      "criteria": {
+        "contract": "合同纠纷：基于合同关系（书面或事实）的履行、违约、解除争议",
+        "tort": "侵权责任：无合同关系的损害赔偿（人身、财产、名誉等）",
+        "labor": "劳动争议：用人单位与劳动者基于劳动关系的争议",
+        "property": "物权纠纷：不动产权属、相邻关系、占有返还等",
+        "ip": "知识产权权属与侵权：专利、商标、著作权、商业秘密",
+        "corporate": "公司商事纠纷：股东出资、公司决议、股权转让、合伙"
+      }
+    },
+    "litigation_advisable": {
+      "type": "noul",
+      "instructions": "是否建议当事人进入诉讼或仲裁程序（而不是协商或暂缓）？",
+      "criteria": {
+        "true": "有基本证据且协商基础差，诉讼是合理路径",
+        "false": "证据不足、协商空间大或诉求可通过非诉方式实现"
+      }
+    },
+    "evidence_strength": {
+      "type": "score",
+      "instructions": "现有证据链的强度？",
+      "criteria": [
+        "证据链完整，关键事实均有书面证据支撑",
+        "主要证据在手，次要事实待补强",
+        "仅有单方陈述与零散记录，胜诉基础薄弱",
+        "几乎没有可提交的证据"
+      ]
+    },
+    "fact_sufficient": {
+      "type": "noul",
+      "instructions": "案情要素是否提供了案由判定所需的全部要素（关系、行为、诉求）？",
+      "criteria": {
+        "true": "关系、行为、诉求齐备，可直接映射案由",
+        "false": "缺双方关系、缺争议行为或缺诉求方向，无法可靠归类"
+      }
+    }
+  },
+  "guidance": "cause_of_action 的唯一判据是争议的法律关系性质（示例口径，需执业律师复核）：双方有书面或事实合同且争议围绕履行、违约、解除 → contract；无合同关系的人身财产损害 → tort；用人单位与劳动者基于劳动关系的工资、赔偿、解除 → labor；不动产权属、相邻、占有 → property；专利、商标、著作权、商业秘密的权属与侵权 → ip；股东出资、公司决议、股权转让、合伙 → corporate。取类优先级：labor 优先于 tort（工伤等劳动场景按劳动争议处理）——劳动关系是特别保护关系；ip 优先于 tort（特别法优先）；合同关系与侵权竞合时按诉求方向取——当事人明确按违约主张取 contract，按损害主张且无有效合同条款可依取 tort。litigation_advisable=true 需同时满足证据_strength ≥1 与对方明确拒绝履行或失联；证据_strength=2 时建议先补证据或发函。evidence_strength 由可提交证据的形式与覆盖面决定：关键事实有书面证据为 0，仅转账与聊天记录为 1，仅单方陈述为 2，无证据为 3。fact_sufficient=false 时（缺关系、缺行为、缺诉求），cause_of_action 与 litigation_advisable 不得凭猜测填写，cause_of_action 缺失标记 none 之外的处置由 sidecar 标注为待补充。",
+  "variety": [
+    "案由大类（cause_of_action 六选项逐一覆盖）：contract（货款拖欠/工程款）、tort（相邻漏水/宠物伤人）、labor（拖欠工资/违法解除）、property（房屋权属/相邻通行）、ip（专利侵权/商标假冒）、corporate（股东出资不实/决议撤销）",
+    "证据谱系（evidence_strength 四档全覆盖）：合同+对账单（0）、转账+聊天（1）、单方陈述（2）、无证据（3）",
+    "竞合情形（专门生成）：合同与侵权竞合（产品缺陷致损）、劳动与侵权竞合（工伤第三人责任）、ip 与合同竞合（技术开发成果权属）——按诉求方向取类",
+    "诉求方向谱系：要钱、要物、要行为（停止侵害/继续履行）、确认关系（确认权属/确认劳动关系）",
+    "非诉对照（litigation_advisable=false 须专门生成）：小额协商空间大、对方同意分期、证据不足先补证",
+    "要素完整度（fact_sufficient）：齐备、缺双方关系、缺争议行为、缺诉求方向、多项缺失",
+    "呈现风格：咨询工单体、前台接待记录体、当事人自述整理体、律师助理摘要体",
+    "易错陷阱：工伤走劳动争议不走侵权、ip 特别法优先、竞合按诉求方向取、无证据不建议直接起诉、缺关系要素不得强行归类"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "fact_sufficient",
+    "note": "模型输出仅为案由初筛建议，立案与代理决定由执业律师作出；涉刑事线索（集资诈骗、人身伤害重伤）与时效临近（一年仲裁时效）的情形一律转执业律师当日处理，模型不给出时效与管辖判断。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 咨询助理 B, 律所前台",
+      "context": "员工被口头辞退，有劳动合同与考勤记录，对方主张协商补偿",
+      "subject": "违法解除赔偿金",
+      "relationship": "劳动关系",
+      "disputed_act": "用人单位未按程序辞退",
+      "loss_type": "金钱损失",
+      "evidence_forms": "劳动合同, 考勤记录, 聊天记录",
+      "claim_direction": "要求支付赔偿金"
+    },
+    "questions": [
+      {
+        "qid": "cause_of_action",
+        "type": "choice",
+        "instructions": "本案由应归入哪一大类？"
+      },
+      {
+        "qid": "evidence_strength",
+        "type": "score",
+        "instructions": "现有证据链的强度？"
+      }
+    ],
+    "expected_label": {
+      "cause_of_action": "labor",
+      "evidence_strength": "1"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：cause_of_action 六类中 contract 22%、tort 18%、labor 15%、property 12%、ip 15%、corporate 18%；evidence_strength 四档 20/35/30/15；litigation_advisable=true 55%、false 45%（false 中证据不足型占六成）；fact_sufficient=false 占比 15%。三类竞合样本（合同-侵权、劳动-侵权、ip-合同）单独 9% 并成对出现；「无证据不建议起诉」对照单独 6%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 cause_of_action 六类中至少五类与 evidence_strength 四档中三档）作为 --examples 输入；few-shot 范例必须保留 relationship 与 claim_direction 字段——缺关系的范例会教出凭损失类型强行归类；竞合范例必须成对出现并标注「按诉求方向取类」的推理；labor 范例需显式写出「工伤不走侵权」的排除推理。",
+  "compliance": [
+    "案情样本须去标识：剔除当事人姓名、公司名称与具体金额之外的财产细节，仅保留关系结构与证据形式",
+    "涉隐私的案情（婚姻家事、医疗记录）仅保留纠纷结构，不保留细节",
+    "输出仅为案由初筛建议，不构成法律意见，不生成对胜诉率的承诺性表述",
+    "涉刑事与行政责任线索的样本转专门通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "cause_of_action 六类 macro-F1 ≥0.85，labor 误归 tort 的比例 ≤3%（劳动关系特别保护的口径一致性）",
+    "litigation_advisable accuracy ≥0.94，不建议起诉子集误判 ≤3%",
+    "evidence_strength 四档 QWK ≥0.75",
+    "竞合子集按诉求方向取类的一致率 ≥0.9",
+    "fact_sufficient=false 子集上不强行归类率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "contract 吞并 tort → 竞合样本的诉求方向信息在 sidecar 中缺失，检查自述整理是否保留主张依据",
+    "labor 被归 tort → few-shot 缺「工伤不走侵权」排除范例，核对标注",
+    "evidence_strength 漂移 → 证据形式列表被截断，检查蒸馏输入的字段完整性",
+    "无证据样本被建议起诉 → litigation_advisable 与 evidence_strength 未联动，检查 sidecar 标注",
+    "fact_sufficient=false 仍出案由 → 违反软标签纪律，检查待补充标注"
+  ],
+  "expert_review": [
+    "案由大类的边界与《民事案件案由规定》具体案由的对应（大类映射需律师确认）",
+    "三类竞合情形的取类口径与审判实务的一致性",
+    "litigation_advisable 的证据门槛（strength ≥1）与律所收案标准的匹配",
+    "小额诉讼与诉前调解在非诉对照中的定位",
+    "时效问题（劳动一年仲裁时效、普通三年诉讼时效）是否需前置提示"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；案由映射依赖法律关系性质的语义判断与竞合取类规则，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是法律咨询前台的案由初筛助手。基于案情要素摘要输出：案由大类（contract/tort/labor/property/ip/corporate 六选一）、是否建议诉讼或仲裁、证据链强度（0-3 档）、案情要素是否足以判定。归类判据是争议的法律关系性质：劳动关系争议优先于侵权（工伤不走侵权）、知识产权特别法优先、合同与侵权竞合按当事人的诉求方向取类；证据链强度由可提交证据的形式决定；证据不足或协商空间大时不建议直接起诉。信息不足时标注待补充项，不得凭损失类型强行归类。输出为初筛建议，立案与代理由执业律师决定。",
+      "en": "You are a law-firm intake assistant. From a case-fact summary, output: the cause-of-action category (contract/tort/labor/property/ip/corporate), whether litigation or arbitration is advisable, evidence strength (0-3), and whether the facts suffice for classification. Classify by the nature of the legal relationship: labor disputes take precedence over tort (workplace injury is not a tort claim), IP law is special law, and contract-tort concurrence follows the claimant's pleaded basis; evidence strength follows the forms of submittable evidence; do not advise suing with no evidence or ample settlement room. Mark missing elements rather than guessing. Output is intake advice only; filing and representation decisions rest with licensed counsel."
+    },
+    "ask_template": "请根据以下案情要素摘要完成案由初筛：\n\n案情摘要：\n{{ state }}\n\n请逐项输出：\n1. cause_of_action：案由大类（contract/tort/labor/property/ip/corporate 六选一），并说明法律关系性质的判断依据；如属竞合情形，说明按诉求方向的取类推理。\n2. litigation_advisable：是否建议进入诉讼或仲裁（true/false），false 时说明替代路径（协商/补证/发函）。\n3. evidence_strength：证据链强度（0-3 档），列出关键事实的证据覆盖情况。\n4. fact_sufficient：案情要素是否足以判定（true/false），false 时列出缺失要素。",
+    "topics": [
+      "合同纠纷案由（货款/工程款/服务费拖欠与违约）",
+      "侵权责任案由（相邻关系损害/动物致害/名誉）",
+      "劳动争议案由（拖欠工资/违法解除/工伤待遇）",
+      "物权纠纷案由（不动产权属/相邻通行/占有返还）",
+      "知识产权案由（专利侵权/商标假冒/成果权属）",
+      "公司商事案由（股东出资/决议撤销/股权转让）",
+      "合同与侵权竞合的取类（按诉求方向）",
+      "证据链强度分级与非诉替代路径"
+    ],
+    "kev_track": false
+  }
+}

@@ -1,0 +1,236 @@
+{
+  "name": "law-evidence-chain",
+  "domain": "企业法务与争议解决团队的证据链完整性审查。法务人员把一组待提交证据的结构化清单交给助手复核：证据链断点数、保管记录（chain of custody）签署数、距举证期限天数、证据形成距今月数、独立来源数、篡改疑点数。阈值与档位为示例口径，实际以承办律师与承办法院的举证要求为准。",
+  "state": "一组待提交证据的结构化清单：案件类型（合同纠纷/劳动争议/侵权/知识产权）、证据份数与类型（书证/电子数据/证人证言/物证/视听资料）、证据链断点数（处）、应签保管记录中已签份数（份）、距举证期限天数（天）、最早一份证据形成距今月数（月）、独立来源数（个）、篡改或真实性疑点数（处）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "case": "male 41, 合同纠纷",
+    "context": "准备庭前证据交换，电子数据占多数，其中 2 份来自对方系统导出",
+    "inventory": {
+      "证据链断点数": "1.0 处",
+      "保管记录已签份数": "6.0 份",
+      "距举证期限天数": "12.0 天",
+      "最早证据形成距今月数": "10.0 月",
+      "独立来源数": "2.0 个",
+      "篡改疑点数": "0.0 处"
+    },
+    "ref_checklist_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "evidence_chain_ready": {
+      "type": "noul",
+      "instructions": "现有证据链是否完整可用（而不是存在必须先补的断点）？",
+      "criteria": {
+        "true": "链路无断点、保管记录齐全、无篡改疑点，可直接提交",
+        "false": "存在断点、签署缺失或真实性疑点，须先补证或说明"
+      }
+    },
+    "supplement_tier": {
+      "type": "score",
+      "instructions": "补证工作应在多长时间内启动？",
+      "criteria": [
+        "立即启动补证（期限紧迫或有真实性风险）",
+        "三个工作日内启动补证",
+        "下次例行证据整理时补齐",
+        "无需补证（证据链完整）"
+      ]
+    },
+    "gap_category": {
+      "type": "choice",
+      "instructions": "触发补证的主要问题属于哪一类？",
+      "criteria": {
+        "none": "无（证据链完整）",
+        "custody": "保管链断点：证据流转记录缺失或无法衔接",
+        "signature": "签署缺失：保管记录应签未签",
+        "timing": "时效类：期限紧迫或证据形成时间过久",
+        "source": "来源单一：独立来源不足，孤证风险",
+        "tamper": "真实性疑点：存在篡改、完整性或原始载体问题"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "清单是否提供了判定所需的全部要素（证据清单、时间戳、保管记录状态）？",
+      "criteria": {
+        "true": "要素齐全，可对照核查表判定",
+        "false": "缺清单项、缺时间戳或保管状态未知，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "证据链审查只输出链路完整性、补证时限与问题类别，不输出证据效力认定——证据是否被采纳由法庭认定，模型不做「该证据有效/无效」的判断。evidence_chain_ready 的唯一判据是任一指标超出本表阈值（示例口径，需承办律师复核）：证据链断点 ≥1 处即触发、≥8 处最高档；保管记录应签 8 份实签 ≤5 份触发、0 份最高档；距举证期限 ≤3 天触发紧迫、0 天最高档（逾期风险）；证据形成距今 ≥48 个月触发（电子数据完整性论证负担随时间增加）、≥96 个月最高档；独立来源 ≤1 个触发孤证风险、0 个最高档；篡改疑点 ≥3 处触发、≥10 处最高档（1-2 处疑点按真实性说明路径处理，不触发本表）。supplement_tier 由最快触发的问题决定，等级从 0（立即补证）到 3（无需补证）：期限紧迫与真实性疑点共用 tier 0——逾期举证的失权后果与真实性被驳的后果同级。gap_category 取最快档中的问题类别。篡改疑点必须与对方主张区分：清单自报的疑点按本表触发，对方已提出真实性异议的情形在 context 中写明并一律按 tamper 类处理。evidence_sufficient 为 false 时（缺清单项、缺时间戳、保管状态未知），evidence_chain_ready 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 gap_category 不得凭猜测填写——证据清单不全时审查工具不得给出「链路完整」的结论。",
+  "variety": [
+    "案件类型：合同纠纷、劳动争议、侵权赔偿、知识产权、商事仲裁、行政程序",
+    "证据类型组合：书证为主、电子数据为主（聊天记录/系统日志/邮件）、证人证言为主、视听资料为主、混合",
+    "触发类别（gap_category 六选项逐一覆盖）：custody（断点 1/3/8 处）、signature（已签 5/2/0 份）、timing（期限 3/0 天、证据 48/96 月）、source（来源 1/0 个）、tamper（疑点 3/10 处、对方已提异议）、none（链路完整）",
+    "补证时限档（supplement_tier 四档全覆盖）：0 立即（期限 ≤3 天、疑点 ≥10 处、已签 0 份）、1 三个工作日、2 例行补齐、3 无需补证（evidence_chain_ready=true 时必须为 3）",
+    "链路完整对照（evidence_chain_ready=true 专门生成）：断点 0、签署齐全、来源 2 个以上、期限充裕——含贴边未触发样本（期限 4-10 天、已签 6-7 份）",
+    "电子数据特有场景：原始载体与导出件的关系、哈希校验记录、云端取证的第三方存证、对方系统导出件（context 必须写明）",
+    "清单完整度（evidence_sufficient）：齐全、缺证据清单、缺时间戳、保管状态未知、对方异议未记录、多项缺失",
+    "文本风格：律师证据清单体、法务自查表体、公证处文书体、中英混排（chain of custody/hash/audit log）",
+    "易错陷阱：1-2 处篡改疑点走说明路径不触发本表、孤证与来源单一的区别、逾期风险与真实性风险同属 tier 0、清单不全不得判链路完整、不输出效力认定"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "输出仅为证据链完整性核查与补证排期建议，证据提交决定与效力论证由承办律师作出；篡改疑点涉及真实性的一律转承办律师逐项处理，模型不做真实性结论。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "female 35, 劳动争议",
+      "context": "仲裁举证期限还剩 2 天，主要证据为考勤系统导出与微信记录截图",
+      "inventory": "证据链断点数 2.0 处, 保管记录已签份数 4.0 份, 距举证期限天数 2.0 天",
+      "ref_checklist_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "supplement_tier", "type": "score",
+       "instructions": "补证工作应在多长时间内启动？"}
+    ],
+    "expected_label": {"supplement_tier": "0"}
+  },
+  "sampling": {
+    "n": 680,
+    "notes": "plan_targets 保留 35% 触发补证样本（tier 0-2 约 2:2:1），其余为链路完整对照；对照中至少 15% 为贴边未触发样本（期限 4-10 天、已签 6-7 份、来源 2 个）。对方已提真实性异议的样本单独 8%，context 必须写明异议内容。电子数据为主样本占比 ≥40%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 supplement_tier 四档与 gap_category 六类）作为 --examples 输入；few-shot 范例必须保留证据类型组合与保管记录状态字段——缺保管状态的范例会教出对签署缺失漏判；篡改疑点类范例必须包含「1-2 处走说明路径」与「≥3 处触发本表」的对照，防止模型把少量疑点直接判最高档。",
+  "compliance": [
+    "证据材料与案件信息高度敏感，训练数据须按案件脱敏：去除当事人姓名、案号、金额精确值与可识别的交易细节，保留链路结构特征",
+    "输出仅为链路完整性与补证排期建议，不构成法律意见，不预测证据是否被采纳",
+    "证据真实性疑点只触发转承办律师，模型不得输出「证据系伪造」等真实性结论（需专家复核口径）",
+    "涉及国家秘密、个人隐私与商业秘密的证据类别，样本中只保留类别标记，不保留内容"
+  ],
+  "acceptance": [
+    "evidence_chain_ready accuracy ≥0.96，漏判（链路有断点判完整）≤1%（漏判导致逾期或举证失败）",
+    "supplement_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "gap_category 六类 macro-F1 ≥0.90",
+    "贴边未触发子集（期限 4-10 天、已签 6-7 份）evidence_chain_ready=true 比例 ≥0.9",
+    "evidence_sufficient=false 子集不输出确定性链路完整结论（软标签生效验证）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: supplement_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（常见于 source_count 的单值区间），检查 realize_tier 命中率",
+    "贴边样本被判补证 → 检查 fields.normal 上界与 critical 端点的间隙（期限 normal 下界 15 与 critical 上界 3 之间的 4-14 天区间是否被采样覆盖）",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "对方异议样本被判 none → context 的异议标记未参与判定，guidance 的「已提异议按 tamper 处理」口径需在 rules 或蒸馏标签中体现",
+    "distill 轨 label 漂移 → guidance 阈值口径与 generator.tier_windows 必须逐字一致，不一致以 generator 为准"
+  ],
+  "expert_review": [
+    "证据链断点 1/8 处、签署 5 份、期限 3 天、证据 48/96 月、来源 1 个、疑点 3/10 处的分层口径（依据示例核查表，实际以承办律师与法院举证要求为准，需专家复核）",
+    "电子数据哈希校验与第三方存证在核查表中的映射方式",
+    "补证时限四档与诉讼/仲裁程序的举证期限制度的对应（不同程序时限不同）",
+    "篡改疑点 1-2 处走真实性说明路径的口径与「对方已提异议」的升级边界",
+    "独立来源数的口径（证人/书证/电子数据如何计独立来源）"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "证据链断点数", "unit": "处", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "custody"},
+      {"name": "保管记录已签份数", "unit": "份", "decimals": 0, "normal": [7.0, 8.0],
+       "critical": {"low": [[0.0, 5.0]]}, "category": "signature"},
+      {"name": "距举证期限天数", "unit": "天", "decimals": 0, "normal": [15.0, 90.0],
+       "critical": {"low": [[0.0, 3.0]]}, "category": "timing"},
+      {"name": "最早证据形成距今月数", "unit": "月", "decimals": 0, "normal": [1.0, 24.0],
+       "critical": {"high": [[48.0, 1000000000.0]]}, "category": "timing"},
+      {"name": "独立来源数", "unit": "个", "decimals": 0, "normal": [2.0, 5.0],
+       "critical": {"low": [[0.0, 1.0]]}, "category": "source"},
+      {"name": "篡改疑点数", "unit": "处", "decimals": 0, "normal": [0.0, 1.0],
+       "critical": {"high": [[3.0, 1000000000.0]]}, "category": "tamper"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "证据链断点数": [[8.0, 1000000000.0]],
+        "保管记录已签份数": [[0.0, 2.0]],
+        "距举证期限天数": [[0.0, 1.0]],
+        "最早证据形成距今月数": [[96.0, 1000000000.0]],
+        "独立来源数": [[0.0, 0.0]],
+        "篡改疑点数": [[10.0, 1000000000.0]]
+      },
+      "1": {
+        "证据链断点数": [[3.0, 8.0]],
+        "保管记录已签份数": [[3.0, 4.0]],
+        "距举证期限天数": [[2.0, 2.0]],
+        "最早证据形成距今月数": [[72.0, 96.0]],
+        "独立来源数": [[1.0, 1.0]],
+        "篡改疑点数": [[6.0, 10.0]]
+      },
+      "2": {
+        "证据链断点数": [[1.0, 3.0]],
+        "保管记录已签份数": [[5.0, 5.0]],
+        "距举证期限天数": [[3.0, 3.0]],
+        "最早证据形成距今月数": [[48.0, 72.0]],
+        "篡改疑点数": [[3.0, 6.0]]
+      }
+    },
+    "contexts": [
+      "准备庭前证据交换，电子数据占多数，其中 2 份来自对方系统导出",
+      "仲裁举证期限临近，考勤导出与微信截图为主",
+      "合同纠纷，书证齐全且有公证文书",
+      "侵权案，监控录像原始载体已封存",
+      "知识产权案，取 Greenwood 公证购流程取得物证",
+      "证人证言为主，两名证人与当事人存在利害关系",
+      "对方当庭提出电子数据真实性异议",
+      "哈希校验与第三方存证记录齐全的云端取证",
+      "历史交易书证形成已逾五年，保管人变动三次",
+      "例行整理，链路完整，期限充裕"
+    ],
+    "patients": [
+      "male 41 合同纠纷", "female 35 劳动争议", "male 52 侵权赔偿",
+      "female 44 知识产权", "male 29 商事仲裁", "female 58 行政程序",
+      "male 37 采购合同", "female 31 服务合同"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "evidence_chain_ready", "value": true},
+          {"label": "supplement_tier", "value": 3},
+          {"label": "gap_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "evidence_chain_ready", "value": false},
+          {"label": "supplement_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "gap_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "evidence_chain_ready",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"custody": 0.25, "signature": 0.2, "timing": 0.25, "source": 0.15, "tamper": 0.15},
+          "tier_split": {
+            "custody": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "signature": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "timing": [[0, 0.35], [1, 0.3], [2, 0.35]],
+            "source": [[0, 0.5], [1, 0.5]],
+            "tamper": [[0, 0.3], [1, 0.35], [2, 0.35]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "证据链断点数": "custody",
+      "保管记录已签份数": "signature",
+      "距举证期限天数": "timing",
+      "最早证据形成距今月数": "timing",
+      "独立来源数": "source",
+      "篡改疑点数": "tamper"
+    }
+  }
+}

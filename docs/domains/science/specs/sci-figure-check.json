@@ -1,0 +1,160 @@
+{
+  "_meta": {
+    "purpose": "期刊编辑部的投稿图表规范预审与修改分诊 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/sci-figure-check.yaml"
+  },
+  "name": "sci-figure-check",
+  "label_zh": "图表预审",
+  "label_en": "Figure Compliance Check",
+  "domain": "学术期刊编辑部的投稿图表规范预审。图表编辑把一份投稿图表预审要素单交给助手：图号与类型、坐标轴与单位标注、分辨率与格式、统计标注、原始数据可获取性、图像处理说明、与正文一致性。助手判断图表是否通过（figure_pass）、修改档（revision_tier 四档）、缺陷类别（defect_category 七选一），以及预审要素是否足以判定（check_evidence）。口径以本刊投稿指南与 COPE 图像完整性指引为基线，阈值为示例口径，需图表编辑与主编复核。",
+  "state": "一份投稿图表预审要素单：稿件编号、图号与类型（柱状图/散点图/显微图/凝胶图/流式图/流程图）、坐标轴与单位标注（完整/缺单位/缺轴标签）、分辨率与格式（dpi 与矢量/位图）、统计标注（误差线/显著性标记/样本量）、原始数据可获取性（随稿提交/承诺提供/不可得）、图像处理说明（有且合规/有但存疑/未声明）、与正文一致性（一致/数值不符/未提及）。",
+  "state_example": {
+    "desk": "female 图表编辑 A, 编辑部生产组",
+    "context": "初检投稿图表，显微图像类",
+    "manuscript": "稿件号 MS-2026-0387",
+    "figure": "图 3，显微图（免疫荧光）",
+    "axis_labels": "标尺完整，通道标注缺",
+    "resolution_format": "300 dpi TIFF",
+    "statistical_marks": "误差线有，显著性标记缺",
+    "data_availability": "承诺提供",
+    "image_processing": "有说明（亮度对比度整体调整）",
+    "consistency": "与正文一致"
+  },
+  "questions": {
+    "figure_pass": {
+      "type": "noul",
+      "instructions": "该图表是否通过预审（而不是需要修改或退回）？",
+      "criteria": {
+        "true": "标注、分辨率、统计与完整性要素齐备",
+        "false": "存在完整性存疑、数据不可得或标注缺失"
+      }
+    },
+    "revision_tier": {
+      "type": "score",
+      "instructions": "修改应在什么层级与时限完成？",
+      "criteria": [
+        "退回重做并提交完整性审查（图像操纵嫌疑或数据不可得）",
+        "三个工作日内修改后复审（标注/统计缺失）",
+        "排版阶段小修（分辨率/格式问题）",
+        "通过预审"
+      ]
+    },
+    "defect_category": {
+      "type": "choice",
+      "instructions": "触发修改的主要缺陷属于哪一类？",
+      "criteria": {
+        "none": "无（通过预审）",
+        "image_integrity": "完整性类：图像处理存疑或局部增强痕迹",
+        "data_source": "数据类：原始数据不可得或未随稿",
+        "statistical_display": "统计类：误差线/显著性/样本量标注缺失",
+        "label_axis": "标注类：坐标轴/单位/标尺缺失",
+        "resolution_format": "制式类：分辨率不足或格式不符",
+        "consistency": "一致类：图与正文数值或描述不符"
+      }
+    },
+    "check_evidence": {
+      "type": "noul",
+      "instructions": "预审要素单是否提供了判定所需的全部要素（类型、制式、处理说明）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照投稿指南判定",
+        "false": "缺图类型、缺制式信息或缺处理说明，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "figure_pass 的唯一判据是要素齐备且无完整性存疑（示例口径，需图表编辑复核）：图像处理存疑（局部增强、拼接边界痕迹、通道分离不自然）→ 不通过且 revision_tier=0——图像完整性是学术诚信红线，转完整性审查；原始数据不可得 → 档 0（数据类退回）；统计标注缺失（误差线/显著性/样本量）→ 档 1（三个工作日内修改复审）；坐标轴/单位/标尺缺失 → 档 1；分辨率不足或格式不符 → 档 2（排版阶段小修）；图与正文数值不符 → 档 1（先与作者核对是排版错误还是数据错误）。revision_tier=3 时 figure_pass 必须为 true 且 defect_category 为 none。defect_category 按「最先阻断学术诚信」取类，优先级：image_integrity > data_source > statistical_display > consistency > label_axis > resolution_format——完整性优先于制式。完整性与制式双缺陷时档位取更急者（完整性档 0 覆盖制式档 2）。check_evidence=false 时（缺图类型、缺制式、缺处理说明），figure_pass 与 revision_tier 不得凭猜测填写，标记待补并按档 2 暂存。",
+  "variety": [
+    "图类型谱系：柱状图（统计标注）、散点图（回归线与置信带）、显微图（标尺与通道）、凝胶图（拼接痕迹）、流式图（门控标注）、流程图（无统计要素）——不同图类型的完整性重心不同",
+    "缺陷类别（defect_category 七选项逐一覆盖）：image_integrity（凝胶图拼接痕迹）、data_source（原始数据不可得）、statistical_display（无误差线无 n）、label_axis（缺轴单位）、resolution_format（150 dpi 位图）、consistency（图例 n=12 正文 n=15）、none",
+    "修改档（revision_tier 四档全覆盖）：0 退回（完整性存疑/数据不可得）、1 三个工作日（标注/统计/一致性）、2 排版小修（制式）、3 通过（figure_pass=true 必须为 3）",
+    "图像处理对照（专门生成）：整体调整（合规声明）与局部增强（存疑）的成对样本——处理说明的有无与性质",
+    "统计标注对照（专门生成）：标注齐备与缺失的成对样本——误差线/显著性/样本量三要素",
+    "要素完整度（check_evidence）：齐全、缺图类型、缺制式、缺处理说明、多项缺失",
+    "呈现风格：投稿系统截图体、图表编辑批注体、作者答复体、编辑部生产通报体",
+    "易错陷阱：完整性存疑档 0、数据不可得档 0、整体亮度调整合规、排版问题档 2、图文不符先核对"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "check_evidence",
+    "note": "模型输出仅为图表预审建议，退稿与完整性调查由主编与编辑部作出；图像操纵的正式调查按 COPE 流程转科研诚信通道，模型不作学术不端认定；模型不生成对作者科研诚信的定性评价。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 图表编辑 B, 编辑部生产组",
+      "context": "初检投稿图表，凝胶电泳图",
+      "manuscript": "稿件号 MS-2026-0412",
+      "figure": "图 2，凝胶图",
+      "axis_labels": "泳道标注完整",
+      "resolution_format": "300 dpi TIFF",
+      "statistical_marks": "不适用（定性图）",
+      "data_availability": "不可得（原始胶片已销毁）",
+      "image_processing": "未声明",
+      "consistency": "与正文一致"
+    },
+    "questions": [
+      {"qid": "figure_pass", "type": "noul",
+       "instructions": "该图表是否通过预审？"},
+      {"qid": "revision_tier", "type": "score",
+       "instructions": "修改应在什么层级与时限完成？"}
+    ],
+    "expected_label": {"figure_pass": "false", "revision_tier": "0"}
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：defect_category 七类中 none 24%、image_integrity 12%、data_source 10%、statistical_display 16%、label_axis 12%、resolution_format 14%、consistency 12%；revision_tier 四档 14/34/24/28；figure_pass=false 72%、true 28%；check_evidence=false 占比 15%。图像处理「整体调整 vs 局部增强」对照对单独 6%；「统计标注齐备 vs 缺失」对照对单独 6%；双缺陷取更急者样本单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 defect_category 七类中至少五类与 revision_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 image_processing 字段——缺处理说明的范例会教出忽视完整性审查；「整体调整合规 vs 局部增强存疑」对照范例必须成对出现并标注性质判据；data_source 范例需写出「数据不可得退回」的推理。",
+  "compliance": [
+    "预审样本须去标识：剔除作者姓名、单位与稿件实际科学内容，仅保留图类型与要素结构",
+    "图像描述只保留缺陷结构，不保留可复现的具体实验细节",
+    "输出仅为预审建议，不构成学术不端认定，不生成对作者的定性评价",
+    "涉图像操纵调查与撤稿程序的样本转主编与诚信通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "figure_pass accuracy ≥0.96，误放行率（应退回判通过）≤1.5%（完整性问题入库的声誉风险高于误退回成本）",
+    "revision_tier 四档 QWK ≥0.75",
+    "defect_category 七类 macro-F1 ≥0.85，image_integrity 漏检率 ≤2%（完整性红线）",
+    "image_integrity 与 data_source 子集 revision_tier=0 比例 =1.0（硬规则验收）",
+    "statistical_display 子集取类比例 ≥0.9",
+    "check_evidence=false 子集上不强行判定率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "image_integrity 被归 resolution_format → 「处理性质」判据在 sidecar 缺失，检查处理说明描述完整性",
+    "data_source 未档 0 → 「数据不可得退回」口径未进蒸馏标签，检查对照样本",
+    "statistical_display 被归 label_axis → 统计标注与坐标轴标注的区分缺失，检查标注",
+    "consistency 被归 none → 图文数值比对的语境缺失，检查 consistency 字段",
+    "check_evidence=false 仍判定 → 违反软标签纪律，检查待补标注"
+  ],
+  "expert_review": [
+    "图像处理「整体 vs 局部」的判定标准与 COPE 指引的对应",
+    "原始数据可获取性的分级（随稿/承诺/不可得）与期刊政策",
+    "统计标注三要素（误差线/显著性/样本量）的判定口径与统计审稿的衔接",
+    "分辨率 300 dpi 与矢量格式的制式标准是否与出版工艺一致",
+    "图文不符的核对流程（排版错误 vs 数据错误的分流）"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；图表预审依赖图像处理性质与统计标注的语义判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是学术期刊编辑部的图表预审助手。基于投稿图表预审要素单输出：图表是否通过预审、修改档（0-3 档：退回重做并提交完整性审查/三个工作日修改复审/排版阶段小修/通过）、缺陷类别（none/image_integrity/data_source/statistical_display/label_axis/resolution_format/consistency 七选一）、预审要素是否足以判定。图像处理存疑（局部增强、拼接痕迹）与原始数据不可得档 0——完整性是学术诚信红线；统计标注缺失、标注缺失、图文不符档 1；分辨率与格式问题档 2。缺陷按最先阻断学术诚信者取类，完整性优先于制式。整体亮度对比度调整且声明合规不算缺陷。信息不足时标记待补并按档 2 暂存，不得凭部分信息判定。输出为预审建议，退稿与调查由主编与编辑部决定。",
+      "en": "You are a journal figure-compliance reviewer. From a figure pre-screening sheet, output: whether the figure passes, the revision tier (0-3: return with integrity review / revise within 3 working days / minor production fixes / pass), the defect category (none/image_integrity/data_source/statistical_display/label_axis/resolution_format/consistency), and whether the evidence suffices. Suspected manipulation (local enhancement, splice marks) and unavailable source data are tier 0 - integrity is the red line; missing statistical annotations, labels, or text-figure mismatches are tier 1; resolution and format issues are tier 2. Classify by the first defect blocking academic integrity. Global brightness adjustments declared in the processing note are compliant. Mark missing elements and hold rather than guessing. Output is screening advice; retraction and investigation rest with the editor-in-chief."
+    },
+    "ask_template": "请根据以下投稿图表预审要素单完成预审：\n\n预审要素单：\n{{ state }}\n\n请逐项输出：\n1. figure_pass：该图表是否通过预审（true/false）。\n2. revision_tier：修改档（0-3），列明缺陷依据与阻断逻辑。\n3. defect_category：主要缺陷类别（七选一），说明取类优先级推理（完整性 > 数据 > 统计 > 一致 > 标注 > 制式）。\n4. check_evidence：预审要素是否足以判定（true/false），false 时列出缺失要素与暂存处置。",
+    "topics": [
+      "图像完整性与处理说明审查",
+      "凝胶图与显微图的拼接痕迹",
+      "统计标注三要素（误差线/显著性/样本量）",
+      "原始数据可获取性分级",
+      "坐标轴与单位标尺标注",
+      "分辨率与格式的制式要求",
+      "图与正文一致性核对",
+      "双缺陷并存时的档位取舍"
+    ],
+    "kev_track": false
+  }
+}

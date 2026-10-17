@@ -1,0 +1,165 @@
+{
+  "_meta": {
+    "purpose": "文献筛选与主题归类（系统综述初筛） —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/sci-literature-classify.yaml"
+  },
+  "name": "sci-literature-classify",
+  "label_zh": "文献归类",
+  "label_en": "Literature Classification",
+  "domain": "系统综述与元分析团队的文献初筛。综述作者把一条检索命中的文献记录（题录、摘要、纳入排除标准要点）交给助手，助手判断研究主题域（primary_topic 六选一）、与综述问题的相关度（relevance 四档）、是否命中排除标准（excluded_reason），以及摘要信息是否足以完成初筛（screening_sufficient）。主题域划分为示例口径，实际以综述方案的 PICO 框架为准，需综述方法学专家复核。",
+  "state": "一条待筛文献的结构化记录：综述问题要点、文献类型（RCT/队列/病例对照/横断面/综述/病例报告）、研究对象描述、干预或暴露因素、结局指标、样本量、研究场景、发表年份、摘要文本（截断时注明）。",
+  "state_example": {
+    "record": "female 综述员 A, 抑郁症数字疗法综述",
+    "context": "第二轮全文筛，方案排除纯药理学干预",
+    "review_question": "数字疗法对成人轻中度抑郁的有效性",
+    "pub_type": "RCT",
+    "population": "18-65 岁门诊抑郁患者",
+    "intervention": "基于 CBT 的手机 APP 干预 8 周",
+    "outcomes": "PHQ-9 评分变化，12 周随访",
+    "sample_size": "214.0 例",
+    "setting": "三级医院门诊",
+    "year": "2023.0",
+    "abstract_note": "摘要完整"
+  },
+  "questions": {
+    "primary_topic": {
+      "type": "choice",
+      "instructions": "该文献的研究主题属于哪个域？",
+      "criteria": {
+        "intervention_efficacy": "干预有效性：疗法/药物/程序的效果评价",
+        "diagnosis_assessment": "诊断与评估：诊断工具、量表与筛查方法",
+        "etiology_risk": "病因与风险：暴露因素、发病机制与风险预测",
+        "prognosis": "预后与结局：疾病转归、复发与生存分析",
+        "health_service": "卫生服务与政策：可及性、卫生经济学与实施科学",
+        "methodology": "方法学研究：测量工具验证、统计方法与研究设计"
+      }
+    },
+    "relevance": {
+      "type": "score",
+      "instructions": "该文献与综述问题的相关度属于哪一档？",
+      "criteria": [
+        "核心相关：PICO 四要素全部匹配，可直接纳入定量合成",
+        "相关：P/I/O 匹配但人群或场景有偏移，定性讨论",
+        "边缘相关：仅单一要素重叠，背景引用",
+        "不相关：主题或人群与综述问题无实质重叠"
+      ]
+    },
+    "excluded_reason": {
+      "type": "noul",
+      "instructions": "该文献是否命中方案的排除标准之一？",
+      "criteria": {
+        "true": "命中排除标准（类型、人群、语言、年份或发表形态任一）",
+        "false": "未命中排除标准，按相关度走纳入流程"
+      }
+    },
+    "screening_sufficient": {
+      "type": "noul",
+      "instructions": "题录与摘要是否提供了初筛所需的全部要素？",
+      "criteria": {
+        "true": "四要素（P/I/O/设计）在摘要中可辨，可直接初筛",
+        "false": "摘要截断或要素缺失，需转全文筛或标注待定"
+      }
+    }
+  },
+  "guidance": "primary_topic 按文献的「主要研究问题」归类而非其下属分析：一篇 RCT 同时报告有效性与卫生经济学，主要研究问题决定归属——标题与主要结局指标是判据；方法学研究（量表验证、统计方法论文）即使应用在某疾病上，归 methodology 而非疾病相关域。relevance 按 PICO 匹配度定档：四要素全匹配是档 0（核心），P/I/O 匹配但人群偏移（如老年扩展到全成人）是档 1，仅单一要素重叠是档 2，无实质重叠是档 3——样本量与期刊档次不进入相关度判定，相关度只看要素匹配。excluded_reason 按方案的排除清单判：综述问题已排除纯药理学干预时，药物 RCT 即使高相关也判排除——排除标准优先于相关度，两者独立提问；「不相关」不等于「被排除」，不相关走 relevance=3，命中排除标准走 excluded_reason=true，可以同时为真。screening_sufficient=false 的典型形态：摘要无结局指标、无对照描述、会议摘要只有结果数字、题录与正文类型不符（题录标 RCT 但摘要像综述）——此时 relevance 仍可按可辨要素给初步档位但必须标注「待全文筛修正」。方法学综述本身（综述的综述）按其方法学主题归 methodology，不因「是综述」而自动排除。",
+  "variety": [
+    "主题域（primary_topic 六选项逐一覆盖）：intervention_efficacy（疗法 RCT）、diagnosis_assessment（量表诊断效能）、etiology_risk（队列暴露分析）、prognosis（生存/复发分析）、health_service（可及性/成本效果）、methodology（测量不变性/统计方法）",
+    "相关度（relevance 四档全覆盖）：0 核心相关（PICO 全匹配）、1 相关（人群偏移/场景偏移）、2 边缘（单要素重叠）、3 不相关（跨主题）",
+    "排除判定（excluded_reason）：类型排除（叙事综述/病例报告）、人群排除（儿童 vs 成人方案）、干预排除（纯药物）、年份/语言排除；排除与不相关可同时为真的样本单独覆盖",
+    "文献类型谱系：RCT、队列、病例对照、横断面、综述、病例报告、会议摘要、方案注册（protocol）——protocol 命中「无结果」排除",
+    "摘要完整度（screening_sufficient）：完整、缺结局指标、缺对照描述、会议摘要仅数字、题录类型与摘要不符、摘要截断",
+    "文本风格：结构化摘要体（Objective/Methods/Results）、期刊非结构化摘要体、PubMed 题录体、中英混排题录",
+    "易错陷阱：主要研究问题决定归属、方法学研究归 methodology、排除标准优先于相关度、不相关与被排除是两件事、样本量不进相关度判定、protocol 无结果命中排除"
+  ],
+  "routing": {
+    "risk": "low",
+    "human_review": true,
+    "evidence_question": "screening_sufficient",
+    "note": "模型输出仅为初筛建议，纳入排除的最终决定由两名综述员独立筛并按分歧解决流程裁决；档 0 与档 3 的初筛结论可加速流程但不跳过双人复核；模型不生成剔除理由的正式文本。"
+  },
+  "smoke_probe": {
+    "state": {
+      "record": "male 综述员 B, 数字疗法综述",
+      "context": "方案排除儿童人群与纯药理学干预",
+      "review_question": "数字疗法对成人轻中度抑郁的有效性",
+      "pub_type": "队列",
+      "population": "10-15 岁社区青少年",
+      "intervention": "学校正念课程（非数字化）",
+      "outcomes": "未在摘要中报告",
+      "sample_size": "380.0 例",
+      "setting": "社区学校",
+      "year": "2022.0",
+      "abstract_note": "摘要缺结局指标"
+    },
+    "questions": [
+      {
+        "qid": "relevance",
+        "type": "score",
+        "instructions": "该文献与综述问题的相关度属于哪一档？"
+      },
+      {
+        "qid": "excluded_reason",
+        "type": "noul",
+        "instructions": "该文献是否命中方案的排除标准？"
+      }
+    ],
+    "expected_label": {
+      "relevance": "3",
+      "excluded_reason": "true"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：primary_topic 六类均衡（每类 ≥13%，methodology 保底 15% 因最易被误归疾病域）；relevance 四档 20/30/35/15；excluded_reason=true 占比 30%；screening_sufficient=false 占比 15%。「排除 vs 不相关」最小对照对（同一文献两种综述方案）单独 10%；「methodology vs 疾病域」对照对单独 8%；protocol 与会议摘要样本单独 6%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 primary_topic 六类中至少五类与 relevance 四档中三档）作为 --examples 输入；few-shot 范例必须保留综述问题与排除标准要点——缺排除标准的范例会教出把排除当不相关；「排除 vs 不相关」对照范例必须成对出现并标注两问独立的推理；methodology 范例需标注「主要研究问题」的归属推理。",
+  "compliance": [
+    "文献题录为公开发表内容，保留题录信息；未发表的手稿与预印本样本只保留结构特征",
+    "输出仅为初筛建议，不构成纳入排除决定，不生成综述正文引用文本",
+    "涉人群敏感特征的样本（HIV、精神疾病等）只保留人群类别标记，摘要原文做脱敏改写",
+    "排除理由仅按方案类别标记，不生成对原作者研究的评价性表述"
+  ],
+  "acceptance": [
+    "primary_topic 六类 macro-F1 ≥0.85，methodology 与疾病域的混淆率 ≤8%（核心失败模式）",
+    "relevance 四档 QWK ≥0.75（有序档位一致性）",
+    "excluded_reason accuracy ≥0.92，excluded_reason 与 relevance 判定的独立性遵守率 ≥0.95（两问独立验收）",
+    "screening_sufficient=false 子集上「待全文筛修正」标注率 =1.0（硬规则验收）",
+    "relevance 判定不受样本量与期刊档次影响（同要素不同样本量的档位一致率 ≥0.95）",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "methodology 被吞并进疾病域 → few-shot 缺少「主要研究问题」归属范例，补充方法学论文成对样本",
+    "排除与不相关混同 → sidecar 未标注两问独立，检查对照对样本的推理标注",
+    "relevance 受样本量漂移 → 检查蒸馏数据是否混入按质量打分的标签，相关度只看 PICO 匹配",
+    "protocol/会议摘要被硬归类 → 「无结果」排除路径失效，检查 sidecar 是否保留文献类型标记",
+    "摘要截断样本被硬筛 → 「待全文筛修正」标注路径失效，检查 screening_sufficient=false 是否保留初步档位"
+  ],
+  "expert_review": [
+    "primary_topic 六分类与综述方案 PICO 编码手册的映射（各综述的主题域划分不同，需方法学专家复核）",
+    "relevance 四档与双人筛选分歧案例库的一致性（档 1/2 边界是分歧高发区）",
+    "排除标准的类别覆盖（类型/人群/干预/年份/语言/发表形态）是否完整",
+    "protocol 与会议摘要的处理口径（PRISMA 流程中的去向）",
+    "题录类型与摘要内容不符时的核查程序"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；文献初筛依赖 PICO 要素的语义匹配，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是系统综述团队的文献初筛助手。基于题录与摘要输出：研究主题域（intervention_efficacy/diagnosis_assessment/etiology_risk/prognosis/health_service/methodology 六选一）、与综述问题的相关度（0-3 档）、是否命中方案排除标准、摘要信息是否足以初筛。归属按主要研究问题判断（方法学研究归 methodology）；相关度只看 PICO 要素匹配度，与样本量和期刊无关；排除标准与相关度独立判定——不相关不等于被排除，被排除也可能高度相关。信息不足时给初步档位并标注「待全文筛修正」。输出为初筛建议，纳入排除由双人独立筛查决定。",
+      "en": "You are a systematic-review title/abstract screening assistant. From a citation and abstract, output: primary topic domain (one of intervention_efficacy/diagnosis_assessment/etiology_risk/prognosis/health_service/methodology), relevance to the review question (0-3), whether the record hits any protocol exclusion criterion, and whether the abstract suffices for screening. Classify by the MAIN research question (methods papers go to methodology); relevance is only PICO matching — sample size and journal tier play no role; exclusions and relevance are independent questions. Mark insufficient abstracts as provisional for full-text screening. Output is screening advice; final inclusion is decided by dual independent review."
+    },
+    "ask_template": "请基于以下文献记录输出初筛判断：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "系统综述的文献题目/摘要初筛",
+      "主题域六分类与 PICO 匹配相关度",
+      "排除标准与相关度的独立判定",
+      "protocol 与会议摘要的处理口径",
+      "信息不足时的待定标注纪律"
+    ],
+    "kev_track": false
+  }
+}

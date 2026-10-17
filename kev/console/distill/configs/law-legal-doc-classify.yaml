@@ -1,0 +1,53 @@
+# law-legal-doc-classify — 生成式 SFT 蒸馏轨（law 领域）
+# spec（system_prompt / ask_template / topics 的唯一来源）: docs/domains/law/specs/law-legal-doc-classify.json
+#
+# teacher: 蚂蚁百灵云端 Open API（OpenAI 兼容）。base_url 与 api_key 从环境变量读，**不要写进本文件**。
+#   $env:KEV_GEN_API_KEY = "..."
+#   $env:KEV_GEN_BASE_URL = "https://<官方 base URL>/v1"
+#
+# 与医疗蒸馏轨（inquiry 等）的差异：本场景无规则引擎（spec.generator.module = null），种子 state 不由
+# gen_*.py 采样，而由 skills/kev-finetune/scripts/generate_data.py --spec <spec 路径> 或控制台采集产出；
+# Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM。
+#
+# 用法: easydistill --config kev/console/distill/configs/law-legal-doc-classify.yaml
+job_type: advanced_instruct_distill
+
+backend:
+  type: openai
+  model: ling-3.0-flash
+  base_url: ${KEV_GEN_BASE_URL}
+  api_key: ${KEV_GEN_API_KEY}
+  temperature: 1.0
+  max_tokens: 2048
+  concurrency: 2
+
+dataset:
+  instruction_key: instruction
+  input_file: data/seeds/law-legal-doc-classify.seed.jsonl
+  output_dir: data/sft/law-legal-doc-classify
+
+system_prompt: >-
+  你是法务台的来文文书分类助手。基于来文文书的关键要素输出：文书类型（complaint/defense/lawyer_letter/regulatory/internal_report/judgment 六选一）、处理时限档（0-3 档）、是否需要执业律师介入、文书要素是否足以分类定档。
+  分类判据是文书的程序角色与落款主体：启动程序的文书与作出裁判的文书区分开；监管问询即便期限较长也至少档 1；期限 ≤3 天档 0、≤7 天档 1、无期限交涉档 2、知悉类档 3；恫吓性表述无期限不抬档；无签章的「法院文书」先核验再归类。
+  信息不足时标记待补充并按档 2 暂存，不得凭核心主张强行归类。输出为分派建议，答辩与上诉由执业律师按期限决定。
+
+pipeline:
+  - stage: instruction_expansion
+    output: data/sft/law-legal-doc-classify/expanded.jsonl
+    params:
+      num_per_seed: 3
+  - stage: generate
+    output: data/sft/law-legal-doc-classify/generated.jsonl
+  - stage: judge
+    output: data/sft/law-legal-doc-classify/judged.jsonl
+    params:
+      dimensions: [correctness, helpfulness, informativeness, generalization]
+      pass_score: 7
+  - stage: filter
+    output: data/sft/law-legal-doc-classify/filtered.jsonl
+    params:
+      require_correctness: true
+  - stage: build_sft
+    output: data/sft/law-legal-doc-classify/law-legal-doc-classify.sft.jsonl
+
+resume: true

@@ -679,10 +679,6 @@ data/console/
 *.db-wal
 *.db-shm
 playground/.next/
-
-# brainstorm 视觉陪练的 mockup 会话产物（本地临时，不入库）
-.superpowers/
-/.tmp-anatomy-libatt/
-/.tmp-anatomy-liion/
-/.tmp-anatomy-mutex/
-/.tmp-spike/
+/.tmp_pytest/
+/.jbeval/
+/.github/

@@ -1,0 +1,246 @@
+{
+  "name": "transfusion-review",
+  "domain": "临床用血管理的输血申请审核。输血科审核技师把一份输血申请要素清单交给助手：血红蛋白、血小板计数、INR、出血活动度评分、配血不相容次数、输血不良反应史次数。阈值为示例口径（以限制性输血策略与《临床输血技术规范》的通行指征为基线），实际以本院输血管理制度与用血委员会要求为准。",
+  "state": "一份输血申请要素清单：科室、申请血液成分（红细胞/血小板/血浆/冷沉淀）、血红蛋白（g/L）、血小板计数（×10⁹/L）、INR、出血活动度评分（0-10）、配血不相容次数（次）、输血不良反应史次数（次）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "case": "female 审核技师 A, 血液科",
+    "context": "化疗后骨髓抑制期，预防性血小板输注申请",
+    "dept": "血液科",
+    "component": "血小板",
+    "indicators": {
+      "血红蛋白": "78.0 g/L",
+      "血小板计数": "18.0 ×10⁹/L",
+      "INR": "1.1",
+      "出血活动度评分": "1.0 分",
+      "配血不相容次数": "0.0 次",
+      "输血不良反应史次数": "0.0 次"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "transfuse_indicated": {
+      "type": "noul",
+      "instructions": "该申请是否达到输血指征（而不是退回补充评估）？",
+      "criteria": {
+        "true": "至少一项指征要素超出输血阈值",
+        "false": "全部要素在阈值内，按限制性策略暂不输血"
+      }
+    },
+    "review_tier": {
+      "type": "score",
+      "instructions": "审核处置应在多长时间内执行？",
+      "criteria": [
+        "立即会诊复核并暂停执行（配血不相容/严重风险）",
+        "24 小时内复核后执行",
+        "常规审核后执行，轻度越界",
+        "未达指征，退回维持监测"
+      ]
+    },
+    "trigger_category": {
+      "type": "choice",
+      "instructions": "触发输血指征的主要要素属于哪一类？",
+      "criteria": {
+        "none": "无（未达指征）",
+        "hemoglobin": "血红蛋白类：低于限制性输血阈值",
+        "platelet": "血小板类：低于预防性输注阈值",
+        "coagulation": "凝血类：INR 超限需先纠正",
+        "bleeding": "出血活动度类：活动性出血超阈值",
+        "crossmatch": "配血类：配血不相容",
+        "reaction": "不良反应史类：既往反应次数超限"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "申请清单是否提供了判定所需的全部要素（指标名、数值、成分）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照指征判定",
+        "false": "缺成分类型、缺数值或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "transfuse_indicated 的唯一判据是任一指征要素超出本表阈值（示例口径，实际以本院输血制度为准，需专家复核）：血红蛋白 <70 g/L 触发、<50 最高档；血小板 <50 触发、<20 最高档；INR ≥1.8 触发、≥3.0 最高档；出血活动度 ≥4 分触发、≥8 分最高档；配血不相容 ≥1 次触发、≥3 次最高档；不良反应史 ≥1 次触发、≥3 次最高档。review_tier 由最快触发的要素决定，等级从 0（暂停执行）到 3（退回监测）：crossmatch 单独即档 0——配血不相容是绝对暂停项，输注不可逆风险最高；reaction ≥2 次升档 1 并要求预处理方案（抗过敏/辐照，context 注明）；platelet <20 单独即档 1（预防性输注窗口）；crossmatch 与 trigger_category 双触发时按 crossmatch 取类——配血安全优先于指征判定。限制性策略口径：血红蛋白 ≥70 且无活动性出血不输，trigger_category 不得凭「可能有用」填写；血小板 ≥50 且无出血、非手术不预防性输注。transfuse_indicated=false 时 review_tier 必须为 3 且 trigger_category 为 none。evidence_sufficient 为 false 时（缺成分、缺单位、缺指标名），transfuse_indicated 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 trigger_category 不得凭猜测填写。",
+  "variety": [
+    "科室与成分：血液科（血小板）、心外科（红细胞）、消化科（血浆）、产科（红细胞+血浆）、肿瘤科（红细胞）、新生儿科（小剂量红细胞）——成分决定各要素的指征语境",
+    "触发类别（trigger_category 七选项逐一覆盖）：hemoglobin（Hb 48/66 g/L）、platelet（PLT 15/42）、coagulation（INR 3.2/2.0）、bleeding（评分 8.5/4.5）、crossmatch（不相容 3/1 次）、reaction（反应史 3/1 次）、none（全部达标）",
+    "处置档（review_tier 四档全覆盖）：0 暂停执行（crossmatch 任一档、出血 ≥8 分 + INR ≥3 并存）、1 24 小时、2 常规执行、3 退回监测（transfuse_indicated=false 时必须为 3）",
+    "组合形态：单要素、双要素同档、多要素跨档、要素互相掩盖（Hb 65 但出血 2 分——低血红蛋白无出血仍触发但档位看最快档）",
+    "限制性策略对照（专门生成）：Hb 72 无出血不输、PLT 55 无出血不预防性输注——贴线不输的对照样本",
+    "贴边未触发对照（transfuse_indicated=false 须专门生成）：Hb 72-78、PLT 52-60、INR 1.5-1.7",
+    "要素完整度（evidence_sufficient）：齐全、缺成分类型、缺单位、缺指标名、多项缺失",
+    "呈现风格：输血申请单体、审核技师批注体、配血报告摘要体、用血委员会评审体",
+    "易错陷阱：配血不相容绝对暂停、Hb ≥70 限制性不输、血小板 50 以下才预防性、INR ≥1.8 先纠正再输、reaction 史要求预处理方案"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为输血申请审核建议，用血决定与医患沟通由主管医师与输血科按制度作出；紧急抢救用血按绿色通道先放行后补审，模型不阻断抢救路径；配血不相容的技术原因排查由配血实验室执行，模型不给出相容性结论。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "male 审核技师 B, 消化科",
+      "context": "肝硬化食管静脉曲张破裂出血，血浆置换申请",
+      "dept": "消化科",
+      "component": "血浆",
+      "indicators": "血红蛋白 82.0 g/L, 血小板计数 88.0 ×10⁹/L, INR 2.4, 出血活动度评分 6.5 分, 配血不相容次数 0.0 次, 输血不良反应史次数 0.0 次",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "review_tier", "type": "score",
+       "instructions": "审核处置应在多长时间内执行？"},
+      {"qid": "trigger_category", "type": "choice",
+       "instructions": "触发输血指征的主要要素属于哪一类？"}
+    ],
+    "expected_label": {"review_tier": "1", "trigger_category": "coagulation"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 达到指征样本（tier 0-2 约 2:2:1），其余为未达指征对照；对照中至少 15% 为贴边未触发样本（Hb 72-78、PLT 52-60、INR 1.5-1.7）。crossmatch 样本单独 7%（各档均有，档 0 为主）；reaction 预处理样本单独 5% 并强制档 1；限制性策略贴线不输对照单独 8%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 review_tier 四档与 trigger_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留 component 字段——缺成分的范例会教出跨成分套用阈值；「Hb 72 不输」与「Hb 66 输」对照范例必须成对出现，训练限制性策略贴线判据；crossmatch 范例需显式写出绝对暂停推理。",
+  "compliance": [
+    "申请样本须去标识：剔除患者姓名、住院号与血型编码，仅保留科室、成分与检验数值",
+    "配血结果只保留不相容次数，不保留抗体谱细节",
+    "输出仅为用血审核建议，不构成输血决策，不生成相容性结论",
+    "涉稀有血型与自体输血的样本按专门通道执行，不在本场景范围"
+  ],
+  "acceptance": [
+    "transfuse_indicated accuracy ≥0.96，误输率（不应输判指征）≤1.5%（误输的不可逆风险高于误退回）",
+    "review_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "trigger_category 七类 macro-F1 ≥0.88",
+    "crossmatch 子集 review_tier=0 比例 =1.0（硬规则验收）",
+    "限制性策略贴线子集 transfuse_indicated=false 比例 ≥0.9",
+    "贴边未触发子集 transfuse_indicated=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: review_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "Hb 72 样本被判输血 → 限制性策略贴线口径未进蒸馏标签，检查对照对样本",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "crossmatch 与其他类并存取类漂移 → rules 分支顺序必须配血优先",
+    "双端字段（Hb/PLT 低侧）样本漏采 → fields.critical 用 low 侧声明，检查窗口方向"
+  ],
+  "expert_review": [
+    "Hb 50/70、PLT 20/50、INR 1.8/3.0 的档位与本院用血委员会制度的对应",
+    "限制性输血策略贴线口径与指南更新的一致性",
+    "配血不相容的处置分级（技术复查 vs 暂停申请）与实验室流程衔接",
+    "reaction 史预处理方案的范围（抗过敏/辐照/洗涤）与输血科能力的对应",
+    "儿科与产科的特殊阈值是否需单列"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "血红蛋白", "unit": "g/L", "decimals": 0, "normal": [71.0, 180.0],
+       "critical": {"low": [[0.0, 70.0]]}, "category": "hemoglobin"},
+      {"name": "血小板计数", "unit": "×10⁹/L", "decimals": 0, "normal": [51.0, 400.0],
+       "critical": {"low": [[0.0, 50.0]]}, "category": "platelet"},
+      {"name": "INR", "unit": "", "decimals": 1, "normal": [0.8, 1.7],
+       "critical": {"high": [[1.8, 8.0]]}, "category": "coagulation"},
+      {"name": "出血活动度评分", "unit": "分", "decimals": 1, "normal": [0.0, 3.0],
+       "critical": {"high": [[4.0, 10.0]]}, "category": "bleeding"},
+      {"name": "配血不相容次数", "unit": "次", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "crossmatch"},
+      {"name": "输血不良反应史次数", "unit": "次", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "reaction"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "血红蛋白": [[0.0, 50.0]],
+        "血小板计数": [[0.0, 20.0]],
+        "INR": [[3.0, 8.0]],
+        "出血活动度评分": [[8.0, 10.0]],
+        "配血不相容次数": [[3.0, 1000000000.0]],
+        "输血不良反应史次数": [[3.0, 1000000000.0]]
+      },
+      "1": {
+        "血红蛋白": [[51.0, 60.0]],
+        "血小板计数": [[21.0, 30.0]],
+        "INR": [[2.3, 2.9]],
+        "出血活动度评分": [[6.0, 7.9]],
+        "配血不相容次数": [[2.0, 2.0]],
+        "输血不良反应史次数": [[2.0, 2.0]]
+      },
+      "2": {
+        "血红蛋白": [[61.0, 70.0]],
+        "血小板计数": [[31.0, 50.0]],
+        "INR": [[1.8, 2.2]],
+        "出血活动度评分": [[4.0, 5.9]],
+        "配血不相容次数": [[1.0, 1.0]],
+        "输血不良反应史次数": [[1.0, 1.0]]
+      }
+    },
+    "contexts": [
+      "化疗后骨髓抑制期，预防性血小板输注申请",
+      "肝硬化食管静脉曲张破裂出血，血浆置换申请",
+      "髋关节置换术前备血，自体回输计划并存",
+      "产后出血抢救后续，红细胞与血浆联合申请",
+      "肿瘤放化疗后贫血，输血前评估",
+      "新生儿科小剂量红细胞申请，体重 2.1 kg",
+      "常规备血复核，全部要素平稳",
+      "抗凝治疗中消化道出血，凝血纠正申请",
+      "无背景说明，仅一项要素贴线",
+      "季度用血点评台账复盘"
+    ],
+    "patients": [
+      "male 审核技师 A, 血液科", "female 审核技师 B, 消化科", "male 审核技师 C, 心外科",
+      "female 审核技师 D, 产科", "male 审核技师 E, 肿瘤科", "female 审核技师 F, 新生儿科",
+      "male 审核技师 G, 骨科", "female 审核技师 H, 急诊科"
+    ],
+    "rules": [
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "transfuse_indicated", "value": true},
+          {"label": "review_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "trigger_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "transfuse_indicated", "value": false},
+          {"label": "review_tier", "value": 3},
+          {"label": "trigger_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "transfuse_indicated",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"hemoglobin": 0.18, "platelet": 0.16, "coagulation": 0.14, "bleeding": 0.16, "crossmatch": 0.16, "reaction": 0.2},
+          "tier_split": {
+            "hemoglobin": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "platelet": [[0, 0.25], [1, 0.4], [2, 0.35]],
+            "coagulation": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "bleeding": [[0, 0.25], [1, 0.4], [2, 0.35]],
+            "crossmatch": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "reaction": [[0, 0.2], [1, 0.4], [2, 0.4]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "血红蛋白": "hemoglobin",
+      "血小板计数": "platelet",
+      "INR": "coagulation",
+      "出血活动度评分": "bleeding",
+      "配血不相容次数": "crossmatch",
+      "输血不良反应史次数": "reaction"
+    }
+  }
+}

@@ -1,0 +1,157 @@
+{
+  "_meta": {
+    "purpose": "医疗器械不良事件的可上报性初判与上报分诊 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/mdr-report.yaml"
+  },
+  "name": "mdr-report",
+  "label_zh": "器械不良事件",
+  "label_en": "Device Adverse Event Triage",
+  "domain": "医疗器械管理部门的不良事件监测哨点。器械管理员把一份事件描述要素单交给助手：器械类别、事件后果、器械状态、使用情形、既往同类报告数、可追溯信息完整度。助手判断是否构成可上报不良事件（reportable）、上报时限档（report_tier 四档）、伤害类别（injury_category 七选一），以及事件要素是否足以判定（reporting_evidence）。口径以《医疗器械不良事件监测和再评价管理办法》的死亡/严重伤害/其他分级与时限为基线，阈值为示例口径，需器械管理人员与临床工程师复核。",
+  "state": "一份器械不良事件要素单：使用科室、器械类别（监护/输注/呼吸/植入物/体外诊断/手术器械等）、事件后果描述（死亡/严重伤害/功能故障/仅功能障碍/未遂事件）、器械状态（正常使用中/超期使用/维护中/已停用）、使用情形（按说明书/超适应使用/操作偏离）、既往同类报告数（件）、可追溯信息完整度（批号/序列号/维护记录齐备程度）。",
+  "state_example": {
+    "desk": "female 器械管理员 A, 医学工程部",
+    "context": "输液泵流速异常，同型号上月已有报告",
+    "dept": "内科病区",
+    "device_class": "输注",
+    "outcome": "功能故障，未造成患者伤害",
+    "device_status": "正常使用中",
+    "usage": "按说明书",
+    "prior_reports": "2.0 件",
+    "traceability": "批号与维护记录齐全"
+  },
+  "questions": {
+    "reportable": {
+      "type": "noul",
+      "instructions": "该事件是否构成可上报的医疗器械不良事件（而不是内部记录即可）？",
+      "criteria": {
+        "true": "存在死亡、严重伤害、功能故障或可能导致伤害的未遂事件",
+        "false": "仅为使用不便或无伤害可能的正常损耗，内部记录即可"
+      }
+    },
+    "report_tier": {
+      "type": "score",
+      "instructions": "上报应在多长时间内完成？",
+      "criteria": [
+        "立即电话预报告并启动调查（死亡/群体事件）",
+        "7 个工作日内完成死亡事件书面上报",
+        "20 个工作日内完成严重伤害上报",
+        "内部评估暂不上报（记录留档）"
+      ]
+    },
+    "injury_category": {
+      "type": "choice",
+      "instructions": "事件的伤害类别属于哪一类？",
+      "criteria": {
+        "none": "无（内部记录）",
+        "death": "死亡：事件与患者死亡相关",
+        "serious_injury": "严重伤害：危及生命、致残、需干预防永久损伤",
+        "dysfunction": "功能故障：器械故障但未造成患者伤害",
+        "near_miss": "未遂事件：未发生伤害但存在可能性",
+        "cluster_signal": "群体信号：同型号聚集报告",
+        "usage_deviation": "使用偏离类：超适应或操作偏离为主因"
+      }
+    },
+    "reporting_evidence": {
+      "type": "noul",
+      "instructions": "事件要素是否提供了判定所需的全部要素（后果、状态、追溯）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照分级口径判定",
+        "false": "缺后果描述、缺器械状态或缺追溯信息，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "reportable 的唯一判据是事件后果落入分级口径（示例口径，需器械管理人员复核）：死亡、严重伤害、功能故障、可能导致伤害的未遂事件均上报；仅使用不便、外观瑕疵且无伤害可能 → 内部记录。report_tier 由后果类别决定：death 或群体事件（同型号 ≥5 件且短期内聚集，context 注明）→ 档 0 立即电话预报告；death 书面上报档 1（7 个工作日口径）；serious_injury → 档 2（20 个工作日口径）；dysfunction 与 near_miss → 档 2 系统上报（与其他以内）；usage_deviation 为主因时先内部调查再定上报，通常档 2 并注明。injury_category 取类优先级：death > serious_injury > cluster_signal > dysfunction > near_miss > usage_deviation——后果严重度优先；dysfunction 与 near_miss 并存按 dysfunction 取（已发生故障是实锤）。cluster_signal 的判定依赖既往同类报告数：同型号 ≥5 件聚集升级档 0，2-4 件在 report_tier 基础上注明关联。reportable=false 时 report_tier 必须为 3 且 injury_category 为 none。reporting_evidence=false 时（缺后果、缺状态、缺追溯），reportable 与 report_tier 不得凭猜测填写，标记待补充并按内部留档暂存。",
+  "variety": [
+    "器械类别与后果谱系：监护（报警失灵）、输注（流速异常）、呼吸（通气中断）、植入物（断裂/移位）、体外诊断（假阴性致漏诊）、手术器械（绝缘层破损）——不同类别的伤害路径不同",
+    "伤害类别（injury_category 七选项逐一覆盖）：death（呼吸机通气中断后死亡）、serious_injury（植入物断裂致二次手术）、dysfunction（输液泵流速异常未伤人）、near_miss（手术器械绝缘破损在术中及时发现）、cluster_signal（同型号输液泵 5 例聚集）、usage_deviation（超适应使用监测仪）、none（外观瑕疵无伤害可能）",
+    "上报档（report_tier 四档全覆盖）：0 立即（死亡/群体）、1 7 日（死亡书面）、2 20 日（严重伤害/故障/未遂）、3 内部留档（reportable=false 必须为 3）",
+    "既往报告数谱系：0 件（首报）、2-4 件（注明关联）、≥5 件聚集（升级档 0）",
+    "追溯完整度对照（专门生成）：批号/维护记录齐全与缺失的对照样本——追溯缺失不影响上报但影响调查时限",
+    "要素完整度（reporting_evidence）：齐全、缺后果描述、缺器械状态、缺追溯信息、多项缺失",
+    "呈现风格：事件要素单体、器械管理员批注体、临床工程师现场记录体、哨点月报体",
+    "易错陷阱：未遂事件也上报、聚集 ≥5 件升档 0、后果严重度优先取类、使用偏离先内部调查、追溯缺失不阻断上报"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "reporting_evidence",
+    "note": "模型输出仅为不良事件分诊建议，上报决定与因果判定由器械管理部门会同临床、工程师作出；患者伤害的因果关系与责任认定不属本场景，转医务与法务通道；群体信号的确证调查由国家监测机构流程承接，模型不发布召回建议。"
+  },
+  "smoke_probe": {
+    "state": {
+      "desk": "male 器械管理员 B, 手术室",
+      "context": "术中发现电刀绝缘层破损，已及时更换未触及患者",
+      "dept": "手术室",
+      "device_class": "手术器械",
+      "outcome": "未遂事件，未造成患者伤害",
+      "device_status": "正常使用中",
+      "usage": "按说明书",
+      "prior_reports": "0.0 件",
+      "traceability": "批号齐全，维护记录缺失"
+    },
+    "questions": [
+      {"qid": "reportable", "type": "noul",
+       "instructions": "该事件是否构成可上报的医疗器械不良事件？"},
+      {"qid": "report_tier", "type": "score",
+       "instructions": "上报应在多长时间内完成？"}
+    ],
+    "expected_label": {"reportable": "true", "report_tier": "2"}
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：injury_category 七类中 none 20%、death 10%、serious_injury 16%、dysfunction 18%、near_miss 14%、cluster_signal 10%、usage_deviation 12%；report_tier 四档 8/12/58/22；reportable=true 78%、false 22%；reporting_evidence=false 占比 15%。聚集 ≥5 件升档 0 的样本单独 6% 并与 2-4 件对照成对；「未遂事件也上报」对照单独 6%；使用偏离先调查样本单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 injury_category 七类中至少五类与 report_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 outcome 与 device_status 字段——缺后果的范例会教出凭器械类别猜测伤害级别；「near_miss 也上报」与「外观瑕疵内部记录」对照范例必须成对出现并标注伤害可能性判据；聚集范例需写出既往报告数与升档 0 的推理。",
+  "compliance": [
+    "事件样本须去标识：剔除患者信息、器械品牌型号编码与厂家名称，仅保留器械大类与事件结构",
+    "死亡与严重伤害描述只保留后果分级，不保留临床细节与影像",
+    "输出仅为监测分诊建议，不构成因果认定，不生成对厂家的定性评价",
+    "涉产品责任纠纷与索赔的样本转医务与法务通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "reportable accuracy ≥0.96，漏报率（应上报判内部）≤1.5%（监测漏报的群体风险高于误报成本）",
+    "report_tier 四档 QWK ≥0.75，death 子集档 ≤1 比例 =1.0（硬规则验收）",
+    "injury_category 七类 macro-F1 ≥0.85，near_miss 误归 none 率 ≤3%（未遂事件口径一致性）",
+    "聚集 ≥5 例子集 report_tier=0 比例 =1.0（升档硬规则验收）",
+    "reporting_evidence=false 子集上不强行判定率 =1.0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "near_miss 被归 none → 「伤害可能性」判据在 sidecar 缺失，检查未遂事件的后果描述完整性",
+    "聚集样本未升档 0 → prior_reports 字段被截断，检查既往报告数保留",
+    "death 被赋档 2 → 「死亡档 ≤1」口径未进蒸馏标签，检查对照样本",
+    "usage_deviation 直接上报 → 「先内部调查」口径缺失，检查标注",
+    "reporting_evidence=false 仍判定 → 违反软标签纪律，检查待补充标注"
+  ],
+  "expert_review": [
+    "严重伤害的边界（致残、需干预防永久损伤）与《办法》口径的对应",
+    "死亡 7 日 / 严重伤害 20 日 / 其他 时限与现行监测系统要求的匹配",
+    "聚集信号阈值（同型号 ≥5 件）与国家监测预警口径的一致性",
+    "使用偏离（超适应、操作偏离）与器械缺陷的因果区分口径",
+    "未遂事件的伤害可能性判定标准（需临床工程师参与复核）"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；可上报性判定依赖事件后果与伤害可能性的语义判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是医疗器械不良事件监测哨点的分诊助手。基于事件要素单输出：是否构成可上报不良事件、上报时限档（0-3 档：立即电话预报告/7 个工作日/20 个工作日/内部留档）、伤害类别（none/death/serious_injury/dysfunction/near_miss/cluster_signal/usage_deviation 七选一）、事件要素是否足以判定。死亡、严重伤害、功能故障、未遂事件均上报；死亡与聚集（同型号 ≥5 件）档 0 立即预报告；严重伤害档 2；后果严重度优先取类（death > serious_injury > cluster > dysfunction > near_miss > usage_deviation）；使用偏离为主因时先内部调查；追溯缺失不阻断上报。信息不足时标记待补充并按内部留档暂存。输出为分诊建议，上报与因果判定由器械管理部门作出。",
+      "en": "You are a device-adverse-event triage assistant at a monitoring sentinel. From an event fact sheet, output: whether the event is reportable, the reporting tier (0-3: immediate phone pre-report / 7 working days / 20 working days / internal log), the injury category (none/death/serious_injury/dysfunction/near_miss/cluster_signal/usage_deviation), and whether the elements suffice. Death, serious injury, malfunction, and near-misses are all reportable; death and clusters (>=5 same-model reports) are tier 0; severity of outcome drives classification order; usage deviation triggers internal investigation first; missing traceability does not block reporting. Mark missing elements and hold in the internal log rather than guessing. Output is triage advice; reporting and causality decisions rest with the device management department."
+    },
+    "ask_template": "请根据以下器械不良事件要素单完成分诊：\n\n事件要素：\n{{ state }}\n\n请逐项输出：\n1. reportable：是否构成可上报不良事件（true/false）。\n2. report_tier：上报时限档（0-3），列明后果分级与时限依据；聚集信号的升档推理。\n3. injury_category：伤害类别（none/death/serious_injury/dysfunction/near_miss/cluster_signal/usage_deviation 七选一），说明取类优先级推理。\n4. reporting_evidence：事件要素是否足以判定（true/false），false 时列出缺失要素与暂存处置。",
+    "topics": [
+      "死亡事件与 7 日书面口径",
+      "严重伤害的边界判定",
+      "功能故障与未遂事件的上报",
+      "同型号聚集信号与升档",
+      "超适应使用与操作偏离的处理",
+      "追溯信息完整度与调查时限",
+      "内部记录与可上报的边界（外观瑕疵/无伤害可能）",
+      "补报与超时报送的时限口径（7 日/20 日书面报告）"
+    ],
+    "kev_track": false
+  }
+}

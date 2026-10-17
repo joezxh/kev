@@ -7,7 +7,7 @@
 - 状态机集中校验：succeeded -> running 这类转移必须被拒
 
 配置持久化（改进 1）：场景 spec 的当前内容存 scenarios.spec_json 列，历史版本存
-scenario_spec_history 表，运行时不再依赖 docs/medical/specs/*.json 本地文件。
+scenario_spec_history 表，运行时不再依赖 docs/domains/medical/specs/*.json 本地文件。
 """
 from __future__ import annotations
 
@@ -24,10 +24,10 @@ from sqlalchemy import text
 
 from . import paths
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 9
 
 # 运行时共享的编排库单例：create_app 启动时写入，stage 模块（data.py 等）借此解析
-# 场景 spec_path。未初始化时返回 None，调用方应回退到 docs/medical/specs 目录。
+# 场景 spec_path。未初始化时返回 None，调用方应回退到 docs/domains/medical/specs 目录。
 _STORE: "Store | None" = None
 
 
@@ -226,6 +226,9 @@ CREATE TABLE IF NOT EXISTS scenario_domains (
   label_zh   TEXT NOT NULL,
   label_en   TEXT NOT NULL,
   sort       INTEGER NOT NULL DEFAULT 0,
+  -- 该域由 docs/domains/<spec_dir>/specs 供数（seed_scenarios 按它认领/新建域行）；
+  -- 空串 = 手工建的域，不参与导入。
+  spec_dir   TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 );
 
@@ -238,6 +241,14 @@ CREATE TABLE IF NOT EXISTS scenarios (
   spec_path  TEXT NOT NULL,
   spec_json  TEXT,
   category   TEXT NOT NULL DEFAULT 'medical',
+  -- 轨制与派生事实（kev/console/scenario_specs.derive_track）：track = rule|distill|both|llm，
+  -- generator_kind = engine（spec.generator 九件套）|script（legacy gen_<场景>.py）|''，
+  -- distill_yaml = 该场景的 EasyDistill 配置（仓库相对路径）或 ''，
+  -- origin = 'domains' 表示行由 docs/domains 的种子导入维护（'' = 手工建）。
+  track           TEXT NOT NULL DEFAULT '',
+  generator_kind  TEXT NOT NULL DEFAULT '',
+  distill_yaml    TEXT NOT NULL DEFAULT '',
+  origin          TEXT NOT NULL DEFAULT '',
   sort       INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -348,6 +359,118 @@ CREATE TABLE IF NOT EXISTS invoices (
   line_items TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS invoices_project_idx ON invoices(project_id, period DESC);
+
+-- 数据策展（Project Hub v7 PR A，设计稿 §4.2-§4.5）：产物版本、冻结快照、
+-- 逐条标注与结论发布。全是新表，fresh 与升级库都由这里的 CREATE IF NOT EXISTS 收敛到同一形状。
+-- artifact_versions —— 产物的不可变版本快照（登记即算 sha256/records）。artifacts 是可变
+-- 指针（D2），故 artifact_id 不建指向 artifacts 的 FK；job_id 记录是哪个作业产出的这一版。
+CREATE TABLE IF NOT EXISTS artifact_versions (
+  id          TEXT PRIMARY KEY,
+  artifact_id TEXT NOT NULL,
+  seq         INTEGER NOT NULL,
+  job_id      TEXT NOT NULL REFERENCES jobs(id),
+  path        TEXT NOT NULL,
+  sha256      TEXT NOT NULL,
+  records     INTEGER,
+  bytes       INTEGER,
+  meta        TEXT NOT NULL DEFAULT '{{}}',
+  spec_sha256 TEXT,
+  created_at  TEXT NOT NULL,
+  UNIQUE (artifact_id, seq)
+);
+CREATE INDEX IF NOT EXISTS artifact_versions_job_idx ON artifact_versions(job_id);
+CREATE INDEX IF NOT EXISTS artifact_versions_artifact_idx ON artifact_versions(artifact_id, seq DESC);
+
+CREATE TABLE IF NOT EXISTS bundles (
+  id                 TEXT PRIMARY KEY,
+  project_id         TEXT NOT NULL REFERENCES projects(id),
+  name               TEXT NOT NULL,
+  artifact_id        TEXT NOT NULL,
+  status             TEXT NOT NULL,
+  sha256             TEXT,
+  records            INTEGER,
+  reviewed_records   INTEGER,
+  reviewed_native    INTEGER,
+  reviewed_inherited INTEGER,
+  review_ratio       {real},
+  freeze_checks      TEXT NOT NULL DEFAULT '[]',
+  manifest_path      TEXT,
+  manifest_sha256    TEXT,
+  frozen_at          TEXT,
+  note               TEXT NOT NULL DEFAULT '',
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL,
+  UNIQUE (project_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS bundle_members (
+  bundle_id       TEXT NOT NULL REFERENCES bundles(id),
+  version_id      TEXT NOT NULL REFERENCES artifact_versions(id),
+  op              TEXT NOT NULL,
+  ord             INTEGER NOT NULL,
+  records_in      INTEGER,
+  records_kept    INTEGER,
+  records_dropped INTEGER,
+  drop_reasons    TEXT NOT NULL DEFAULT '{{}}',
+  PRIMARY KEY (bundle_id, version_id)
+);
+CREATE INDEX IF NOT EXISTS bundle_members_ord_idx ON bundle_members(bundle_id, ord);
+
+-- record_reviews —— 逐条标注。origin_project_id 有意不建 FK：删项目时按 D13 只把它清成 ''
+-- （「来源已删」）而保留标注行（作用域是场景，供下一轮继承），FK 会阻止这次改写；这与
+-- jobs.project_id 的 '' legacy 哨兵同理（D14）。
+CREATE TABLE IF NOT EXISTS record_reviews (
+  id                TEXT PRIMARY KEY,
+  scenario          TEXT NOT NULL,
+  origin_project_id TEXT NOT NULL DEFAULT '',
+  fingerprint       TEXT NOT NULL,
+  record_id         TEXT,
+  verdict           TEXT NOT NULL,
+  patch             TEXT,
+  fingerprint_after TEXT,
+  labels            TEXT NOT NULL DEFAULT '[]',
+  note              TEXT NOT NULL DEFAULT '',
+  reviewer          TEXT NOT NULL DEFAULT '',
+  source_version_id TEXT REFERENCES artifact_versions(id),
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL,
+  UNIQUE (scenario, fingerprint)
+);
+CREATE INDEX IF NOT EXISTS record_reviews_scenario_idx ON record_reviews(scenario, fingerprint);
+CREATE INDEX IF NOT EXISTS record_reviews_project_idx ON record_reviews(origin_project_id);
+
+-- 覆盖前归档（同 scenario_spec_history 的写法，限流在 PR D 的 record_review 里做）。
+CREATE TABLE IF NOT EXISTS record_review_history (
+  id         TEXT PRIMARY KEY,
+  review_id  TEXT NOT NULL REFERENCES record_reviews(id),
+  verdict    TEXT NOT NULL,
+  patch      TEXT,
+  labels     TEXT NOT NULL DEFAULT '[]',
+  note       TEXT NOT NULL DEFAULT '',
+  reviewer   TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS review_history_review_idx ON record_review_history(review_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS project_releases (
+  id                   TEXT PRIMARY KEY,
+  project_id           TEXT NOT NULL REFERENCES projects(id),
+  name                 TEXT NOT NULL,
+  bundle_id            TEXT REFERENCES bundles(id),
+  bundle_sha256        TEXT,
+  train_job_id         TEXT REFERENCES jobs(id),
+  run_artifact         TEXT,
+  eval_artifact        TEXT,
+  comparison_artifact  TEXT,
+  regression_artifact  TEXT,
+  calibration_artifact TEXT,
+  metrics              TEXT NOT NULL DEFAULT '{{}}',
+  gates_snapshot       TEXT NOT NULL DEFAULT '[]',
+  verdict              TEXT NOT NULL DEFAULT 'candidate',
+  note                 TEXT NOT NULL DEFAULT '',
+  created_at           TEXT NOT NULL,
+  UNIQUE (project_id, name)
+);
 """
 
 
@@ -452,7 +575,8 @@ def _job(row) -> dict:
 class Store:
     """每线程一个连接。WAL 让读不阻塞写，事件轮询与日志落库可以并发。"""
 
-    def __init__(self, db_path: "Path | str | None" = None, *, url: "sa.URL | str | None" = None):
+    def __init__(self, db_path: "Path | str | None" = None, *, url: "sa.URL | str | None" = None,
+                 seed: bool = True):
         if url is None:
             if db_path is not None:
                 # 单测直传路径：固定走 sqlite
@@ -467,9 +591,11 @@ class Store:
         self._in_tx = False
         self._init_schema()
         self._migrate()
-        # 幂等播种：把 run_matrix 已知的医疗场景落库（INSERT OR IGNORE 按 slug 去重，
+        # 幂等播种：把 docs/domains 五个领域的全量 spec 登记为域 + 场景（按 slug INSERT OR IGNORE，
         # 不覆盖用户后续编辑）。建库即播种，保证 fresh DB 也能开箱即用。
-        self.seed_scenarios()
+        # seed=False 跳过（scripts/import_domain_specs.py 自己按 --force/--domain 决定何时播种）。
+        if seed:
+            self.seed_scenarios()
         # 幂等播种：作业类型「提交表单」参数 schema（来自 kev/console/stage_params.py）。
         # 只在缺失时写入，用户经 API 改过的 schema 不会被覆盖；建库即播种，开箱即用。
         self.seed_stage_params()
@@ -579,6 +705,17 @@ class Store:
             {"t": table}).mappings().fetchall()
         return any(r["column_name"] == column for r in rows)
 
+    def _table_exists(self, table: str) -> bool:
+        if self.backend == "sqlite":
+            row = self._conn().execute(
+                text("SELECT 1 FROM sqlite_master WHERE type='table' AND name=:t"),
+                {"t": table}).fetchone()
+            return row is not None
+        row = self._conn().execute(
+            text("SELECT 1 FROM information_schema.tables WHERE table_name=:t"),
+            {"t": table}).fetchone()
+        return row is not None
+
     def _migrate(self) -> None:
         """一次性、幂等迁移（旧 sqlite 库：补 spec_json 列 + 回填 spec 内容）。"""
         version = self.schema_version()
@@ -622,6 +759,23 @@ class Store:
                 if not self._column_exists("projects", column):
                     with self.engine.begin() as conn:
                         conn.execute(text(f"ALTER TABLE projects ADD COLUMN {column} {ddl_type}"))
+        # v8: 跨领域 spec 登记 —— scenario_domains.spec_dir（域由哪个 docs/domains 目录供数）+
+        # scenarios 的 track / generator_kind / distill_yaml / origin（轨制派生与导入来源）。
+        # 旧库逐列幂等 ALTER；新库由 _ddl 自带。补完后按 docs/domains 重新播种（见 __init__ 顺序）。
+        if version < 8:
+            for table, column in (("scenario_domains", "spec_dir"),
+                                  ("scenarios", "track"),
+                                  ("scenarios", "generator_kind"),
+                                  ("scenarios", "distill_yaml"),
+                                  ("scenarios", "origin")):
+                if not self._column_exists(table, column):
+                    with self.engine.begin() as conn:
+                        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"))
+            self._backfill_domain_dirs()
+        # v9: 数据策展新表（artifact_versions / bundles / bundle_members /
+        # record_reviews / record_review_history / project_releases）——全是新表，无列可 ALTER，
+        # 由 _init_schema 的 CREATE TABLE IF NOT EXISTS 建出（fresh 与升级库同一形状），
+        # 这里只声明版本边界；postgres 存量库的升级走 deploy/console/migration_project_hub_v9.postgres.sql。
         if version < SCHEMA_VERSION:
             with self.engine.begin() as conn:
                 conn.execute(
@@ -631,10 +785,15 @@ class Store:
 
     # ---- jobs -------------------------------------------------------------
 
-    def create_job(self, *, kind, stage, scenario, title, request, argv, env_overlay,
+    def create_job(self, *, project_id, kind, stage, scenario, title, request, argv, env_overlay,
                    cwd, log_path, artifacts_in, artifacts_out, parent_id=None,
                    attempt=1, daemon_id=None, template_id=None) -> str:
-        """attempt 是「第几次尝试」：重试（换名续跑）时由调用方递增，jobs 表据此区分
+        """每个作业归属一个项目（D14）：project_id 是强制的关键字参数，无默认值。
+
+        缺参数 → TypeError（签名没有默认值）；传空/None → ValueError（空串是具名 legacy
+        哨兵，不是一个项目，调用方不能靠传空来满足「归属某个项目」）。
+
+        attempt 是「第几次尝试」：重试（换名续跑）时由调用方递增，jobs 表据此区分
         首次执行与重试。parent_id 指向被重试的那个作业。
 
         daemon_id：仅 distill_daemon 阶段填，由 stages/data.py::_distill_daemon
@@ -643,13 +802,15 @@ class Store:
 
         template_id：作业若由某个命名模板发起，记录其 id 以便追溯（可空）。
         """
+        if not project_id:
+            raise ValueError("project_id 必填")
         job_id = uuid.uuid4().hex
         self._conn().execute(
-            text("INSERT INTO jobs (id, kind, stage, scenario, title, status, request, argv, env_overlay, cwd,"
+            text("INSERT INTO jobs (id, project_id, kind, stage, scenario, title, status, request, argv, env_overlay, cwd,"
                  " log_path, artifacts_in, artifacts_out, parent_id, attempt, daemon_id, template_id, created_at)"
-                 " VALUES (:id,:kind,:stage,:scenario,:title,'pending',:request,:argv,:env_overlay,:cwd,"
+                 " VALUES (:id,:project_id,:kind,:stage,:scenario,:title,'pending',:request,:argv,:env_overlay,:cwd,"
                  " :log_path,:artifacts_in,:artifacts_out,:parent_id,:attempt,:daemon_id,:template_id,:created_at)"),
-            dict(id=job_id, kind=kind, stage=stage, scenario=scenario, title=title,
+            dict(id=job_id, project_id=project_id, kind=kind, stage=stage, scenario=scenario, title=title,
                  request=_dumps(request), argv=_dumps(argv), env_overlay=_dumps(env_overlay),
                  cwd=str(cwd), log_path=str(log_path), artifacts_in=_dumps(artifacts_in),
                  artifacts_out=_dumps(artifacts_out), parent_id=parent_id, attempt=int(attempt),
@@ -661,17 +822,27 @@ class Store:
         row = self._conn().execute(text("SELECT * FROM jobs WHERE id = :id"), {"id": job_id}).mappings().fetchone()
         return _job(row) if row else None
 
-    def list_jobs(self, *, status=None, stage=None, scenario=None, limit=200) -> list[dict]:
+    def list_jobs(self, *, status=None, stage=None, scenario=None, project=None, limit=200) -> list[dict]:
         clauses, params = [], {}
         for column, value in (("status", status), ("stage", stage), ("scenario", scenario)):
             if value is not None:
                 clauses.append(f"{column} = :{column}")
                 params[column] = value
+        # project=legacy 落在空哨兵 '' 上；具体项目 id 只返回归属它的作业，
+        # legacy 行永远不出现在某个具体项目的列表里（Review Focus：legacy invisibility）。
+        if project is not None:
+            clauses.append("project_id = :project")
+            params["project"] = "" if project == "legacy" else project
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        params["limit"] = limit
+        # limit=None 取全部（项目汇总要跨全部作业统计阶段/产物）；sqlite/postgres 都不接受
+        # 把 NULL 绑进 LIMIT，所以无上限时干脆不写 LIMIT 子句。
+        tail = ""
+        if limit is not None:
+            params["limit"] = limit
+            tail = " LIMIT :limit"
         # Postgres 没有 SQLite 的 rowid 伪列；jobs 表有 id 主键，用它做二级排序（确定性）。
         rows = self._conn().execute(
-            text(f"SELECT * FROM jobs{where} ORDER BY created_at DESC, id DESC LIMIT :limit"), params
+            text(f"SELECT * FROM jobs{where} ORDER BY created_at DESC, id DESC{tail}"), params
         ).mappings().fetchall()
         return [_job(row) for row in rows]
 
@@ -1106,47 +1277,136 @@ class Store:
 
     # ---- scenario domains & scenarios ------------------------------------
 
-    def seed_scenarios(self) -> None:
-        """幂等播种：把 run_matrix 已知的医疗场景落库。
+    SEED_ORIGIN = "domains"
 
-        INSERT OR IGNORE / ON CONFLICT 按 slug 去重，所以重复初始化不会插脏数据，也不会覆盖用户
-        后续对标签/ spec_path 的编辑。spec 内容（spec_json）由 _backfill_specs 在库内补全，
-        使空库自包含、运行时不再强制要求 docs/medical/specs/*.json 存在。
+    def seed_scenarios(self, force: bool = False,
+                       only_domains: "tuple[str, ...] | None" = None) -> dict:
+        """幂等播种：把 docs/domains 五个领域的全量 spec 登记进 scenario_domains / scenarios。
+
+        领域清单、中英标签、轨制派生、spec 内容都来自 kev/console.scenario_specs（它直接读
+        docs/domains/<领域>/specs/*.json 与 kev/console/distill/configs、generators/gen_*.py），
+        不再依赖 run_matrix.SCENARIOS——那份清单只含旧 docs/medical 的 10 个医疗场景。
+
+        - 域：按 spec_dir 认领既有行（旧库里手工建的同义 slug 由 LEGACY_DOMAIN_SLUGS 认领），
+          认领后把空的 spec_dir 补上；没有才新建，所以用户改过的域名/排序不会被动。
+        - 场景：按 slug 去重。新行整行写入；既有行只刷新派生列（track / generator_kind /
+          distill_yaml）与种子行的 spec_path，**不动**用户改过的中英文标签、sort、category、spec_json。
+        - spec_json：为空时写入文件内容；force=True 且内容变了才经 write_spec_file 覆盖（旧内容进历史）。
+        - only_domains：只处理这些领域 slug（按领域分批导入时用），默认全量。
+
+        返回统计（domains_created / scenarios_created / scenarios_updated / specs_written），
+        供 scripts/import_domain_specs.py 汇报。
         """
-        paths.ensure_generators_on_path()
-        from run_matrix import SCENARIOS as _RM_SCENARIOS
-        labels = {
-            "critical-value": ("危急值", "Critical Value"),
-            "diagnosis": ("诊断", "Diagnosis"),
-            "icd-coding": ("ICD 编码", "ICD Coding"),
-            "medication-review": ("用药审查", "Medication Review"),
-            "nursing-quality": ("护理质量", "Nursing Quality"),
-            "record-summary": ("病历摘要", "Record Summary"),
-            "triage": ("分诊", "Triage"),
-        }
+        from . import scenario_specs
+        entries = scenario_specs.entries()
+        domain_rows = list(scenario_specs.domains())
+        if only_domains:
+            wanted = set(only_domains)
+            entries = [e for e in entries if e.domain.slug in wanted]
+            domain_rows = [d for d in domain_rows if d.slug in wanted]
         now = _now()
+        stats = {"domains_created": 0, "scenarios_created": 0,
+                 "scenarios_updated": 0, "specs_written": 0}
         with self.tx() as conn:
-            conn.execute(
-                self._upsert_ignore_sql(
-                    "scenario_domains",
-                    ["id", "slug", "label_zh", "label_en", "sort", "created_at"],
-                    ["slug"]),
-                dict(id="medical", slug="medical", label_zh="医疗", label_en="Medical",
-                     sort=0, created_at=now),
-            )
-            for idx, name in enumerate(_RM_SCENARIOS):
-                zh, en = labels.get(name, (name, name))
-                conn.execute(
-                    self._upsert_ignore_sql(
-                        "scenarios",
-                        ["id", "domain_id", "slug", "label_zh", "label_en", "spec_path",
-                         "category", "sort", "created_at", "updated_at"],
-                        ["slug"]),
-                    dict(id=uuid.uuid4().hex, domain_id="medical", slug=name, zh=zh, en=en,
-                         label_zh=zh, label_en=en, spec_path=f"docs/medical/specs/{name}.json",
-                         category="medical", sort=idx, created_at=now, updated_at=now),
-                )
-        self._backfill_specs()
+            domains = [dict(r) for r in conn.execute(
+                text("SELECT id, slug, spec_dir FROM scenario_domains")).mappings().fetchall()]
+
+            def find_domain(spec_dir: str) -> dict | None:
+                aliases = scenario_specs.LEGACY_DOMAIN_SLUGS.get(spec_dir, ())
+                for row in domains:
+                    if row["spec_dir"] == spec_dir or row["slug"] == spec_dir or row["slug"] in aliases:
+                        return row
+                return None
+
+            domain_ids: dict[str, str] = {}
+            for domain in domain_rows:
+                row = find_domain(domain.spec_dir)
+                if row is None:
+                    domain_id = uuid.uuid4().hex
+                    conn.execute(
+                        text("INSERT INTO scenario_domains (id, slug, label_zh, label_en, sort, spec_dir, created_at)"
+                             " VALUES (:id,:slug,:label_zh,:label_en,:sort,:spec_dir,:created_at)"),
+                        dict(id=domain_id, slug=domain.slug, label_zh=domain.label_zh,
+                             label_en=domain.label_en, sort=domain.sort,
+                             spec_dir=domain.spec_dir, created_at=now))
+                    row = {"id": domain_id, "slug": domain.slug, "spec_dir": domain.spec_dir}
+                    domains.append(row)
+                    stats["domains_created"] += 1
+                elif not row["spec_dir"]:
+                    conn.execute(text("UPDATE scenario_domains SET spec_dir=:d WHERE id=:id"),
+                                 {"d": domain.spec_dir, "id": row["id"]})
+                    row["spec_dir"] = domain.spec_dir
+                domain_ids[domain.slug] = row["id"]
+
+            for entry in entries:
+                row = conn.execute(text("SELECT * FROM scenarios WHERE slug=:s"),
+                                   {"s": entry.slug}).mappings().fetchone()
+                if row is None:
+                    conn.execute(
+                        self._upsert_ignore_sql(
+                            "scenarios",
+                            ["id", "domain_id", "slug", "label_zh", "label_en", "spec_path", "spec_json",
+                             "category", "sort", "track", "generator_kind", "distill_yaml", "origin",
+                             "created_at", "updated_at"],
+                            ["slug"]),
+                        dict(id=uuid.uuid4().hex, domain_id=domain_ids[entry.domain.slug],
+                             slug=entry.slug, label_zh=entry.label_zh, label_en=entry.label_en,
+                             spec_path=entry.spec_path, spec_json=entry.content,
+                             category=entry.domain.slug, sort=entry.sort, track=entry.track,
+                             generator_kind=entry.generator_kind, distill_yaml=entry.distill_yaml,
+                             origin=self.SEED_ORIGIN, created_at=now, updated_at=now))
+                    stats["scenarios_created"] += 1
+                    stats["specs_written"] += 1
+                    continue
+                row = dict(row)
+                sets = ["track=:track", "generator_kind=:generator_kind",
+                        "distill_yaml=:distill_yaml", "updated_at=:updated_at"]
+                params = dict(track=entry.track, generator_kind=entry.generator_kind,
+                              distill_yaml=entry.distill_yaml, updated_at=now, id=row["id"])
+                # 旧库的种子行（origin 还是空但 spec_path 已指向 docs/domains）认领导入来源，
+                # 之后 spec_path 跟着目录走；用户手工建的行（spec_path 在别处）不碰。
+                seeded = row.get("origin") == self.SEED_ORIGIN or (
+                    not row.get("origin") and str(row.get("spec_path") or "").startswith("docs/domains/"))
+                if seeded:
+                    if not row.get("origin"):
+                        sets.append("origin=:origin")
+                        params["origin"] = self.SEED_ORIGIN
+                    if row.get("spec_path") != entry.spec_path:
+                        sets.append("spec_path=:spec_path")
+                        params["spec_path"] = entry.spec_path
+                if not row.get("spec_json") and entry.content:
+                    sets.append("spec_json=:spec_json")
+                    params["spec_json"] = entry.content
+                    stats["specs_written"] += 1
+                conn.execute(text(f"UPDATE scenarios SET {', '.join(sets)} WHERE id=:id"), params)
+                stats["scenarios_updated"] += 1
+
+        if force:
+            # --force 是「以文件为准重新导入」：内容变了才写，write_spec_file 会把覆盖前的库内
+            # 内容归档进 scenario_spec_history（保留最近 SPEC_HISTORY_LIMIT 版）。
+            for entry in entries:
+                row = self.get_scenario_by_slug(entry.slug)
+                if row is not None and row.get("spec_json") != entry.content:
+                    self.write_spec_file(entry.slug, entry.content)
+                    stats["specs_written"] += 1
+        return stats
+
+    def _backfill_domain_dirs(self) -> None:
+        """给旧库的域行补 spec_dir：slug 与目录同名直接用，命中别名的按别名认领，手工建的留空。"""
+        from . import scenario_specs
+        by_slug = {d.slug: d.spec_dir for d in scenario_specs.domains()}
+        aliases = {slug: spec_dir for spec_dir, names in scenario_specs.LEGACY_DOMAIN_SLUGS.items()
+                   for slug in names}
+        rows = self._conn().execute(
+            text("SELECT id, slug, spec_dir FROM scenario_domains")).mappings().fetchall()
+        for row in rows:
+            if row["spec_dir"]:
+                continue
+            target = by_slug.get(row["slug"]) or aliases.get(row["slug"]) or ""
+            if target:
+                self._conn().execute(
+                    text("UPDATE scenario_domains SET spec_dir=:d WHERE id=:id"),
+                    {"d": target, "id": row["id"]})
 
     # ---- stage param specs ------------------------------------------------
 
@@ -1281,23 +1541,22 @@ class Store:
         return cur.rowcount == 1
 
     def _backfill_specs(self) -> None:
-        """把 docs/medical/specs/*.json 的本地内容回填进 scenarios.spec_json（仅填空行）。
+        """把 docs/domains 下各 spec 文件内容回填进 spec_json 为空的行（只填空，不覆盖库内已编辑的）。
 
-        空库经此即自包含；旧库（迁移路径）也借由此把文件内容搬进 DB。文件缺失的行保持
-        spec_json 为 NULL（运行时回退到文件，不影响启动）。
+        空库经此即自包含；v<4 的旧库（迁移路径）也借由此把文件内容搬进 DB。库里没有对应文件的
+        slug（手工建的场景）保持 spec_json 为 NULL（运行时回退到 spec_path 文件，不影响启动）。
         """
-        paths.ensure_generators_on_path()
-        from run_matrix import SCENARIOS as _RM_SCENARIOS
-        for name in _RM_SCENARIOS:
-            row = self.get_scenario_by_slug(name)
-            if row is None or row.get("spec_json"):
+        from . import scenario_specs
+        contents = {e.slug: e.content for e in scenario_specs.entries()}
+        rows = self._conn().execute(
+            text("SELECT id, slug, spec_json FROM scenarios")).mappings().fetchall()
+        for row in rows:
+            content = contents.get(row["slug"])
+            if content is None or row["spec_json"]:
                 continue
-            spec_file = paths.SPECS / f"{name}.json"
-            if spec_file.is_file():
-                self._conn().execute(
-                    text("UPDATE scenarios SET spec_json=:s, updated_at=:t WHERE id=:id"),
-                    dict(s=spec_file.read_text(encoding="utf-8"), t=_now(), id=row["id"]),
-                )
+            self._conn().execute(
+                text("UPDATE scenarios SET spec_json=:s, updated_at=:t WHERE id=:id"),
+                dict(s=content, t=_now(), id=row["id"]))
 
     def list_scenario_slugs(self) -> list[str]:
         rows = self._conn().execute(
@@ -1321,14 +1580,19 @@ class Store:
                 "id": s["id"], "slug": s["slug"], "label": s[label],
                 "label_zh": s["label_zh"], "label_en": s["label_en"],
                 "spec_path": s.get("spec_path"), "spec_json": s.get("spec_json"),
-                "category": s["category"], "sort": s["sort"], "exists": file_exists})
+                "category": s["category"], "sort": s["sort"], "exists": file_exists,
+                # 轨制派生列（scenario_specs.derive_track）：前端场景表据此显示「规则生成 / 蒸馏 / 双轨」
+                # 并决定该场景能不能跑 generate（engine/script）或蒸馏（distill_yaml 非空）。
+                "track": s.get("track"), "generator_kind": s.get("generator_kind"),
+                "distill_yaml": s.get("distill_yaml"), "origin": s.get("origin")})
         tree = []
         for d in domains:
             d = dict(d)
             tree.append({
                 "id": d["id"], "slug": d["slug"], "label": d[label],
                 "label_zh": d["label_zh"], "label_en": d["label_en"],
-                "sort": d["sort"], "scenarios": by_domain.get(d["id"], [])})
+                "sort": d["sort"], "spec_dir": d.get("spec_dir"),
+                "scenarios": by_domain.get(d["id"], [])})
         return tree
 
     def get_scenario_by_slug(self, slug: str) -> dict | None:
@@ -1361,7 +1625,7 @@ class Store:
         """返回可供生成器（generate_data.py / plan_size.py）直接按路径读取的 spec 文件。
 
         优先用 DB 的 spec_json 物化到 data/console/specs/<slug>.json（运行时投影，不依赖仓库内
-        原始文件）；DB 为空时回退到仓库内 docs/medical/specs/<slug>.json；都没有返回 None。
+        原始文件）；DB 为空时回退到仓库内 docs/domains/medical/specs/<slug>.json；都没有返回 None。
         """
         row = self.get_scenario_by_slug(slug)
         if row is None:
@@ -1383,16 +1647,16 @@ class Store:
 
     # ---- domain CRUD ------------------------------------------------------
 
-    def create_domain(self, *, slug, label_zh, label_en, sort=0) -> str:
+    def create_domain(self, *, slug, label_zh, label_en, sort=0, spec_dir="") -> str:
         domain_id = uuid.uuid4().hex
         self._conn().execute(
-            text("INSERT INTO scenario_domains (id, slug, label_zh, label_en, sort, created_at)"
-                 " VALUES (:id,:slug,:label_zh,:label_en,:sort,:created_at)"),
+            text("INSERT INTO scenario_domains (id, slug, label_zh, label_en, sort, spec_dir, created_at)"
+                 " VALUES (:id,:slug,:label_zh,:label_en,:sort,:spec_dir,:created_at)"),
             dict(id=domain_id, slug=slug, label_zh=label_zh, label_en=label_en,
-                 sort=int(sort), created_at=_now()))
+                 sort=int(sort), spec_dir=spec_dir or "", created_at=_now()))
         return domain_id
 
-    def update_domain(self, domain_id, *, label_zh=None, label_en=None, sort=None) -> bool:
+    def update_domain(self, domain_id, *, label_zh=None, label_en=None, sort=None, spec_dir=None) -> bool:
         fields, params = {}, {}
         if label_zh is not None:
             fields["label_zh"] = ":label_zh"; params["label_zh"] = label_zh
@@ -1400,6 +1664,9 @@ class Store:
             fields["label_en"] = ":label_en"; params["label_en"] = label_en
         if sort is not None:
             fields["sort"] = ":sort"; params["sort"] = int(sort)
+        # spec_dir 与 slug 一样是唯一键（导入按它认领域行）：同域场景只能属于一个目录。
+        if spec_dir is not None:
+            fields["spec_dir"] = ":spec_dir"; params["spec_dir"] = spec_dir
         if not fields:
             return True
         params["domain_id"] = domain_id
@@ -1419,21 +1686,27 @@ class Store:
     # ---- scenario CRUD ----------------------------------------------------
 
     def create_scenario(self, *, domain_id, slug, label_zh, label_en, spec_path,
-                        category="medical", sort=0) -> str:
+                        category="medical", sort=0, track="", generator_kind="",
+                        distill_yaml="", origin="") -> str:
         scenario_id = uuid.uuid4().hex
         now = _now()
         self._conn().execute(
             text("INSERT INTO scenarios (id, domain_id, slug, label_zh, label_en, spec_path,"
-                 " spec_json, category, sort, created_at, updated_at)"
+                 " spec_json, category, sort, track, generator_kind, distill_yaml, origin,"
+                 " created_at, updated_at)"
                  " VALUES (:id,:domain_id,:slug,:label_zh,:label_en,:spec_path,"
-                 " :spec_json,:category,:sort,:created_at,:updated_at)"),
+                 " :spec_json,:category,:sort,:track,:generator_kind,:distill_yaml,:origin,"
+                 " :created_at,:updated_at)"),
             dict(id=scenario_id, domain_id=domain_id, slug=slug, label_zh=label_zh,
                  label_en=label_en, spec_path=spec_path, spec_json=None, category=category,
-                 sort=int(sort), created_at=now, updated_at=now))
+                 sort=int(sort), track=track or "", generator_kind=generator_kind or "",
+                 distill_yaml=distill_yaml or "", origin=origin or "",
+                 created_at=now, updated_at=now))
         return scenario_id
 
     def update_scenario(self, scenario_id, *, domain_id=None, label_zh=None, label_en=None,
-                        spec_path=None, category=None, sort=None) -> bool:
+                        spec_path=None, category=None, sort=None, track=None,
+                        generator_kind=None, distill_yaml=None) -> bool:
         fields, params = {}, {}
         if domain_id is not None:
             fields["domain_id"] = ":domain_id"; params["domain_id"] = domain_id
@@ -1447,6 +1720,13 @@ class Store:
             fields["category"] = ":category"; params["category"] = category
         if sort is not None:
             fields["sort"] = ":sort"; params["sort"] = int(sort)
+        # 轨制三列通常是导入派生的（seed_scenarios 每次重算），但手工场景可以在这儿直接标。
+        if track is not None:
+            fields["track"] = ":track"; params["track"] = track
+        if generator_kind is not None:
+            fields["generator_kind"] = ":generator_kind"; params["generator_kind"] = generator_kind
+        if distill_yaml is not None:
+            fields["distill_yaml"] = ":distill_yaml"; params["distill_yaml"] = distill_yaml
         if not fields:
             return True
         fields["updated_at"] = ":updated_at"; params["updated_at"] = _now()
@@ -1580,30 +1860,129 @@ class Store:
             {"id": project_id}).mappings().fetchone()
         return dict(row) if row else None
 
-    def create_project(self, slug: str, name: str, description: str = "") -> str:
-        """slug 重复时抛出 sa.exc.IntegrityError，由路由转成 409。"""
+    def project_events(self, project_id: str, *, after_id: int = 0, limit: int = 200) -> list[dict]:
+        """跨作业的项目事件流（D10）：events 本身无 project 列，经 jobs.project_id 归属。
+
+        游标语义与 read_events 一致（events.id 全局自增，跨作业天然按时间排序）。
+        """
+        rows = self._conn().execute(
+            text("SELECT events.* FROM events JOIN jobs ON events.job_id = jobs.id"
+                 " WHERE jobs.project_id = :p AND events.id > :after_id"
+                 " ORDER BY events.id LIMIT :limit"),
+            dict(p=project_id, after_id=after_id, limit=limit),
+        ).mappings().fetchall()
+        return [dict(row) for row in rows]
+
+    def list_project_artifacts(self, project_id: str) -> list[dict]:
+        """项目全部作业的 artifacts_in + artifacts_out 去重后逐个解析（D2：
+        归属走 jobs.project_id，不给 artifacts 加 project_id 列）；解不到的丢弃。"""
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for job in self.list_jobs(project=project_id, limit=None):
+            for aid in (job["artifacts_in"] + job["artifacts_out"]):
+                if aid not in seen:
+                    seen.add(aid)
+                    ordered.append(aid)
+        out = []
+        for aid in ordered:
+            art = self.get_artifact(aid)
+            if art:
+                out.append(art)
+        return out
+
+    def project_summary(self, project_id: str) -> dict | None:
+        """get_project 行 + 计数/阶段/最近事件；保留所有原始列，旧调用方照读 slug/name。"""
+        project = self.get_project(project_id)
+        if project is None:
+            return None
+        jobs = self.list_jobs(project=project_id, limit=None)  # created_at DESC
+        stages: dict[str, str] = {}
+        for job in jobs:            # 首次命中即该阶段最新的作业
+            stages.setdefault(job["stage"], job["status"])
+        artifacts = self.list_project_artifacts(project_id)
+        summary = dict(project)
+        summary["jobs"] = len(jobs)
+        summary["artifacts"] = len(artifacts)
+        summary["recent_events"] = self.project_events(project_id, limit=200)[-5:]
+        summary["stages"] = stages
+        return summary
+
+    def create_project(self, slug: str, name: str, description: str = "",
+                       scenario: str = "", status: str = "active", goal: str = "",
+                       freeze_min_records: int = 300,
+                       freeze_min_review_ratio: float = 0.10) -> str:
+        """slug 重复时抛出 sa.exc.IntegrityError，由路由转成 409。
+
+        一个项目 = 一个场景的一轮（D1）；scenario 列为空串时代表尚未绑场景的
+        遗留项目，POST /projects 路由会在进入这里之前拦下空/未知场景。
+        """
         project_id = uuid.uuid4().hex
         now = _now()
         self._conn().execute(
-            text("INSERT INTO projects (id, slug, name, description, created_at, updated_at)"
-                 " VALUES (:id,:slug,:name,:desc,:created,:updated)"),
+            text("INSERT INTO projects (id, slug, name, description, status, scenario, goal,"
+                 " freeze_min_records, freeze_min_review_ratio, created_at, updated_at)"
+                 " VALUES (:id,:slug,:name,:desc,:status,:scenario,:goal,:fmr,:fmrr,:created,:updated)"),
             dict(id=project_id, slug=slug, name=name, desc=description or "",
+                 status=status or "active", scenario=scenario or "", goal=goal or "",
+                 fmr=int(freeze_min_records), fmrr=float(freeze_min_review_ratio),
                  created=now, updated=now))
         return project_id
 
-    def update_project(self, project_id: str, name=None, slug=None, description=None):
-        if self.get_project(project_id) is None:
+    def scenario_known(self, slug: str) -> bool:
+        """场景 slug 是否存在于 scenarios 表（scenarios 按 slug 唯一键）。"""
+        row = self._conn().execute(
+            text("SELECT 1 FROM scenarios WHERE slug = :slug"), {"slug": slug}).fetchone()
+        return row is not None
+
+    def _project_has_rows(self, project_id: str) -> bool:
+        """项目下是否已有任何 job 或 bundle（D9 守卫：有则 slug 不可改）。"""
+        row = self._conn().execute(
+            text("SELECT 1 FROM jobs WHERE project_id=:pid"
+                 " UNION SELECT 1 FROM bundles WHERE project_id=:pid LIMIT 1"),
+            {"pid": project_id}).fetchone()
+        return row is not None
+
+    def update_project(self, project_id: str, name=None, slug=None, description=None,
+                       scenario=None, status=None, goal=None, archived_at=None,
+                       freeze_min_records=None, freeze_min_review_ratio=None):
+        current = self.get_project(project_id)
+        if current is None:
             return None
         sets, params = [], {"id": project_id}
         if name is not None:
             sets.append("name=:name")
             params["name"] = name
         if slug is not None:
+            # D9：项目已有 job/bundle 时拒改 slug（bundle 路径里带 slug，改了就把
+            # 已登记的 path 指向不存在的目录，integrity 全体 missing）。传当前值不算改。
+            # 延迟 import 避开 db → stages 包的循环导入（stages/__init__ 会 import 回 db）。
+            if slug != current["slug"] and self._project_has_rows(project_id):
+                from .stages.base import Conflict
+                raise Conflict("项目已有数据，slug 不可改",
+                               hint="slug 是产物路径的一段，改名会让已登记的版本集体指向空目录")
             sets.append("slug=:slug")
             params["slug"] = slug
         if description is not None:
             sets.append("description=:desc")
             params["desc"] = description
+        if scenario is not None:
+            sets.append("scenario=:scenario")
+            params["scenario"] = scenario
+        if status is not None:
+            sets.append("status=:status")
+            params["status"] = status
+        if goal is not None:
+            sets.append("goal=:goal")
+            params["goal"] = goal
+        if archived_at is not None:
+            sets.append("archived_at=:archived_at")
+            params["archived_at"] = archived_at
+        if freeze_min_records is not None:
+            sets.append("freeze_min_records=:fmr")
+            params["fmr"] = int(freeze_min_records)
+        if freeze_min_review_ratio is not None:
+            sets.append("freeze_min_review_ratio=:fmrr")
+            params["fmrr"] = float(freeze_min_review_ratio)
         if not sets:
             return self.get_project(project_id)
         sets.append("updated_at=:ts")
@@ -1614,13 +1993,27 @@ class Store:
 
     def delete_project(self, project_id: str) -> bool:
         # 手工级联：建表时没用 ON DELETE CASCADE，且 sqlite 的外键不一定启用，
-        # 依赖数据库级联会在部分环境留下孤儿行。
-        for table in ("project_members", "project_quota", "webhooks", "invoices"):
-            self._conn().execute(
-                text(f"DELETE FROM {table} WHERE project_id=:pid"), dict(pid=project_id))
-        result = self._conn().execute(
-            text("DELETE FROM projects WHERE id=:id"), {"id": project_id})
-        return bool(result.rowcount)
+        # 依赖数据库级联会在部分环境留下孤儿行。整个级联包在一个事务里，中途失败不留半成品。
+        # 顺序：先把 record_reviews 的来源清成 ''（D13：保留标注行，作用域是场景），再删随项目走的
+        # bundles 系（bundle_members → project_releases → bundles），然后既有四表，最后 projects。
+        # artifact_versions 不删（版本是产物侧证据，D3：删项目不清空产物历史）。
+        with self.tx() as conn:
+            conn.execute(
+                text("UPDATE record_reviews SET origin_project_id='' WHERE origin_project_id=:pid"),
+                dict(pid=project_id))
+            conn.execute(
+                text("DELETE FROM bundle_members WHERE bundle_id IN"
+                     " (SELECT id FROM bundles WHERE project_id=:pid)"), dict(pid=project_id))
+            conn.execute(
+                text("DELETE FROM project_releases WHERE project_id=:pid"), dict(pid=project_id))
+            conn.execute(
+                text("DELETE FROM bundles WHERE project_id=:pid"), dict(pid=project_id))
+            for table in ("project_members", "project_quota", "webhooks", "invoices"):
+                conn.execute(
+                    text(f"DELETE FROM {table} WHERE project_id=:pid"), dict(pid=project_id))
+            result = conn.execute(
+                text("DELETE FROM projects WHERE id=:id"), {"id": project_id})
+            return bool(result.rowcount)
 
     # ---- members ----
 

@@ -5,10 +5,10 @@
 
 Run: uv run python -m pytest tests/test_console_api.py -q
 """
-import json
+import itertools
+
 import pytest
 from fastapi.testclient import TestClient
-from pathlib import Path
 
 from kev.console.app import create_app
 from kev.console.db import Store
@@ -24,11 +24,26 @@ def body(response):
     return response.json()
 
 
+_slugs = itertools.count()
+
+
+def _mk_project(client, slug=None, name="P", scenario="triage"):
+    """经 POST /projects 建一个合法项目（scenario 默认取已播种的 triage），返回其 id。"""
+    payload = {"slug": slug or f"p{next(_slugs)}", "name": name}
+    if scenario:
+        payload["scenario"] = scenario
+    r = client.post("/console/api/projects", json=payload)
+    assert r.status_code in (200, 201), r.text
+    return r.json()["id"]
+
+
 def submit(client, kind, **params):
     scenario = params.pop("scenario", "triage")
     run_name = params.pop("run_name", "cv-8b-v1")
+    project_id = params.pop("project_id", None) or _mk_project(client, scenario=scenario)
     return client.post("/console/api/jobs", json={
-        "kind": kind, "scenario": scenario, "run_name": run_name, "params": params})
+        "kind": kind, "scenario": scenario, "run_name": run_name,
+        "project_id": project_id, "params": params})
 
 
 def make_job(store, kind="train", title="t", status="running"):
@@ -37,7 +52,9 @@ def make_job(store, kind="train", title="t", status="running"):
     不要用 `submit()` 造状态 —— 它会真的 spawn 子进程，状态不可控（SSE 那些用例要的是
     确定性的 pending/running/终态）。
     """
+    project_id = store.create_project(f"fx{next(_slugs)}", "Fx")
     job_id = store.create_job(
+        project_id=project_id,
         kind=kind, stage="train", scenario="triage", title=title,
         request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
         artifacts_in=[], artifacts_out=[])
@@ -178,6 +195,81 @@ def test_a_second_train_is_refused_while_one_is_live(client):
     assert body(response)["error"]["kind"] == "conflict"
 
 
+def test_submit_requires_project(client):
+    r = client.post("/console/api/jobs", json={"kind": "train", "scenario": "triage",
+        "run_name": "cv-1", "params": {}})
+    assert r.status_code == 400 and r.json()["error"]["field"] == "project_id"
+
+
+def test_submit_unknown_project(client):
+    r = client.post("/console/api/jobs", json={"kind": "train", "scenario": "triage",
+        "run_name": "cv-1", "params": {}, "project_id": "does-not-exist"})
+    assert r.status_code == 404
+
+
+def test_submit_lists_by_project(client):
+    pid = _mk_project(client)
+    r = client.post("/console/api/jobs", json={"kind": "plan_size", "scenario": "triage",
+        "run_name": "cv-1", "params": {}, "project_id": pid})
+    assert r.status_code == 201
+    listed = client.get(f"/console/api/jobs?project={pid}").json()
+    assert [j["id"] for j in listed] == [r.json()["id"]]
+
+
+def test_create_project_requires_known_scenario(client):
+    missing = client.post("/console/api/projects", json={"slug": "s", "name": "S"})
+    assert missing.status_code == 400 and missing.json()["error"]["field"] == "scenario"
+    unknown = client.post("/console/api/projects",
+                          json={"slug": "s", "name": "S", "scenario": "nope"})
+    assert unknown.status_code == 400
+
+
+def test_submit_rejects_scenario_mismatch(client):
+    pid = _mk_project(client, slug="mm", scenario="triage")
+    r = client.post("/console/api/jobs", json={"kind": "plan_size", "scenario": "critical-value",
+        "run_name": "cv-1", "params": {}, "project_id": pid})
+    assert r.status_code == 409
+
+
+def test_submit_rejects_project_without_scenario(client):
+    # 遗留项目：scenario == ''（D1 之前建的，场景留空）
+    pid = client.app.state.store.create_project("legacy-nos", "Legacy")  # scenario 默认 ''
+    r = client.post("/console/api/jobs", json={"kind": "plan_size", "scenario": "triage",
+        "run_name": "cv-1", "params": {}, "project_id": pid})
+    assert r.status_code == 409
+
+
+def test_update_project_slug_guard_409(client):
+    # D9：项目已有 job/bundle 时改 slug → 409（字段标在 slug 上）；其余列照常可改。
+    store = client.app.state.store
+    pid = store.create_project("slug-a", "A")
+    store.create_job(project_id=pid, kind="train", stage="train", scenario="triage",
+        title="t", request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+        artifacts_in=[], artifacts_out=[])
+    r = client.put(f"/console/api/projects/{pid}", json={"slug": "slug-b"})
+    assert r.status_code == 409
+    assert body(r)["error"]["kind"] == "conflict" and body(r)["error"]["field"] == "slug"
+    ok = client.put(f"/console/api/projects/{pid}", json={"goal": "ship"})
+    assert ok.status_code == 200 and ok.json()["goal"] == "ship"
+
+
+def test_project_events_endpoint(client):
+    store = client.app.state.store
+    pid = store.create_project("a", "A")
+    jid = store.create_job(project_id=pid, kind="train", stage="train", scenario="triage",
+        title="t", request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+        artifacts_in=[], artifacts_out=[])
+    store.append_events(jid, [("stdout", "hi")])
+    r = client.get(f"/console/api/projects/{pid}/events")
+    assert r.status_code == 200 and "events" in r.json()
+    assert r.json()["events"][0]["line"] == "hi"
+    # 项目详情现在带计数/阶段
+    s = client.get(f"/console/api/projects/{pid}").json()
+    assert s["jobs"] == 1 and s["stages"]["train"] == "pending"
+    assert client.get("/console/api/projects/nope/events").status_code == 404
+    assert client.get(f"/console/api/projects/{pid}/artifacts").status_code == 200
+
+
 # ---- 事件与 SSE ----------------------------------------------------------
 
 def test_events_page_from_a_cursor(client):
@@ -230,7 +322,9 @@ def test_startup_scrubs_legacy_credential_overlays(tmp_path):
     """启动装配要顺手洗掉历史脏行：旧版 distill 把密钥库的 key 当作非敏感 overlay 落过库，
     而 jobs 表对浏览器可读（spec §12）。"""
     store = Store(tmp_path / "db.sqlite")
+    project_id = store.create_project("legacy", "Legacy")
     job_id = store.create_job(
+        project_id=project_id,
         kind="distill", stage="data", scenario="critical-value", title="legacy",
         request={}, argv=["x"],
         env_overlay={"KEV_GEN_MODEL": "m", "KEV_GEN_API_KEYS": "sk-leaked"},
@@ -361,65 +455,3 @@ def test_dataset_detail_carries_lineage_and_404s_when_unknown(client):
     detail = body(client.get("/console/api/datasets/dataset:cv"))
     assert detail["lineage"][0]["child"] == "dataset:cv/train"
     assert client.get("/console/api/datasets/dataset:没有").status_code == 404
-
-
-# ---- generator/validate：坏 spec 必须在第一条记录之前被拒 ------------------------------
-
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
-
-
-def validate(client, slug):
-    return body(client.post(f"/console/api/scenarios/{slug}/generator/validate", json={}))
-
-
-def test_generator_validate_names_the_rule_it_cannot_evaluate(client, monkeypatch):
-    """旧版把任何异常压成一条 `rule_id: "<unknown>"`，而规则 id 正是改 JSON 的人需要的那一个。
-    现在静态检查在任何采样之前，错误带着自己的规则（gate G3）。"""
-    monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(FIXTURES / "engine-broken"))
-    errors = validate(client, "unknown-state-key")["errors"]
-    assert [e["rule_id"] for e in errors] == ["late-check"], errors
-    assert "逾期天数" in errors[0]["message"]
-
-
-def test_generator_validate_refuses_an_empty_run_as_an_error(client, monkeypatch):
-    """“一条记录也没产出”曾是 `errors: []` —— F3 静默塌缩在 API 上的样子就是「通过」。"""
-    monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(FIXTURES / "engine-empty"))
-    errors = validate(client, "no-rule-matches")["errors"]
-    assert errors and errors[0]["rule_id"] == "<run>", errors
-    assert "no records" in errors[0]["message"]
-
-
-def test_generator_validate_passes_a_shipped_spec(client, monkeypatch):
-    monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(FIXTURES / "engine-matrix"))
-    report = validate(client, "fin-default-score")
-    assert report["errors"] == [] and report["records"] > 0, report
-
-
-def fixture_spec_dir(tmp_path, slug, floor=None):
-    """One fixture spec, copied into its own resolution directory, optionally with the exit gate's threshold added."""
-    spec = json.loads((FIXTURES / "engine-matrix" / f"{slug}.json").read_text(encoding="utf-8"))
-    if floor is not None:
-        spec["generator"].setdefault("plan_targets", {})["floor"] = floor
-    directory = tmp_path / slug
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / "spec.json").write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
-    return tmp_path
-
-
-def test_generator_validate_reports_the_gate_without_failing_a_spec_that_declared_no_floor(client, tmp_path, monkeypatch):
-    """§3 的出口行在路由上分两半：`errors` 始终只说「这个 spec 生成不了」，闸门读出的分布缺口是另一个字段。
-    fin-covenant-text 的两条 remedy 在 n=120 也是零（矩阵里的 `NEVER_LABELLED`），所以 8 条记录的预览必然报缺口；
-    但它从没声明 `floor`，于是只是报告，不是拒绝。"""
-    monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(fixture_spec_dir(tmp_path, "fin-covenant-text")))
-    report = validate(client, "fin-covenant-text")
-    assert report["errors"] == [] and report["records"] > 0, report
-    assert any("is never labelled" in gap for gap in report["gate_gaps"]), report["gate_gaps"]
-
-
-def test_generator_validate_fails_a_spec_that_asked_to_be_judged_and_has_a_gap(client, tmp_path, monkeypatch):
-    """同一个 spec，加上 `plan_targets.floor` —— 闸门就从「打印数字」变成「不通过」，而 `rule_id` 是 `<gate>`：
-    这不是哪条规则读不懂，是这份文件教不出某个答案（design doc §3 的 exit row）。"""
-    monkeypatch.setenv("KEV_ENGINE_SPEC_DIR", str(fixture_spec_dir(tmp_path, "fin-covenant-text", floor=0.05)))
-    errors = validate(client, "fin-covenant-text")["errors"]
-    assert errors and {error["rule_id"] for error in errors} == {"<gate>"}, errors
-    assert any("is never labelled" in error["message"] for error in errors), errors

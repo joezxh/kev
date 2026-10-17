@@ -42,7 +42,7 @@ def test_plan_size_declares_a_plan_artifact():
 
 def test_parse_plan_size_reads_a_noisy_job_log():
     log = "\n".join([
-        "+ python plan_size.py docs/medical/specs/critical-value.json --json",
+        "+ python plan_size.py docs/domains/medical/specs/critical-value.json --json",
         '{"total_records": 787, "records": {"train": 551}}',
         "some trailing executor line",
     ])

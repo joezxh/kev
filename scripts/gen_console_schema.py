@@ -1,44 +1,38 @@
 #!/usr/bin/env python3
 """生成 kev console 的两套初始化 SQL（sqlite / postgresql）。
 
-单一数据源：从这里产出 ``deploy/console/schema.sqlite.sql`` 与
-``deploy/console/schema.postgres.sql``，含完整建表 DDL + 初始数据
-（scenario_domains、scenarios 含 spec 内容、console_meta 版本）。
+两个单一数据源：
+- 建表 DDL 来自 `kev/console/db.py::_ddl`（含 console_meta 的 schema_version）。
+- 领域与场景清单来自 `kev/console/scenario_specs.py`，即 docs/domains/<领域>/specs/*.json 的
+  登记结果（中英标签、轨制派生、EasyDistill 配置路径都在那里派生，本脚本不复制任何清单）。
 
-与 ``kev/console/db.py`` 的 ``_ddl`` 保持结构一致：改了 db.py 的表结构应重跑本脚本
-（``uv run python scripts/gen_console_schema.py``）重新生成，避免两份 DDL 漂移。
+产出 `deploy/console/schema.sqlite.sql` 与 `deploy/console/schema.postgres.sql`。
+
+spec 内容（scenarios.spec_json）**不在这里内联**：61 份 spec 约 780 KB，每次改 spec 都得重生成
+两个大文件、diff 也没法看。initdb 之后控制台首次启动（`Store.seed_scenarios`）会补上为空的
+spec_json；只想建库不启动服务时，跑 `uv run python scripts/import_domain_specs.py` 显式导入。
+运行时读不到 spec_json 的路径本来就回退到 spec_path 文件，所以空着也不影响启动。
+
+改了 db.py 的表结构或 docs/domains 的清单应重跑本脚本
+（`uv run python scripts/gen_console_schema.py`），避免两份 DDL 漂移。
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kev.console.db import _ddl  # noqa: E402
+from kev.console import db as console_db          # noqa: E402
+from kev.console import scenario_specs            # noqa: E402
 
-SPECS = ROOT / "docs/medical/specs"
 SEED_TS = "2026-01-01T00:00:00+00:00"
-SCENARIOS = (
-    "critical-value", "diagnosis", "icd-coding", "medication-review",
-    "nursing-quality", "record-summary", "triage",
-)
-LABELS = {
-    "critical-value": ("危急值", "Critical Value"),
-    "diagnosis": ("诊断", "Diagnosis"),
-    "icd-coding": ("ICD 编码", "ICD Coding"),
-    "medication-review": ("用药审查", "Medication Review"),
-    "nursing-quality": ("护理质量", "Nursing Quality"),
-    "record-summary": ("病历摘要", "Record Summary"),
-    "triage": ("分诊", "Triage"),
-}
 
 
 def _sql_str(value: str) -> str:
-    """SQL 单引号字符串字面量：内部单引号翻倍（JSON 用双引号，内部单引号仅见于文本值）。"""
-    return "'" + value.replace("'", "''") + "'"
+    """SQL 单引号字符串字面量：内部单引号翻倍。"""
+    return "'" + str(value).replace("'", "''") + "'"
 
 
 def _seed_insert(backend: str, table: str, columns: list[str],
@@ -53,47 +47,53 @@ def _seed_insert(backend: str, table: str, columns: list[str],
 
 
 def _seed(backend: str) -> str:
-    lines = ["-- ---- 初始数据 ----"]
-    # console_meta 版本
+    entries = scenario_specs.entries()
+    lines = ["-- ---- 初始数据（领域与场景登记；spec 内容由 scripts/import_domain_specs.py 或"
+             "控制台启动时的 seed_scenarios 落库）----"]
     lines.append(_seed_insert(
         backend, "console_meta", ["key", "value"],
-        [_sql_str("schema_version"), _sql_str("4")], "key"))
-    # scenario_domains
-    lines.append(_seed_insert(
-        backend, "scenario_domains",
-        ["id", "slug", "label_zh", "label_en", "sort", "created_at"],
-        [_sql_str("medical"), _sql_str("medical"), _sql_str("医疗"), _sql_str("Medical"),
-         "0", _sql_str(SEED_TS)], "slug"))
-    # scenarios（含 spec 内容）
-    for idx, slug in enumerate(SCENARIOS):
-        zh, en = LABELS.get(slug, (slug, slug))
-        spec_file = SPECS / f"{slug}.json"
-        spec_json = spec_file.read_text(encoding="utf-8") if spec_file.is_file() else "{}"
-        spec_path = f"docs/medical/specs/{slug}.json"
+        [_sql_str("schema_version"), _sql_str(console_db.SCHEMA_VERSION)], "key"))
+    for domain in scenario_specs.domains():
+        lines.append(_seed_insert(
+            backend, "scenario_domains",
+            ["id", "slug", "label_zh", "label_en", "sort", "spec_dir", "created_at"],
+            [_sql_str(domain.slug), _sql_str(domain.slug), _sql_str(domain.label_zh),
+             _sql_str(domain.label_en), str(domain.sort), _sql_str(domain.spec_dir),
+             _sql_str(SEED_TS)], "slug"))
+    for entry in entries:
         lines.append(_seed_insert(
             backend, "scenarios",
-            ["id", "domain_id", "slug", "label_zh", "label_en", "spec_path",
-             "spec_json", "category", "sort", "created_at", "updated_at"],
-            [_sql_str(slug), _sql_str("medical"), _sql_str(slug), _sql_str(zh), _sql_str(en),
-             _sql_str(spec_path), _sql_str(spec_json), _sql_str("medical"), str(idx),
-             _sql_str(SEED_TS), _sql_str(SEED_TS)], "slug"))
+            ["id", "domain_id", "slug", "label_zh", "label_en", "spec_path", "category", "sort",
+             "track", "generator_kind", "distill_yaml", "origin", "created_at", "updated_at"],
+            [_sql_str(entry.slug), _sql_str(entry.domain.slug), _sql_str(entry.slug),
+             _sql_str(entry.label_zh), _sql_str(entry.label_en), _sql_str(entry.spec_path),
+             _sql_str(entry.domain.slug), str(entry.sort), _sql_str(entry.track),
+             _sql_str(entry.generator_kind), _sql_str(entry.distill_yaml),
+             _sql_str(console_db.Store.SEED_ORIGIN), _sql_str(SEED_TS), _sql_str(SEED_TS)],
+            "slug"))
     return "\n".join(lines)
 
 
 def generate(backend: str) -> str:
-    return _ddl(backend).strip() + "\n\n" + _seed(backend).strip() + "\n"
+    return console_db._ddl(backend).strip() + "\n\n" + _seed(backend).strip() + "\n"
 
 
-def main() -> None:
+def main() -> int:
+    problems = scenario_specs.audit()
+    for problem in problems:
+        print("PROBLEM:", problem, file=sys.stderr)
+    if problems:
+        print("docs/domains 与 README 不一致，先修清单再生成 SQL（详见 --help）", file=sys.stderr)
+        return 1
+    entries = scenario_specs.entries()
     out_dir = ROOT / "deploy" / "console"
     out_dir.mkdir(parents=True, exist_ok=True)
-    sqlite_path = out_dir / "schema.sqlite.sql"
-    postgres_path = out_dir / "schema.postgres.sql"
-    sqlite_path.write_text(generate("sqlite"), encoding="utf-8")
-    postgres_path.write_text(generate("postgres"), encoding="utf-8")
-    print(f"wrote {sqlite_path}")
-    print(f"wrote {postgres_path}")
+    for backend, name in (("sqlite", "schema.sqlite.sql"), ("postgres", "schema.postgres.sql")):
+        target = out_dir / name
+        target.write_text(generate(backend), encoding="utf-8")
+        print(f"wrote {target}（{len(scenario_specs.domains())} 领域 / {len(entries)} 场景）")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

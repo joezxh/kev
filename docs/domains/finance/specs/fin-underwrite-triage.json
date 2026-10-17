@@ -1,0 +1,244 @@
+{
+  "name": "fin-underwrite-triage",
+  "domain": "保险核保部门的投保件分诊。核保员把一份投保件核保要素单交给助手：BMI、健康告知异常项数、职业风险等级、保额年收入比、既往拒保延期记录数、体检复查逾期天数。阈值为示例口径（以人身险核保的通行风险维度为基线），实际以本机构核保手册与再保要求为准。",
+  "state": "一份投保件核保要素单：险种（重疾险/定期寿险/医疗险/储蓄险/团体险）、BMI（kg/m²）、健康告知异常项数（项）、职业风险等级（1-5 级）、保额年收入比（倍）、既往拒保延期记录数（次）、体检复查逾期天数（天）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "case": "female 核保员 A, 重疾险核保",
+    "context": "高净值客户大额保单，超过免体检额度",
+    "insurance_type": "重疾险",
+    "indicators": {
+      "BMI": "23.4 kg/m²",
+      "健康告知异常项数": "1.0 项",
+      "职业风险等级": "2.0 级",
+      "保额年收入比": "14.0 倍",
+      "既往拒保延期记录数": "0.0 次",
+      "体检复查逾期天数": "5.0 天"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "underwrite_flag": {
+      "type": "noul",
+      "instructions": "该投保件是否需要进入人工核保（而不是标准体自动承保）？",
+      "criteria": {
+        "true": "至少一项要素超出核保阈值",
+        "false": "全部要素在阈值内，标准体自动承保"
+      }
+    },
+    "decision_tier": {
+      "type": "score",
+      "instructions": "核保处置应在什么层级与时限完成？",
+      "criteria": [
+        "转资深核保师并要求补充体检/财务资料（高风险逆选择）",
+        "进入人工核保队列，三个工作日内完成",
+        "简易核保，系统复核后通过",
+        "标准体自动承保"
+      ]
+    },
+    "risk_category": {
+      "type": "choice",
+      "instructions": "触发核保的主要风险属于哪一类？",
+      "criteria": {
+        "none": "无（标准体）",
+        "bmi": "体况类：BMI 超限",
+        "disclosure": "告知类：健康告知异常",
+        "occupation": "职业类：职业风险等级超限",
+        "coverage_ratio": "财务类：保额与收入比例超限",
+        "prior_decline": "记录类：既往拒保或延期记录",
+        "exam_overdue": "时效类：体检复查逾期"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "核保要素单是否提供了判定所需的全部要素（险种、告知明细、保额基准）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照阈值判定",
+        "false": "缺告知明细、缺保额基准或缺险种，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "underwrite_flag 的唯一判据是任一要素超出本表阈值（示例口径，实际以本机构核保手册为准，需专家复核）：BMI ≥26 触发、≥32 最高档；告知异常 ≥1 项触发、≥3 项最高档；职业风险 ≥3 级触发、5 级最高档；保额收入比 ≥6 倍触发、≥15 倍最高档；拒保延期 ≥1 次触发、≥3 次最高档；复查逾期 ≥15 天触发、≥90 天最高档。decision_tier 由最快触发的风险决定，等级从 0（资深核保）到 3（自动承保）：coverage_ratio ≥15 与 disclosure ≥2 并存时升档 0——高保额与多项告知异常并现是典型逆选择组合；occupation 5 级单独即档 0——高危职业直接转资深核保；prior_decline 与其他类并存按 prior_decline 取——拒保史优先于体况类；BMI 单独触发通常档 2，伴随告知异常升档 1；exam_overdue 单独触发档 2（可补检后再判）。risk_category 取最快档中的风险类别。underwrite_flag=false 时 decision_tier 必须为 3 且 risk_category 为 none。evidence_sufficient 为 false 时（缺告知明细、缺保额基准、缺险种），underwrite_flag 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 risk_category 不得凭猜测填写。",
+  "variety": [
+    "险种与告知谱系：重疾（结节/血压）、定寿（职业/家族史）、医疗（住院史）、储蓄险（财务核保为主）——不同险种的核保重心不同",
+    "风险类别（risk_category 七选项逐一覆盖）：bmi（32.5/26.5）、disclosure（3 项/1 项）、occupation（5 级/3 级）、coverage_ratio（18 倍/6.5 倍）、prior_decline（3 次/1 次）、exam_overdue（120 天/16 天）、none（全部达标）",
+    "处置档（decision_tier 四档全覆盖）：0 资深核保（保额比 ≥15+告知 ≥2 并存、职业 5 级）、1 人工核保、2 简易核保、3 自动承保（underwrite_flag=false 时必须为 3）",
+    "组合形态：单风险、双风险同档、多风险跨档、风险互相掩盖（BMI 达标但告知多项——按最快档判）",
+    "免体检额度对照（专门生成）：额度内标准投保与超额度财务核保的对照——额度线不算风险触发",
+    "贴边未触发对照（underwrite_flag=false 须专门生成）：BMI 25-25.9、告知 0 项、保额比 5-5.9 倍",
+    "要素完整度（evidence_sufficient）：齐全、缺告知明细、缺险种、缺保额基准、多项缺失",
+    "呈现风格：核保要素单导出体、核保员批注体、再保险核保纪要体、体检报告摘要体",
+    "易错陷阱：保额比+告知多项升档 0、职业 5 级直接档 0、拒保史优先取类、体检逾期可补档 2、BMI 单看无告知意义有限"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为核保分诊建议，承保、加费与拒保决定由核保负责人按核保手册作出；健康告知的真实性核查与两年不可抗辩条款的适用不属本场景，转合规通道；涉再保分保与渠道纠纷的样本不在本场景范围。"
+  },
+  "smoke_probe": {
+    "state": {
+      "case": "male 核保员 B, 定期寿险核保",
+      "context": "健康告知两项异常，保额超过免体检额度",
+      "insurance_type": "定期寿险",
+      "indicators": "BMI 27.5 kg/m², 健康告知异常项数 2.0 项, 职业风险等级 2.0 级, 保额年收入比 12.0 倍, 既往拒保延期记录数 0.0 次, 体检复查逾期天数 5.0 天",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "decision_tier", "type": "score",
+       "instructions": "核保处置应在什么层级与时限完成？"},
+      {"qid": "risk_category", "type": "choice",
+       "instructions": "触发核保的主要风险属于哪一类？"}
+    ],
+    "expected_label": {"decision_tier": "1", "risk_category": "disclosure"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触发核保样本（tier 0-2 约 2:2:1），其余为标准体对照；对照中至少 15% 为贴边未触发样本（BMI 25-25.9、告知 0 项、保额比 5-5.9 倍）。coverage_ratio ≥15+disclosure ≥2 并存样本单独 6% 并强制档 0；prior_decline 样本单独 7%（各档均有）；免体检额度对照单独 5%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 decision_tier 四档与 risk_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留险种与免体检额度基准——缺险种的范例会教出跨险种套用保额比阈值；「保额比+告知多项升档 0」并存范例必须与单一触发成对出现；prior_decline 范例需写出「拒保史优先」的取类推理。",
+  "compliance": [
+    "核保样本须去标识：剔除投保人姓名、证件号与保额绝对值，仅保留比例与档位",
+    "健康告知异常只保留项目数与类别大类，不保留具体病史叙述",
+    "输出仅为核保分诊建议，承保决定由核保负责人作出，不构成核保结论",
+    "涉再保分保与渠道纠纷的样本转再保与渠道管理通道，不在本场景范围"
+  ],
+  "acceptance": [
+    "underwrite_flag accuracy ≥0.96，漏报率（应人工判自动）≤1.5%（误自动承保的逆选择损失高于人工成本）",
+    "decision_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "risk_category 七类 macro-F1 ≥0.88",
+    "coverage_ratio ≥15+disclosure ≥2 并存子集 decision_tier=0 比例 ≥0.95（升档验收）",
+    "occupation=5 子集 decision_tier=0 比例 =1.0（硬规则验收）",
+    "贴边未触发子集 underwrite_flag=false 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: decision_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical 且无空隙",
+    "occupation 样本被赋档 1 → 5 级窗口与 tier_windows[\"0\"] 未对齐，检查窗口覆盖",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "coverage_ratio 样本档位漂移 → 保额收入比以倍数计，检查单位换算",
+    "跨险种保额比误判 → 标签未按险种区分免体检额度，检查险种字段保留"
+  ],
+  "expert_review": [
+    "BMI 26/32、告知 1/3 项、职业 3/5 级的档位与本机构核保手册的对应",
+    "免体检额度与保额收入比触发线（6/15 倍）的匹配",
+    "既往拒保延期记录的数据来源（行业共享平台）与查询授权边界",
+    "体检复查逾期 15/90 天的时效口径与体检机构预约周期",
+    "职业风险等级表（1-5 级）与现行职业类别表的对应"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "BMI", "unit": "kg/m²", "decimals": 1, "normal": [16.0, 25.9],
+       "critical": {"high": [[26.0, 45.0]]}, "category": "bmi"},
+      {"name": "健康告知异常项数", "unit": "项", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 12.0]]}, "category": "disclosure"},
+      {"name": "职业风险等级", "unit": "级", "decimals": 0, "normal": [1.0, 2.0],
+       "critical": {"high": [[3.0, 5.0]]}, "category": "occupation"},
+      {"name": "保额年收入比", "unit": "倍", "decimals": 1, "normal": [0.0, 5.9],
+       "critical": {"high": [[6.0, 50.0]]}, "category": "coverage_ratio"},
+      {"name": "既往拒保延期记录数", "unit": "次", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 6.0]]}, "category": "prior_decline"},
+      {"name": "体检复查逾期天数", "unit": "天", "decimals": 0, "normal": [0.0, 14.0],
+       "critical": {"high": [[15.0, 365.0]]}, "category": "exam_overdue"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "BMI": [[32.0, 45.0]],
+        "健康告知异常项数": [[3.0, 12.0]],
+        "职业风险等级": [[5.0, 5.0]],
+        "保额年收入比": [[15.0, 50.0]],
+        "既往拒保延期记录数": [[3.0, 6.0]],
+        "体检复查逾期天数": [[90.0, 365.0]]
+      },
+      "1": {
+        "BMI": [[29.0, 31.9]],
+        "健康告知异常项数": [[2.0, 2.0]],
+        "职业风险等级": [[4.0, 4.0]],
+        "保额年收入比": [[10.0, 14.9]],
+        "既往拒保延期记录数": [[2.0, 2.0]],
+        "体检复查逾期天数": [[31.0, 89.0]]
+      },
+      "2": {
+        "BMI": [[26.0, 28.9]],
+        "健康告知异常项数": [[1.0, 1.0]],
+        "职业风险等级": [[3.0, 3.0]],
+        "保额年收入比": [[6.0, 9.9]],
+        "既往拒保延期记录数": [[1.0, 1.0]],
+        "体检复查逾期天数": [[15.0, 30.0]]
+      }
+    },
+    "contexts": [
+      "高净值客户大额保单，超过免体检额度",
+      "团体险批量投保，告知简化",
+      "健康告知含甲状腺结节，待超声复查",
+      "特殊职业投保，高空作业与司炉工并存",
+      "续保客户，全要素平稳",
+      "免体检额度内标准投保",
+      "体检复查预约逾期，资料暂缺",
+      "体检报告初判异常，待复核结论",
+      "无背景说明，仅一项要素贴线",
+      "季度核保质量抽查复盘"
+    ],
+    "patients": [
+      "male 核保员 A, 重疾险核保", "female 核保员 B, 定期寿险核保", "male 核保员 C, 医疗险核保",
+      "female 核保员 D, 储蓄险核保", "male 核保员 E, 团体险核保", "female 核保员 F, 意外险核保",
+      "male 核保员 G, 车险核保", "female 核保员 H, 责任险核保"
+    ],
+    "rules": [
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "underwrite_flag", "value": true},
+          {"label": "decision_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "risk_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "underwrite_flag", "value": false},
+          {"label": "decision_tier", "value": 3},
+          {"label": "risk_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "underwrite_flag",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"bmi": 0.16, "disclosure": 0.2, "occupation": 0.13, "coverage_ratio": 0.18, "prior_decline": 0.15, "exam_overdue": 0.18},
+          "tier_split": {
+            "bmi": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "disclosure": [[0, 0.15], [1, 0.4], [2, 0.45]],
+            "occupation": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "coverage_ratio": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "prior_decline": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "exam_overdue": [[0, 0.15], [1, 0.4], [2, 0.45]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "BMI": "bmi",
+      "健康告知异常项数": "disclosure",
+      "职业风险等级": "occupation",
+      "保额年收入比": "coverage_ratio",
+      "既往拒保延期记录数": "prior_decline",
+      "体检复查逾期天数": "exam_overdue"
+    }
+  }
+}

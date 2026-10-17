@@ -158,7 +158,7 @@
     ],
     "rules": [
       {
-        "when": "'财务承诺' in state['契约条款'] and state['资产负债率'] > 80",
+        "when": "'财务承诺' in state['契约条款'] and state['资产负债率'] > '80 %'",
         "then": [
           {
             "label": "breach",

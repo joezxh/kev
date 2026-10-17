@@ -1,0 +1,246 @@
+{
+  "name": "law-contract-risk",
+  "domain": "企业法务的合同条款风险审查（签署前）。法务专员把一份待签合同的条款要素清单交给助手：付款账期、违约金上限比例、不利管辖条款数、知识产权归属模糊条款数、保密期限超出惯例年限数、单方解除权失衡条款数。阈值为示例口径（以《民法典》合同编公平原则与常见商业惯例为基线），实际以本企业合同管理制度为准。",
+  "state": "一份待签合同的条款要素清单：合同类型（采购/销售/技术服务/许可/合作开发）、我方角色（买方/卖方/委托方/受托方）、付款账期（天）、违约金上限比例（%）、不利管辖条款数（处，对方所在地管辖/不利仲裁机构）、知识产权归属模糊条款数（处）、保密期限超出惯例年限数（年）、单方解除权失衡条款数（处）。字段值为中文叙述夹数字。",
+  "state_example": {
+    "contract": "male 法务 A, 技术服务合同",
+    "context": "续签合同，上一年度履行无争议",
+    "contract_type": "技术服务",
+    "our_role": "受托方",
+    "indicators": {
+      "付款账期": "210.0 天",
+      "违约金上限比例": "35.0 %",
+      "不利管辖条款数": "1.0 处",
+      "知识产权归属模糊条款数": "0.0 处",
+      "保密期限超出惯例年限数": "3.0 年",
+      "单方解除权失衡条款数": "0.0 处"
+    },
+    "ref_thresholds_included": true,
+    "missing_context": []
+  },
+  "questions": {
+    "contract_sign": {
+      "type": "noul",
+      "instructions": "该合同是否达到签署标准（而不是需要修订）？",
+      "criteria": {
+        "true": "全部条款要素在阈值内",
+        "false": "至少一项条款要素超出风险阈值"
+      }
+    },
+    "fix_tier": {
+      "type": "score",
+      "instructions": "修订或处置应在多长时间内启动？",
+      "criteria": [
+        "立即暂停签署并转法务重审（重大失衡）",
+        "三个工作日内完成修订并复核",
+        "批注风险提示后可签署，轻度越界",
+        "达到签署标准，无需修订"
+      ]
+    },
+    "risk_category": {
+      "type": "choice",
+      "instructions": "触发修订的主要风险属于哪一类？",
+      "criteria": {
+        "none": "无（达到签署标准）",
+        "payment": "付款类：账期过长或付款条件不利",
+        "penalty": "违约金类：上限比例失衡（对我方过重）",
+        "jurisdiction": "管辖类：不利管辖或仲裁条款",
+        "ip": "知识产权类：权属约定模糊或不利",
+        "confidentiality": "保密类：保密期限或范围失衡",
+        "termination": "解除权类：单方解除权约定失衡"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "条款清单是否提供了判定所需的全部要素（指标名、数值、我方角色）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照阈值判定",
+        "false": "缺我方角色、缺数值或缺指标名，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "contract_sign 的唯一判据是任一条款要素超出本表阈值（示例口径，实际以本企业合同管理制度为准，需专家复核）：付款账期 ≥180 天触发、≥365 天最高档；违约金上限 ≥30% 触发、≥50% 最高档（对我方为付款义务方时）；不利管辖条款 ≥1 处触发、≥3 处最高档；知识产权归属模糊 ≥1 处触发、≥3 处最高档；保密期限超出惯例 ≥5 年触发、≥10 年最高档；单方解除权失衡 ≥1 处触发、≥3 处最高档。fix_tier 由最快触发的风险决定，等级从 0（暂停签署）到 3（可签）：jurisdiction 与 termination 双触发时按 jurisdiction 优先取档——管辖条款决定争议发生后的全部成本，比单条实体失衡更基础；penalty 类的判定必须结合我方角色——我方为收款方时违约金上限是对我有利条款，同为 30% 应判可签，因此 our_role 缺失时 penalty 类不参与触发并按 evidence_sufficient=false 处理。对称条款（双方权利义务对等）不算失衡——只有单方享有解除权或单方受违约金约束才算。fix_tier=3 时 risk_category 必须为 none。evidence_sufficient 为 false 时（缺我方角色、缺单位、缺指标名），contract_sign 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 risk_category 不得凭猜测填写。",
+  "variety": [
+    "合同类型与我方角色：采购（买方，账期长反而有利）、销售（卖方，账期短为佳）、技术服务、许可、合作开发（IP 归属敏感）——角色决定 payment/penalty 类的方向",
+    "风险类别（risk_category 七选项逐一覆盖）：payment（账期 200/380 天）、penalty（35/55%）、jurisdiction（1/3 处）、ip（1/3 处）、confidentiality（6/11 年）、termination（1/3 处）、none（全部达标）",
+    "处置档（fix_tier 四档全覆盖）：0 暂停签署（账期 ≥365、违约金 ≥50%、管辖 ≥3 处）、1 三个工作日修订、2 批注后可签、3 可签（contract_sign=true 时必须为 3）",
+    "组合形态：单风险、双风险同档、多风险跨档、风险互相掩盖（违约金对我有利但管辖不利——管辖优先）",
+    "对称条款对照（专门生成）：双方对等解除权、双向违约金——对称不算失衡，是易错样本",
+    "贴边未触发对照（contract_sign=true 须专门生成）：账期 170 天、违约金 28%、保密超 4 年",
+    "要素完整度（evidence_sufficient）：齐全、缺我方角色、缺合同类型、缺指标名、多项缺失",
+    "呈现风格：合同审查意见书体、条款摘录批注体、CLM 系统导出体、法务备忘录体",
+    "易错陷阱：payment/penalty 判定依赖我方角色、管辖优先于实体失衡、对称条款不算失衡、我方角色缺失按证据不足处理、账期对买方卖方方向相反"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "模型输出仅为合同条款风险审查建议，签署决定与条款谈判由法务负责人与业务负责人按授权作出；涉及格式条款效力争议（违约金过高酌减、管辖条款效力）的情形一律转外部律师复核，模型不给出条款效力结论。"
+  },
+  "smoke_probe": {
+    "state": {
+      "contract": "female 法务 B, 采购合同",
+      "context": "新供应商年度框架协议，我方为买方",
+      "contract_type": "采购",
+      "our_role": "买方",
+      "indicators": "付款账期 380.0 天, 违约金上限比例 40.0 %, 不利管辖条款数 2.0 处",
+      "ref_thresholds_included": "yes",
+      "missing_context": "none"
+    },
+    "questions": [
+      {"qid": "contract_sign", "type": "noul",
+       "instructions": "该合同是否达到签署标准？"},
+      {"qid": "risk_category", "type": "choice",
+       "instructions": "触发修订的主要风险属于哪一类？"}
+    ],
+    "expected_label": {"contract_sign": "false", "risk_category": "jurisdiction"}
+  },
+  "sampling": {
+    "n": 720,
+    "notes": "plan_targets 保留 35% 触发修订样本（tier 0-2 约 2:2:1），其余为可签对照；对照中至少 15% 为贴边未触发样本（账期 160-178 天、违约金 25-28%、保密超 3-4 年）。jurisdiction 与 termination 双触发样本单独 6% 并强制按 jurisdiction 取类；我方角色缺失样本单独 5% 并强制 evidence_sufficient=false；对称条款样本单独 6%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中均衡抽样 8 条（覆盖 fix_tier 四档与 risk_category 七类中至少五类）作为 --examples 输入；few-shot 范例必须保留 our_role 字段——缺角色的范例会教出对违约金/账期方向误判；「对称条款 vs 单方失衡」对照范例必须成对出现并标注失衡判据；jurisdiction 与 termination 双触发范例需与单一触发成对，训练「管辖优先」规则。",
+  "compliance": [
+    "合同样本须去标识：剔除合同双方名称、金额绝对值与项目代号，仅保留条款结构与比例数值",
+    "涉商业秘密的条款（技术细节、定价公式）只保留条款类别标记，不保留原文",
+    "输出仅为条款风险审查建议，不构成法律意见书，不生成对交易对手的定性评价",
+    "涉外合同的适用法与语言版本问题不在本场景阈值范围，转涉外法务通道"
+  ],
+  "acceptance": [
+    "contract_sign accuracy ≥0.96，误签率（应修订判可签）≤2%（误签的法律风险敞口高于误修订打扰）",
+    "fix_tier 在触发样本上的 ECE ≤0.02、Brier ≤0.05",
+    "risk_category 七类 macro-F1 ≥0.88",
+    "我方角色缺失子集 evidence_sufficient=false 比例 =1.0（硬规则验收）",
+    "对称条款子集 contract_sign=true 比例 ≥0.9（失衡判据验收）",
+    "贴边未触发子集 contract_sign=true 比例 ≥0.9",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "write_records 报 warning: fix_tier 无 2 档记录 → tier_windows[\"2\"] 与 fields.critical 不相交（realize_tier 需要 min_tier 恰好等于 2），检查三档窗口是否互斥分割 critical",
+    "买方账期被误判风险 → payment 类判定未结合我方角色，检查 rules 是否对 payment/penalty 做方向处理或按角色缺失降级",
+    "record 被拒「no label for evidence_sufficient」→ rules then 列表必须覆盖四个 qid",
+    "jurisdiction 与 termination 双触发取类漂移 → rules 分支顺序必须管辖优先",
+    "对称条款被误判失衡 → 蒸馏标签未区分对称与失衡，检查对照对样本的标注"
+  ],
+  "expert_review": [
+    "账期 180/365 天、违约金 30/50%、保密超 5/10 年的档位与本企业合同管理制度的对应",
+    "jurisdiction 优先于实体失衡的修订优先级与谈判实务的一致性",
+    "对称条款不算失衡的判据边界（名义对等但能力不对等的情形）",
+    "违约金上限对我方有利时的处理（是否参与触发、是否降低整体档位）",
+    "涉外合同与格式合同的额外审查要素是否需单列"
+  ],
+  "generator": {
+    "fields": [
+      {"name": "付款账期", "unit": "天", "decimals": 0, "normal": [0.0, 90.0],
+       "critical": {"high": [[180.0, 100000.0]]}, "category": "payment"},
+      {"name": "违约金上限比例", "unit": "%", "decimals": 1, "normal": [0.0, 20.0],
+       "critical": {"high": [[30.0, 100.0]]}, "category": "penalty"},
+      {"name": "不利管辖条款数", "unit": "处", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "jurisdiction"},
+      {"name": "知识产权归属模糊条款数", "unit": "处", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "ip"},
+      {"name": "保密期限超出惯例年限数", "unit": "年", "decimals": 0, "normal": [0.0, 2.0],
+       "critical": {"high": [[5.0, 1000000000.0]]}, "category": "confidentiality"},
+      {"name": "单方解除权失衡条款数", "unit": "处", "decimals": 0, "normal": [0.0, 0.0],
+       "critical": {"high": [[1.0, 1000000000.0]]}, "category": "termination"}
+    ],
+    "selectors": [{"min": 3, "max": 6}],
+    "tier_windows": {
+      "0": {
+        "付款账期": [[365.0, 100000.0]],
+        "违约金上限比例": [[50.0, 100.0]],
+        "不利管辖条款数": [[3.0, 1000000000.0]],
+        "知识产权归属模糊条款数": [[3.0, 1000000000.0]],
+        "保密期限超出惯例年限数": [[10.0, 1000000000.0]],
+        "单方解除权失衡条款数": [[3.0, 1000000000.0]]
+      },
+      "1": {
+        "付款账期": [[270.0, 364.0]],
+        "违约金上限比例": [[40.0, 49.9]],
+        "不利管辖条款数": [[2.0, 2.0]],
+        "知识产权归属模糊条款数": [[2.0, 2.0]],
+        "保密期限超出惯例年限数": [[7.0, 9.0]],
+        "单方解除权失衡条款数": [[2.0, 2.0]]
+      },
+      "2": {
+        "付款账期": [[180.0, 269.0]],
+        "违约金上限比例": [[30.0, 39.9]],
+        "不利管辖条款数": [[1.0, 1.0]],
+        "知识产权归属模糊条款数": [[1.0, 1.0]],
+        "保密期限超出惯例年限数": [[5.0, 6.0]],
+        "单方解除权失衡条款数": [[1.0, 1.0]]
+      }
+    },
+    "contexts": [
+      "新供应商年度框架协议，我方为买方",
+      "续签合同，上一年度履行无争议",
+      "技术开发委托，交付物包含定制模块",
+      "商标许可谈判后期，对方律师主导起草",
+      "集团标准模板签署，条款为版本默认值",
+      "常规月度合同抽审，全部要素平稳",
+      "紧急采购，业务部门要求压缩审查周期",
+      "并购后首批合同，对方模板我方未改",
+      "无背景说明，仅一项要素贴线",
+      "年度合同台账复盘"
+    ],
+    "patients": [
+      "male 法务 A, 技术服务合同", "female 法务 B, 采购合同", "male 法务 C, 销售合同",
+      "female 法务 D, 许可合同", "male 法务 E, 合作开发合同", "female 法务 F, 劳务外包合同",
+      "male 法务 G, 保密协议", "female 法务 H, 经销合同"
+    ],
+    "rules": [
+      {
+        "when": "not any_outside_critical(state, fields)",
+        "then": [
+          {"label": "contract_sign", "value": true},
+          {"label": "fix_tier", "value": 3},
+          {"label": "risk_category", "value": "none"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      },
+      {
+        "when": "any_outside_critical(state, fields)",
+        "then": [
+          {"label": "contract_sign", "value": false},
+          {"label": "fix_tier", "value": "min_tier(state, fields, tier_windows)"},
+          {"label": "risk_category", "value": "fastest_tier_critical_item(state, fields, panel_category, tier_windows)"},
+          {"label": "evidence_sufficient", "value": true}
+        ]
+      }
+    ],
+    "augmentation": {
+      "evidence_drop": {
+        "rate": 0.08,
+        "fields": ["unit", "reference_range"],
+        "question": "contract_sign",
+        "soft_target": {"true": 0.5, "false": 0.5},
+        "force_label": {"evidence_sufficient": "false"}
+      },
+      "minimal_pair": {"rate": 0.0, "strategy": "boundary_flip"}
+    },
+    "plan_targets": {
+      "share": {"critical": 0.35},
+      "by_category": {
+        "critical": {
+          "quota": {"payment": 0.16, "penalty": 0.14, "jurisdiction": 0.2, "ip": 0.14, "confidentiality": 0.16, "termination": 0.2},
+          "tier_split": {
+            "payment": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "penalty": [[0, 0.3], [1, 0.35], [2, 0.35]],
+            "jurisdiction": [[0, 0.2], [1, 0.4], [2, 0.4]],
+            "ip": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "confidentiality": [[0, 0.25], [1, 0.35], [2, 0.4]],
+            "termination": [[0, 0.2], [1, 0.4], [2, 0.4]]
+          }
+        }
+      }
+    },
+    "panel_category": {
+      "付款账期": "payment",
+      "违约金上限比例": "penalty",
+      "不利管辖条款数": "jurisdiction",
+      "知识产权归属模糊条款数": "ip",
+      "保密期限超出惯例年限数": "confidentiality",
+      "单方解除权失衡条款数": "termination"
+    }
+  }
+}

@@ -170,7 +170,7 @@
         ]
       },
       {
-        "when": "state['新颖性评分'] > 7",
+        "when": "state['新颖性评分'] > '7.0 分'",
         "then": [
           {
             "label": "recommendation",

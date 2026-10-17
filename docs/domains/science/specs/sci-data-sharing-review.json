@@ -1,0 +1,163 @@
+{
+  "_meta": {
+    "purpose": "研究数据共享与发表前合规审查 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/sci-data-sharing-review.yaml"
+  },
+  "name": "sci-data-sharing-review",
+  "label_zh": "数据共享审查",
+  "label_en": "Data Sharing Review",
+  "domain": "高校与科研机构的数据管理与科研诚信办公室的数据共享审查。数据专员把一份共享/发表申请的数据集摘要交给助手：数据类型、知情同意范围、去标识化状态、涉敏字段、受试者群体、共享方式与请求方。助手判断是否可共享（shareable）、必要的处理档位（anonymize_tier 四档）、主要风险类别（risk_category 七选一），以及申请材料是否足以判定（consent_evidence）。审查基线为《个人信息保护法》《人类遗传资源管理条例》与期刊数据政策（如 FAIR 原则），具体口径为示例值，需伦理委员会复核。",
+  "state": "一份共享/发表申请的数据集摘要：数据类型（问卷/影像/基因测序/访谈录音转写/电子病历片段/传感器时序）、知情同意书写明的共享范围、去标识化状态（已去标识/假名化/未处理）、涉敏字段清单、受试者群体（成人健康志愿者/患者/未成年人/受监管群体）、共享方式（公开仓库/受控访问/签订协议的点对点）、请求方类型。",
+  "state_example": {
+    "request": "female 数据专员 A, 临床研究数据",
+    "context": "合作方申请受控访问用于方法学验证",
+    "data_type": "电子病历片段",
+    "consent_scope": "同意书含「与第三方研究者共享（去标识后）」条款",
+    "deid_status": "假名化",
+    "sensitive_fields": "就诊日期（精确到日）、邮编、罕见病诊断",
+    "population": "罕见病患者",
+    "sharing_mode": "受控访问",
+    "requester": "高校方法学团队"
+  },
+  "questions": {
+    "shareable": {
+      "type": "noul",
+      "instructions": "该数据集按当前申请方式是否可以共享？",
+      "criteria": {
+        "true": "同意范围覆盖、去标识达标且共享方式与风险匹配",
+        "false": "同意范围不含、去标识不足或方式与风险不匹配，任一不满足即不可"
+      }
+    },
+    "anonymize_tier": {
+      "type": "score",
+      "instructions": "共享前需要的最小处理档位是什么？",
+      "criteria": [
+        "需重新处理并经伦理委员会审批后受控共享",
+        "需补充去标识处理（删除/泛化涉敏字段）后受控共享",
+        "按申请状态即可受控共享，仅需协议约束",
+        "无需额外处理，可在公开仓库共享"
+      ]
+    },
+    "risk_category": {
+      "type": "choice",
+      "instructions": "主要风险属于哪一类？",
+      "criteria": {
+        "none": "无重大风险",
+        "consent_gap": "同意缺口：同意书未覆盖当前共享方式",
+        "reidentification": "再识别风险：准标识符组合可回溯个体",
+        "sensitive_field": "涉敏字段：特殊类别个人信息未处理",
+        "regulated_group": "受监管群体：人类遗传资源/未成年人等特别监管",
+        "cross_border": "跨境传输：请求方或仓库涉境外，触发出境评估",
+        "purpose_mismatch": "用途不符：请求用途超出同意的科研目的"
+      }
+    },
+    "consent_evidence": {
+      "type": "noul",
+      "instructions": "申请材料是否提供了判定所需的全部要素（同意条款、字段清单、请求方与用途）？",
+      "criteria": {
+        "true": "要素齐全，可直接对照口径判定",
+        "false": "缺同意条款原文、缺字段清单或缺用途说明，无法可靠判定"
+      }
+    }
+  },
+  "guidance": "shareable 的判据是三个条件同时满足：同意范围覆盖当前共享方式、去标识化状态与风险匹配、共享方式不高于风险等级（示例口径，实际以伦理委员会与本机构数据制度为准，需专家复核）。anonymize_tier 从高到低判定：基因测序数据一律档 0-1（人类遗传资源监管，公开仓库绝不放行）；涉敏字段含直接标识符或高维准标识符（精确日期+邮编+罕见病即组合可回溯）档 1；假名化+受控访问+同意覆盖档 2；公开仓库共享要求完全匿名化且同意书明示公开——两者缺一即档 1 以上。risk_category 按「最先导致不可共享的原因」取类，优先级：consent_gap > regulated_group > cross_border > reidentification > sensitive_field > purpose_mismatch——同意是合法性的第一道门。cross_border 判定看请求方与仓库注册地任一在境外即触发；「受控访问」不豁免出境评估。shareable=true 时 anonymize_tier 为 2 或 3 且 risk_category 为 none。罕见病与小程序群的再识别评估从宽——患者群越小，准标识符组合的独一性越高。consent_evidence=false 时（缺同意条款原文、缺字段清单），shareable 必须用软标签 target {\"true\":0.5,\"false\":0.5}，且 risk_category 不得凭猜测填写。",
+  "variety": [
+    "风险类别（risk_category 七选项逐一覆盖）：consent_gap（同意书仅限本项目内分析）、reidentification（精确日期+邮编+罕见病）、sensitive_field（身份证号残留/录音含姓名）、regulated_group（基因数据/未成年人/在押人员）、cross_border（境外仓库/境外合作方）、purpose_mismatch（同意科研用途却请求商业用途）、none",
+    "处理档（anonymize_tier 四档全覆盖）：0 重新处理+伦理审批（基因数据、同意根本缺失）、1 补充去标识后受控（涉敏字段残留）、2 按申请受控共享（假名化+同意覆盖）、3 公开仓库（完全匿名+同意明示公开）",
+    "数据类型谱系：问卷（低敏）、访谈转写（姓名与场景特征）、影像（DICOM 元数据）、基因测序（人类遗传资源）、电子病历片段（准标识符密集）、传感器时序（位置可推断）",
+    "同意条款谱系：明示公开、去标识后第三方共享、仅限本项目、未提共享、口头同意无书面记录",
+    "共享方式与请求方：公开仓库/受控访问/协议点对点 × 境内高校/企业/境外机构",
+    "材料完整度（consent_evidence）：齐全、缺同意条款原文、缺字段清单、缺用途说明、多项缺失",
+    "呈现风格：数据管理计划体、伦理批件摘要体、期刊投稿附件清单体、数据仓库申请表体",
+    "易错陷阱：同意是第一道门、基因数据绝不公开、受控访问不豁免出境评估、罕见病从宽评估、假名化不等于匿名化"
+  ],
+  "routing": {
+    "risk": "high",
+    "human_review": true,
+    "evidence_question": "consent_evidence",
+    "note": "模型输出仅为数据共享审查建议，共享批准与出境评估由伦理委员会与数据管理部门按法定程序作出；涉人类遗传资源出境的情形必须经法定审批，模型不生成审批结论；发现疑似违规已发生共享的，一律转科研诚信与合规部门。"
+  },
+  "smoke_probe": {
+    "state": {
+      "request": "male 数据专员 B, 队列研究数据",
+      "context": "境外合作方申请公开仓库副本用于机器学习教学",
+      "data_type": "基因测序变异数据",
+      "consent_scope": "同意书含「数据存入公开数据库」条款",
+      "deid_status": "已去标识",
+      "sensitive_fields": "采样年份、地区（地级市）、罕见变异位点",
+      "population": "罕见病患者队列",
+      "sharing_mode": "公开仓库",
+      "requester": "境外大学（商业课程用途）"
+    },
+    "questions": [
+      {
+        "qid": "shareable",
+        "type": "noul",
+        "instructions": "该数据集按当前申请方式是否可以共享？"
+      },
+      {
+        "qid": "risk_category",
+        "type": "choice",
+        "instructions": "主要风险属于哪一类？"
+      }
+    ],
+    "expected_label": {
+      "shareable": "false",
+      "risk_category": "purpose_mismatch"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：risk_category 七类中 none 30%（与 shareable=true 对齐）、consent_gap 15%、regulated_group 12%、reidentification 12%、cross_border 10%、sensitive_field 11%、purpose_mismatch 10%；anonymize_tier 四档 12/30/40/18；consent_evidence=false 占比 15%。「同意缺口 vs 用途不符」最小对照对（同一同意书两种请求）单独 10%；基因数据样本单独 8% 并强制不判公开共享；罕见病小样本的再识别对照对单独 6%。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 risk_category 七类中至少五类与 anonymize_tier 四档中三档）作为 --examples 输入；few-shot 范例必须保留 consent_scope 原文与 sensitive_fields 清单——缺同意条款的范例会教出把同意缺口误判为用途不符；「同意缺口 vs 用途不符」对照范例必须成对出现并标注优先级推理；基因数据范例需标注「绝不公开」的监管依据。",
+  "compliance": [
+    "申请材料样本须去标识：剔除申请人、课题编号与受试者可识别信息，仅保留结构特征",
+    "同意条款原文样本做改写处理，保留条款类别结构，不保留原文措辞",
+    "输出仅为审查建议，不构成伦理批准或法律意见，不生成对申请方的定性结论",
+    "涉国家安全与重要数据的样本（地理测绘、人口健康大数据）不在本场景范围，转专门通道"
+  ],
+  "acceptance": [
+    "shareable accuracy ≥0.95，误放行率（不可共享判可共享）≤1.5%（误放行的隐私与合规代价高于误拦截）",
+    "anonymize_tier 四档 QWK ≥0.75",
+    "risk_category 七类 macro-F1 ≥0.85，consent_gap 与 purpose_mismatch 的混淆率 ≤8%（核心失败模式）",
+    "基因数据子集 anonymize_tier ≤1 且非公开共享比例 =1.0（硬规则验收）",
+    "consent_evidence=false 子集上软标签纪律遵守率 =1.0，risk_category 凭猜测填写率 =0",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "consent_gap 吞并 purpose_mismatch → few-shot 缺少「同一同意书两种请求」对照，补充成对样本并核对 sidecar 的优先级标注",
+    "基因数据被赋档 2/3 → 检查蒸馏标签是否遵守人类遗传资源口径，regulated_group 判据是否生效",
+    "受控访问被当豁免出境评估 → cross_border 判据依赖仓库/请求方注册地，检查该字段是否被删",
+    "罕见病再识别风险低估 → 准标识符组合样本未覆盖，补充小群体独一性对照对",
+    "shareable=true 但 risk_category 非 none → 违反硬规则，检查 sidecar 是否把贴边样本错误标注"
+  ],
+  "expert_review": [
+    "shareable 三条件与 anonymize_tier 档位映射与本机构数据管理制度的对应（需伦理委员会复核）",
+    "risk_category 优先级排序（同意 > 受监管群体 > 跨境）与合规审查实践的一致性",
+    "准标识符组合的再识别评估口径（罕见病、小样本人群的从宽边界）",
+    "人类遗传资源出境的法定审批流程与受控访问的边界",
+    "「科研目的」与商业用途的区分在同意书条款中的表达方式"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；共享审查依赖同意条款语义、字段敏感性与再识别风险的综合判断，无法用数值区间表达，标签由 sidecar 标注后经 seed_to_kev.py 重建。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是科研机构的数据共享审查助手。基于数据集摘要输出：是否可共享、共享前最小处理档位（0-3 档）、主要风险类别（none/consent_gap/reidentification/sensitive_field/regulated_group/cross_border/purpose_mismatch 七选一）、申请材料是否足以判定。shareable 要求同意覆盖、去标识达标与方式匹配三条件同时满足；风险按最先导致不可共享的原因取类（同意 > 受监管群体 > 跨境 > 再识别 > 涉敏字段 > 用途）；基因测序数据绝不公开共享；受控访问不豁免出境评估；小样本人群再识别评估从宽。信息不足时给初步判断并标注待补充项。输出为审查建议，批准决定由伦理委员会作出。",
+      "en": "You are a research-data sharing reviewer. From a dataset request summary, output: whether it is shareable as requested, the minimum pre-sharing processing tier (0-3), the dominant risk category (none/consent_gap/reidentification/sensitive_field/regulated_group/cross_border/purpose_mismatch), and whether the request materials suffice. Shareability requires consent coverage, adequate de-identification, and mode-risk matching; classify by the first blocking reason (consent > regulated groups > cross-border > reidentification > sensitive fields > purpose); genomic data is never openly shared; controlled access does not waive export assessment. Mark incomplete requests as provisional. Output is review advice; approval belongs to the ethics committee."
+    },
+    "ask_template": "请基于以下共享申请摘要输出审查判断：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "研究数据的共享与发表前合规审查",
+      "风险七分类与处理档位判定",
+      "知情同意范围与用途匹配",
+      "再识别风险与受监管群体",
+      "材料不足时的保守审查口径"
+    ],
+    "kev_track": false
+  }
+}

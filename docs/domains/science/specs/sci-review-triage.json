@@ -1,0 +1,146 @@
+{
+  "_meta": {
+    "purpose": "审稿意见分类与处理分诊 —— 生成式 SFT 蒸馏轨。Kev 决策记录由 seed_to_kev.py 从旁路 sidecar 重建，标签不来自 LLM；接入前需在 kev/console/distill/configs/ 新建对应 yaml。",
+    "kev_track": false,
+    "source_yaml": "kev/console/distill/configs/sci-review-triage.yaml"
+  },
+  "name": "sci-review-triage",
+  "label_zh": "审稿分诊",
+  "label_en": "Review Triage",
+  "domain": "期刊编辑部与课题组对审稿意见的分类与处理分诊。编辑或论文通讯作者收到审稿意见后，助手判断意见类型（方法学、数据支撑、创新性、写作表达、研究伦理、文献综述）、判断意见是否可通过补充实验或修改文本解决（addressable）、识别必须上报主编或伦理委员会的意见（重大缺陷、伦理违规、疑似造假），并判断意见本身是否提供了足够的依据（指出具体段落/数据/文献）。分类框架参照 PeerRead 与 DISAPERE 等审稿数据集的意见类型学，类别口径为示例。",
+  "state": "一条审稿意见的结构化摘要：稿件类型（研究论文/综述/会议论文）、审稿轮次（初审/返修轮/终审）、意见原文（1-5 句）、意见是否引用了稿件具体位置（段落/图表号/公式号）、是否附了支持文献或数据、语气（建设性/中性/质疑/强硬）、是否涉及伦理或数据真实性指控。",
+  "state_example": {
+    "manuscript": "研究论文（计算材料学）",
+    "round": "返修轮",
+    "comment": "图 3b 的误差棒在两组间差异显著但正文未报告重复次数与统计检验方法，请补充 n 与检验类型，否则结论无法评估。",
+    "cites_location": true,
+    "has_supporting_refs": false,
+    "tone": "中性",
+    "integrity_allegation": false
+  },
+  "questions": {
+    "comment_type": {
+      "type": "choice",
+      "instructions": "该审稿意见的核心属于哪一类？",
+      "criteria": {
+        "methodology": "方法学：实验设计、统计方法、对照设置、可重复性",
+        "data_support": "数据支撑：样本量、数据可得性、结果与数据的一致性",
+        "novelty": "创新性：与已有工作的区分度、增量贡献",
+        "writing": "写作表达：结构、图表、语言、逻辑呈现",
+        "ethics": "研究伦理：知情同意、动物福利、利益冲突、数据真实性",
+        "related_work": "文献综述：遗漏关键文献、定位不准确"
+      }
+    },
+    "addressable": {
+      "type": "noul",
+      "instructions": "该意见是否可通过返修（补充实验/数据/修改文本）解决？",
+      "criteria": {
+        "true": "补充材料、补做统计或改写即可回应",
+        "false": "需要重做核心实验、更换研究问题，或意见超出返修范围"
+      }
+    },
+    "needs_editor": {
+      "type": "noul",
+      "instructions": "该意见是否需要上报主编或转交研究诚信流程？",
+      "criteria": {
+        "true": "涉及伦理违规指控、数据真实性质疑、或要求拒稿的重大缺陷",
+        "false": "常规学术意见，作者与编辑按返修流程处理"
+      }
+    },
+    "evidence_sufficient": {
+      "type": "noul",
+      "instructions": "意见本身是否提供了足够依据（指向稿件具体位置或附支持材料）？",
+      "criteria": {
+        "true": "指明了段落/图表/公式或附了文献数据，可定位核实",
+        "false": "泛泛而谈无具体指向，需先请审稿人明确"
+      }
+    }
+  },
+  "guidance": "审稿分诊只做分类、可回应性判断与上报建议，不替代编辑的录用决定，也不替作者起草回应。comment_type 按意见的核心关切归类，一条意见涉及多类时取其质疑的最终落点（如「统计方法不当导致结论不成立」落在 methodology 而非 writing）。addressable=false 的判据：要求重做核心实验、质疑研究问题的价值本身、或要求的数据/样本已不可得；补充一个对照、补报统计量、修改表述均属 addressable=true。needs_editor=true 的判据：integrity_allegation 为真、或意见主张撤稿/抄袭/未获批伦理批件——写作与创新性类意见无论语气多强硬都不触发上报。语气（tone）只影响 urgency 感知，不影响分类与上报判定——强硬语气的方法学意见仍是 methodology。evidence_sufficient=false 时（无具体指向、无支持材料），addressable 不得判定为 false（无法核实的要求不能直接判为不可回应），必须先走「请审稿人明确」路径，response 建议以澄清请求开头。",
+  "variety": [
+    "意见类型（comment_type 六选项逐一覆盖）：方法学（缺对照/统计误用/样本独立性问题）、数据支撑（样本量不足/数据未公开/图数不符）、创新性（与某已发表工作增量不足）、写作（图表可读性/逻辑跳跃）、伦理（缺伦理批件号/知情同意存疑/数据真实性质疑）、文献（遗漏近三年关键文献/定位失当）",
+    "可回应性两态覆盖（addressable）：补对照、补统计、补数据可得性声明、改写表述（true）；重做核心实验、数据已不可得、质疑研究问题本身（false）",
+    "上报场景（needs_editor=true 专门生成）：数据造假质疑、图像重复使用指控、未获伦理批件、利益冲突未申报、两轮审稿人意见冲突要求仲裁",
+    "意见依据完整度（evidence_sufficient）：指向图表号、引用具体段落、附对比文献、附数据集（true）；「方法有问题」「创新性不足」式泛评、无指向无材料（false）",
+    "语气谱系：建设性、中性、质疑、强硬、失礼但学术——语气与类型交叉生成，验证 tone 不影响分类",
+    "审稿轮次与场景：初审、返修轮、终审、再审意见、编辑综合意见、读者来信（已发表后）",
+    "稿件类型：实证研究论文、综述、会议短文、预印本评论、阴性结果报告",
+    "文本风格：期刊审稿系统导出体、审稿人手写体转写、中英混排、逐条编号的 multi-point 意见",
+    "易错陷阱：语气强硬不等于 needs_editor、泛评意见 evidence_sufficient=false 时 addressable 不得判 false、统计方法质疑落 methodology 不落 writing、伦理指控必须上报即使审稿人语气平和"
+  ],
+  "routing": {
+    "risk": "medium",
+    "human_review": true,
+    "evidence_question": "evidence_sufficient",
+    "note": "分类与上报建议供编辑参考，录用/拒稿决定与诚信处理由主编与研究诚信流程作出；evidence_sufficient=false 的意见先走澄清路径。不得替作者起草回应文本。"
+  },
+  "smoke_probe": {
+    "state": {
+      "manuscript": "综述（临床药学）",
+      "round": "初审",
+      "comment": "该综述引用的 68 篇文献中缺少 2023 年以来三项关键 RCT，且未讨论与 Zhang 2022 综述在纳入标准上的差异，定位不清晰。",
+      "cites_location": false,
+      "has_supporting_refs": true,
+      "tone": "建设性",
+      "integrity_allegation": false
+    },
+    "questions": [
+      {
+        "qid": "comment_type",
+        "type": "choice",
+        "instructions": "该审稿意见的核心属于哪一类？"
+      }
+    ],
+    "expected_label": {
+      "comment_type": "related_work"
+    }
+  },
+  "sampling": {
+    "n": 640,
+    "notes": "蒸馏轨样本分布建议：comment_type 六类均衡（每类 ≥12%，ethics 类单独保底 10% 因真实分布稀疏）；addressable 两态 6:4；needs_editor=true 占比 15%（全部来自 ethics 类与重大缺陷）；evidence_sufficient=false 占比 25%（泛评意见在真实语料中常见）。语气 × 类型交叉矩阵中每格至少 10 条。"
+  },
+  "few_shot": "蒸馏前先跑 make_examples 从 generate 产物中抽样 8 条（覆盖 comment_type 六类中至少五类与 needs_editor 两态）作为 --examples 输入；few-shot 范例必须保留 tone 与 cites_location 字段——缺 tone 字段的范例会教出「语气决定分类」的漂移；needs_editor=true 的范例必须包含 integrity_allegation 或具体伦理条目，防止模型把强硬语气误学为上报信号。",
+  "compliance": [
+    "审稿意见与稿件内容属保密信息，训练数据须去除作者、机构、期刊与可识别课题信息，意见文本保留",
+    "不得输出录用/拒稿建议与对审稿人的评价，只输出意见分类、可回应性与上报建议",
+    "数据造假与抄袭指控样本一律标注「转研究诚信流程」，模型不生成调查结论",
+    "审稿人身份信息（署名/单位）必须去除，双盲评审语境下不得出现可识别审稿人的表述"
+  ],
+  "acceptance": [
+    "comment_type 六类 macro-F1 ≥0.85（DISAPERE 式意见分类惯例）",
+    "addressable accuracy ≥0.88，false 判定精度 ≥0.9（不可回应误判会浪费返修轮次）",
+    "needs_editor 召回 ≥0.98（漏上报的伦理风险远高于误上报）",
+    "tone 无关性检验：同类型不同语气样本的 comment_type 预测一致率 ≥0.95",
+    "isolation 与 permutation 检查通过（GATES 容差内）"
+  ],
+  "troubleshooting": [
+    "ethics 类样本过少导致 macro-F1 偏低 → 检查 sampling 配比与 topics 是否覆盖伦理子类，write_records 的 <5% warning 不可忽略",
+    "强硬语气样本被误判 needs_editor → few-shot 中缺少「强硬但常规」对照，补充语气×类型矩阵样本",
+    "泛评意见被直接判 addressable=false → guidance 的「无法核实不判 false」规则未在蒸馏标签中体现，核对 sidecar",
+    "methodology 与 writing 混淆 → 以「质疑的最终落点」口径重标，检查 sidecar 标注规范是否一致"
+  ],
+  "expert_review": [
+    "comment_type 六分类与 DISAPERE/PeerRead 意见类型学的映射及本刊编辑部口径（需主编或资深编辑复核）",
+    "addressable=false 的边界（重做核心实验 vs 补充对照的判定）",
+    "needs_editor 的上报触发清单（伦理/真实性/利益冲突之外是否含数据许可问题）",
+    "泛评意见（evidence_sufficient=false）的澄清请求模板口径"
+  ],
+  "generator": {
+    "module": null,
+    "engine": "kev.console.generators.engine",
+    "notes": "本场景走蒸馏轨，无规则生成器；审稿意见分类无法用数值区间规则表达，标签由编辑标注 sidecar 提供。"
+  },
+  "distill": {
+    "system_prompt": {
+      "zh": "你是一位专业的审稿意见分诊助手。你的回答要体现分诊逻辑：先判断意见的核心类型（方法学/数据支撑/创新性/写作/伦理/文献），\n  再评估是否可通过返修解决、是否需要上报主编或诚信流程，并检查意见是否指明了可核实的位置与依据。\n  不做录用建议，不替作者起草回应，不对审稿人做评价。涉及诚信指控的一律标注转交研究诚信流程。",
+      "en": "You are a professional reviewer-comment triage assistant. Your reply must reflect triage logic: classify the comment's core type (methodology/data support/novelty/writing/ethics/related work) first,\n  then assess whether it is addressable in revision and whether it must be escalated to the editor or research-integrity process, and check whether the comment cites verifiable locations or evidence.\n  Never give accept/reject advice, draft author responses, or comment on reviewers. Integrity allegations are always flagged for the research-integrity process."
+    },
+    "ask_template": "请基于以下审稿意见记录给出分诊建议：\n{% for k, v in state.items() %}{% if v is mapping %}{{ k }}：{{ v | join('，') }}\n{% elif v is iterable and v is not string %}{{ k }}：{% for x in v %}{% if not loop.first %}、{% endif %}{{ x }}{% endfor %}\n{% else %}{{ k }}：{{ v if v not in ('', None) else '未记录' }}\n{% endif %}{% endfor %}",
+    "topics": [
+      "审稿意见的分类（方法学/数据支撑/创新性/写作/伦理/文献）",
+      "意见可回应性评估与上报主编/诚信流程的判断",
+      "意见依据完整度检查与澄清请求建议"
+    ],
+    "kev_track": false
+  }
+}

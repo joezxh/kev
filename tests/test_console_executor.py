@@ -7,6 +7,7 @@ Run: uv run python -m pytest tests/test_console_executor.py -q
 import os
 import sys
 import time
+import uuid
 
 import pytest
 
@@ -27,6 +28,7 @@ def store(tmp_path):
 
 def make_job(store, kind="train"):
     job_id = store.create_job(
+        project_id=store.create_project(f"fx{uuid.uuid4().hex}", "Fx"),
         kind=kind, stage="train", scenario="triage", title="t",
         request={}, argv=["x"], env_overlay={}, cwd=os.getcwd(),
         log_path="l.log", artifacts_in=[], artifacts_out=[],
@@ -253,6 +255,7 @@ def test_scrub_secret_overlays_strips_legacy_leaks(store):
     from kev.console.executor import scrub_secret_overlays
 
     dirty = store.create_job(
+        project_id=store.create_project("legacy-fx", "Fx"),
         kind="distill", stage="data", scenario="triage", title="legacy",
         request={}, argv=["x"], cwd=os.getcwd(), log_path="l.log",
         env_overlay={"KEV_GEN_MODEL": "m", "KEV_GEN_API_KEYS": "sk-leaked"},

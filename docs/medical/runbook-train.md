@@ -108,12 +108,12 @@ Each step contains: **purpose / input / environment / command / expected output 
 ### Step 1 · Compute record count ✅
 
 - **Purpose**: use the McNemar paired formula to determine "how much data is needed for fine-tune vs baseline difference to be statistically significant".
-- **Input**: scenario spec (`docs/medical/specs/critical-value.json`, contains 4 questions).
+- **Input**: scenario spec (`docs/domains/medical/specs/critical-value.json`, contains 4 questions).
 - **Environment**: pure standard library, no torch / network needed.
 - **Command**:
 
 ```bash
-python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-value.json --baseline-acc 0.75
+python skills/kev-finetune/scripts/plan_size.py docs/domains/medical/specs/critical-value.json --baseline-acc 0.75
 ```
 
 - **Expected output**:
@@ -479,7 +479,7 @@ All below are results **actually executed** in this repo root, on Windows + Powe
 | 5 CLI | `kev.train --help` | ⚠️ first run `No module named 'resource'` | patched (`kev/train.py`/`kev/suite.py` optional import), re-run passed |
 | 5 CLI | `kev.benchmark/evaluate/publish --help` | ✅ all normal | patch applies to whole package |
 | 7 train | `kev.train --data ... --base Qwen/Qwen3.5-0.8B-Base` | ✅ direct connect `OSError: couldn't connect`; after `HF_ENDPOINT=https://hf-mirror.com` the 0.6B base loaded 310/310 weights, 3 records 1 epoch CPU smoke ran: `trainable 5.6M`, produced `adapter_model.safetensors`+`head.pt`+tokenizer snapshot, **no error** (only harmless Windows symlink warning) | training half fully opened; 0.8B uses the same LoRA+head+save code path, only larger base / real training needs GPU (`--device cuda --dtype bf16`) |
-| 8 LLM distillation (Bailian) | `generate_data.py docs/medical/specs/triage.json --n 40 --batch 10 --concurrency 3 --model Ling-3.0-flash` (`KEV_GEN_BASE_URL=https://api.ant-ling.com/v1`) | ✅ 4 calls 197s, 40 records **0 rejected**; `split_data` validated 40 valid / 0 conflicts, split train 28 / cal 6 / dev 6 | Bailian `Ling-3.0-flash` distillation link opened; reasoning model emits reasoning then content; 40 records only validate link (temp fit needs ≥25 records), real distillation targets `plan_size` volume |
+| 8 LLM distillation (Bailian) | `generate_data.py docs/domains/medical/specs/triage.json --n 40 --batch 10 --concurrency 3 --model Ling-3.0-flash` (`KEV_GEN_BASE_URL=https://api.ant-ling.com/v1`) | ✅ 4 calls 197s, 40 records **0 rejected**; `split_data` validated 40 valid / 0 conflicts, split train 28 / cal 6 / dev 6 | Bailian `Ling-3.0-flash` distillation link opened; reasoning model emits reasoning then content; 40 records only validate link (temp fit needs ≥25 records), real distillation targets `plan_size` volume |
 | 8b distillation script upgrade (multi-key / 500k/day / scheduler) | `generate_data.py --category triage --n 3 --model Ling-3.0-tiny --api-keys $K`; also tested `--daily-limit 1` (daily budget exhausted → exit code 2), `--api-keys bogus-a,bogus-b` (two keys 401→mark_dead→rotate exhausted) | ✅ single key 3 records to `data/cv/triage.jsonl`, `.distill/usage_<date>.json` logged 1925 tokens; `--daily-limit 1` kept counting the day's budget across processes and stopped immediately; two fake keys rotated then exit code 2 | 6-category `--category`, multi-key 500k/day soft cap, daily incremental + scheduler (`--schedule`/cron/Task Scheduler) all three capabilities verified usable |
 
 **Conclusion**: the data half (generate → compute → split → CLI check) runs fully on this machine; the training/eval half could not run end-to-end here because (1) native Windows lacks Unix modules (fixed, but real training should still run on Linux), (2) this sandbox cannot reach Hugging Face weights. On a Linux/WSL2 machine with a GPU and HF access, steps 7–12 of section 2 reproduce.
@@ -495,7 +495,7 @@ All below are results **actually executed** in this repo root, on Windows + Powe
 export HF_ENDPOINT=https://hf-mirror.com      # PowerShell: $env:HF_ENDPOINT="https://hf-mirror.com"
 uv sync
 # 1. compute volume
-python skills/kev-finetune/scripts/plan_size.py docs/medical/specs/critical-value.json --baseline-acc 0.75
+python skills/kev-finetune/scripts/plan_size.py docs/domains/medical/specs/critical-value.json --baseline-acc 0.75
 # 2. generate (programmatic rule synthesis / optional LLM distillation generative track)
 python kev/console/generators/gen_critical_value.py --n 787 --out data/cv.jsonl --seed 0
 # 2b. LLM distill one category (6 categories use --category; multi-key 500k/day, --schedule daemon or hand to cron/Task Scheduler)

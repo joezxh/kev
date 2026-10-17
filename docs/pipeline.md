@@ -338,5 +338,5 @@ Three hard breaks (L1–L3) in the distill→train path existed before the enhan
 
 - 阶段定义：`kev/console/stages/{data,train,eval,deploy,publish,modal}.py`
 - 闸门：`kev/console/gates.py`；产物：`kev/console/artifacts.py`；凭据：`kev/console/secrets.py`
-- 蒸馏脚本（冻结）：`skills/kev-finetune/scripts/generate_data.py`；spec：`docs/medical/specs/*.json`
+- 蒸馏脚本（冻结）：`skills/kev-finetune/scripts/generate_data.py`；spec：`docs/domains/medical/specs/*.json`
 - 增强计划：`docs/enhancement-plan.md`

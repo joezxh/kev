@@ -60,9 +60,10 @@ def _initdb() -> None:
         return
     engine = sa.create_engine(backend_url())
     sql = schema_file.read_text(encoding="utf-8")
-    # 用 exec_driver_sql（原始驱动 SQL）逐条执行：spec_json 内容里含 ":0.5" 这类子串，
-    # SQLAlchemy 的 text() 会误当成命名绑定参数；而 sqlite/postgres 的驱动在单引号字符串
-    # 内不会把 :name 当作参数，故原始执行可正确落库。
+    # 用 exec_driver_sql（原始驱动 SQL）逐条执行：按 `;` 切句后每句单独下发，而字符串
+    # 常量里可能出现 `:name` 形态的子串（早期版本的 SQL 内联过 spec 内容），text() 会把它们
+    # 误当成命名绑定参数；两种驱动在单引号字符串内都不会把 :name 当参数，故原始执行始终安全。
+    # spec 内容现在由种子补齐（见 kev.console.db::seed_scenarios），不再落在 SQL 文件里。
     with engine.begin() as conn:
         for stmt in sql.split(";"):
             stripped = stmt.strip()

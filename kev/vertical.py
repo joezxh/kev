@@ -353,7 +353,7 @@ class IndustryRegistry:
         return self
 
 
-# The five industries this module ships with. The medical five are `docs/medical/specs/*.json` and keep the risk
+# The five industries this module ships with. The medical five are `docs/domains/medical/specs/*.json` and keep the risk
 # levels that package's own phasing argues for: the three rule-derivable ones are `low` (a 0.8B may answer), the two
 # that need medical inference are `high` (4B only). The other four are declared with scenarios and risk but no
 # adapters, which is the state a site is in on day one: the router routes, and a gateway answers 503 until the

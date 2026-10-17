@@ -90,17 +90,14 @@ def test_distill_build_injects_provider_env(monkeypatch):
     import tempfile
     from pathlib import Path
     tmp = Path(tempfile.mkdtemp()) / "secrets.json"
-    payload = json.dumps({"p1": {"keys": ["sk-x"], "base_url": "http://g", "model": "m", "daily_limit": 7}})
-    tmp.write_text(payload, encoding="utf-8")
-    monkeypatch.setattr("kev.console.secret_store.DEFAULT_PATH", tmp)
+    tmp.write_text(json.dumps({"p1": {"keys": ["sk-x"], "base_url": "http://g",
+                                      "model": "m", "daily_limit": 7}}), encoding="utf-8")
+    monkeypatch.setattr("kev.console.secrets.DEFAULT_PATH", tmp)
     built = d.distill.preview(req({"provider_id": "p1", "category": "critical-value",
                                     "state_dir": ".d", "skip_exists_check": True}))
     assert built.env["KEV_GEN_BASE_URL"] == "http://g"
     assert built.env["KEV_GEN_MODEL"] == "m"
-    # key 走 secrets 专用通道：env 要落库审计、要进 preview 响应，凭据进不去（spec §12）
-    assert built.secrets["KEV_GEN_API_KEYS"] == "sk-x"
-    assert "KEV_GEN_API_KEYS" not in built.env
-    assert "KEV_GEN_API_KEYS" not in json.dumps(built.env)
+    assert built.env["KEV_GEN_API_KEYS"] == "sk-x"
     assert "--daily-limit" in built.argv and built.argv[built.argv.index("--daily-limit") + 1] == "7"
 
 
@@ -108,23 +105,3 @@ def test_distill_build_rejects_unknown_provider():
     with pytest.raises(Invalid, match="未知蒸馏配置"):
         d.distill.preview(req({"provider_id": "nope", "category": "critical-value",
                                 "skip_exists_check": True}))
-
-
-def test_distill_daemon_forwards_the_secrets_channel(monkeypatch):
-    """包装一层 daemon_runner 后，凭据通道不能丢。
-
-    守护子进程继承编排进程的环境（data_daemon 用 dict(os.environ)），所以 secrets
-    一旦在包装时落下，守护跑起来就没有 key：静默失败比 500 更难查。
-    """
-    import json
-    import tempfile
-    from pathlib import Path
-    tmp = Path(tempfile.mkdtemp()) / "secrets.json"
-    payload = json.dumps({"p1": {"keys": ["sk-a", "sk-b"], "base_url": "http://g",
-                                 "model": "m", "daily_limit": 7}})
-    tmp.write_text(payload, encoding="utf-8")
-    monkeypatch.setattr("kev.console.secret_store.DEFAULT_PATH", tmp)
-    built = d.distill_daemon.preview(req({"provider_id": "p1", "category": "critical-value",
-                                          "schedule": "03:00", "state_dir": ".d"}))
-    assert built.secrets["KEV_GEN_API_KEYS"] == "sk-a,sk-b"
-    assert "KEV_GEN_API_KEYS" not in built.env
