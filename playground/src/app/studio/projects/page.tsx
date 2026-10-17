@@ -5,9 +5,9 @@ import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button as UiButton } from "@/components/ui/button";
 import { useLang } from "@/lib/i18n";
-import { api, type Project } from "@/lib/console";
+import { api, type Project, type ProjectSummary } from "@/lib/console";
 import { useProjects } from "@/components/studio/ProjectSwitcher";
-import { PageHead, Panel, Drawer, FormGrid, Field, EmptyState } from "@/components/studio/primitives";
+import { PageHead, Panel, Drawer, FormGrid, Field, EmptyState, StatusBadge } from "@/components/studio/primitives";
 
 export default function StudioProjectsPage() {
   const { t, lang } = useLang();
@@ -25,6 +25,23 @@ export default function StudioProjectsPage() {
   }, []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // 列表关键列（作业数 / 产物数 / 最近活动）来自 ProjectSummary，用 N+1 逐项目取
+  // （与 usage 页同模式：无 projects-list-with-counts 端点，客户端聚合）。
+  const [summaries, setSummaries] = useState<Record<string, ProjectSummary>>({});
+  useEffect(() => {
+    let alive = true;
+    // projects 为空时 Promise.all([]) 自然解析为 {}，无需同步 setState（避开级联渲染）。
+    Promise.all(
+      projects.map((p) => api.project(p.id).then((s) => [p.id, s] as const).catch(() => null)),
+    ).then((entries) => {
+      if (!alive) return;
+      const map: Record<string, ProjectSummary> = {};
+      for (const e of entries) if (e) map[e[0]] = e[1];
+      setSummaries(map);
+    });
+    return () => { alive = false; };
+  }, [projects]);
 
   function openCreate() {
     setEditing(null);
@@ -85,21 +102,36 @@ export default function StudioProjectsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>name</TableHead>
-                <TableHead>slug</TableHead>
-                <TableHead>{t("studio.projects.description")}</TableHead>
-                <TableHead className="text-right">created</TableHead>
+                <TableHead>{t("studio.projects.col.scenario")}</TableHead>
+                <TableHead>{t("studio.projects.col.status")}</TableHead>
+                <TableHead className="text-right">{t("studio.projects.col.jobs")}</TableHead>
+                <TableHead className="text-right">{t("studio.projects.col.artifacts")}</TableHead>
+                <TableHead>{t("studio.projects.col.freeze")}</TableHead>
+                <TableHead>{t("studio.projects.col.activity")}</TableHead>
                 <TableHead className="text-right"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {projects.map((p) => (
+              {projects.map((p) => {
+                const s = summaries[p.id];
+                const lastTs = (s?.recent_events ?? []).reduce((m, e) => (e.ts > m ? e.ts : m), "");
+                const activity = lastTs || p.updated_at;
+                return (
                 <TableRow key={p.id}>
                   <TableCell className="text-sm">
-                    <Link href={`/studio/projects/${p.id}`} className="hover:text-foreground hover:underline">{p.name}</Link>
+                    <Link href={`/studio/projects/${p.id}`} className="hover:text-foreground hover:underline" title={p.description || undefined}>{p.name}</Link>
+                    <div className="font-mono text-[11px] text-muted-foreground">{p.slug}</div>
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{p.slug}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{p.description || "—"}</TableCell>
-                  <TableCell className="text-right font-mono text-xs text-muted-foreground">{p.created_at.slice(0, 10)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{p.scenario || "—"}</TableCell>
+                  <TableCell><StatusBadge status={p.status} /></TableCell>
+                  <TableCell className="text-right font-mono text-xs">{s ? s.jobs : "—"}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{s ? s.artifacts : "—"}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {t("studio.projects.freezeFmt", { records: p.freeze_min_records, ratio: `${Math.round((p.freeze_min_review_ratio ?? 0) * 100)}%` })}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {activity ? activity.slice(0, 16).replace("T", " ") : t("studio.projects.noActivity")}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <UiButton size="xs" variant="outline" onClick={() => openEdit(p)}>{lang === "zh" ? "编辑" : "edit"}</UiButton>
@@ -107,7 +139,8 @@ export default function StudioProjectsPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         )}

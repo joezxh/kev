@@ -366,6 +366,14 @@ export const api = {
     call<{ slug: string; ts: string; content: string }>(
       `scenarios/${encodeURIComponent(slug)}/spec/history/${encodeURIComponent(ts)}`),
 
+  // ---- distill yaml 内容（DB 为编辑真相源，任务 3）----
+  scenarioDistillYaml: (slug: string) =>
+    call<{ slug: string; path: string; content: string }>(
+      `scenarios/${encodeURIComponent(slug)}/distill-yaml`),
+  saveScenarioDistillYaml: (slug: string, content: string) =>
+    call<{ slug: string; saved: boolean }>(`scenarios/${encodeURIComponent(slug)}/distill-yaml`,
+      { method: "PUT", body: JSON.stringify({ content }) }),
+
   // Generator tab API
   generatorPreview: (scenario: string, body: { generator: unknown; distill: unknown; state_example: unknown }) =>
     fetch(`/console/api/scenarios/${encodeURIComponent(scenario)}/generator/preview`, {
@@ -499,6 +507,9 @@ export type DistillUsageTotal = { day: string; tokens: number };
 export type Scenario = {
   id: string; slug: string; label: string; label_zh: string; label_en: string;
   spec_path: string; category: string; sort: number; exists: boolean;
+  // 轨制派生列（scenario_specs.derive_track，后端 list_scenario_tree 已返回）：
+  // track = rule|distill|both|llm|''，generator_kind = engine|script|''。
+  track: string; generator_kind: string; distill_yaml?: string; origin?: string;
 };
 export type ScenarioDomain = {
   id: string; slug: string; label: string; label_zh: string; label_en: string;

@@ -128,7 +128,7 @@ def test_migrate_v8_from_legacy_shape(tmp_path):
 
     migrated = Store(path)          # 建表跳过（已存在），_migrate 补列 + 重新播种
     try:
-        assert migrated.schema_version() == 9  # 迁移收敛到当前 SCHEMA_VERSION（v9 起含策展新表）
+        assert migrated.schema_version() == 10  # 迁移收敛到当前 SCHEMA_VERSION（v10 起含 distill_yaml_content）
         tree = {d["slug"]: d for d in migrated.list_scenario_tree()}
         # 认领旧行而不是新建一条同义域（不插重复域也不重命名用户的 slug）
         assert "research" in tree and "science" not in tree
@@ -322,3 +322,120 @@ def test_distill_build_passes_examples_few_shot(client):
         scenario="critical-value", run_name="cv-3",
         params={**base, "examples": "data/cv/train.jsonl"}))
     assert flag(default_n.argv, "--n-examples") == "4"
+
+
+# ---- 轨制 / 生成器列（任务 1）+ distill_yaml 内容列（任务 3） ------------
+
+def _distill_scenario_with_file(store):
+    """找一个 distill_yaml 路径指向真实仓库文件的种子场景，返回 (slug, rel)；无则 (None, None)。"""
+    from kev.console import paths as _paths
+    for domain in store.list_scenario_tree():
+        for s in domain["scenarios"]:
+            rel = s.get("distill_yaml")
+            if rel and (_paths.ROOT / rel).is_file():
+                return s["slug"], rel
+    return None, None
+
+
+def test_tree_rows_carry_track_and_generator_kind(client):
+    """(a) list_scenario_tree 每行都带 track / generator_kind 键（前端徽标据此渲染）。"""
+    store = client.app.state.store
+    rows = [s for d in store.list_scenario_tree() for s in d["scenarios"]]
+    assert rows
+    for s in rows:
+        assert "track" in s and "generator_kind" in s, s["slug"]
+        # track 只可能是四值或空（未判定）
+        assert s["track"] in ("rule", "distill", "both", "llm", ""), s["slug"]
+        assert s["generator_kind"] in ("engine", "script", ""), s["slug"]
+
+
+def test_seed_backfills_distill_yaml_content_from_file(client):
+    """(b) distill_yaml_content 列存在，且 seed 从 distill_yaml 指向的仓库文件回填内容。"""
+    store = client.app.state.store
+    assert store._column_exists("scenarios", "distill_yaml_content")
+    slug, rel = _distill_scenario_with_file(store)
+    assert slug, "种子场景里应至少有一个带真实 distill_yaml 文件的蒸馏轨场景"
+    from kev.console import paths as _paths
+    file_text = (_paths.ROOT / rel).read_text(encoding="utf-8")
+    # seed 已把文件内容写进内容列；read 优先返回 DB 内容
+    assert store.get_scenario_by_slug(slug)["distill_yaml_content"] == file_text
+    assert store.read_distill_yaml(slug) == file_text
+
+
+def test_read_distill_yaml_falls_back_to_file_then_empty(client):
+    """内容列清空后 read 回退读仓库文件；无 distill_yaml 路径的场景返回空串且不抛。"""
+    import sqlalchemy as sa
+    from kev.console import paths as _paths
+    store = client.app.state.store
+    slug, rel = _distill_scenario_with_file(store)
+    assert slug
+    store._conn().execute(
+        sa.text("UPDATE scenarios SET distill_yaml_content=NULL WHERE slug=:s"), {"s": slug})
+    assert store.read_distill_yaml(slug) == (_paths.ROOT / rel).read_text(encoding="utf-8")
+    # 非蒸馏轨场景（distill_yaml 为空）读内容为空串
+    rule_slug = next((s["slug"] for d in store.list_scenario_tree()
+                      for s in d["scenarios"] if not s.get("distill_yaml")), None)
+    assert rule_slug and store.read_distill_yaml(rule_slug) == ""
+
+
+def test_distill_yaml_roundtrip_validation_and_404(client):
+    """(c) GET/PUT distill-yaml 往返一致；非法 YAML 被拒 400 且不落库；未知场景 404。"""
+    store = client.app.state.store
+    slug, _ = _distill_scenario_with_file(store)
+    assert slug
+    good = "job_type: advanced_instruct_distill\nbackend:\n  type: openai\n  model: m\nresume: true\n"
+    resp = client.put(f"/console/api/scenarios/{slug}/distill-yaml", json={"content": good})
+    assert resp.status_code == 200 and resp.json()["saved"], resp.text
+    body = client.get(f"/console/api/scenarios/{slug}/distill-yaml").json()
+    assert body["slug"] == slug and body["content"] == good
+    assert body["path"].endswith(".yaml")
+    # 非法 YAML -> 400 validation（field=content），原内容不变
+    bad = client.put(f"/console/api/scenarios/{slug}/distill-yaml", json={"content": "a: b: c: [unclosed"})
+    assert bad.status_code == 400
+    assert bad.json()["error"]["kind"] == "validation" and bad.json()["error"]["field"] == "content"
+    assert client.get(f"/console/api/scenarios/{slug}/distill-yaml").json()["content"] == good
+    # 未知场景 -> 404
+    assert client.get("/console/api/scenarios/__nope__/distill-yaml").status_code == 404
+    assert client.put("/console/api/scenarios/__nope__/distill-yaml",
+                      json={"content": "a: 1"}).status_code == 404
+
+
+def test_write_distill_yaml_idempotent_and_not_overwritten_by_reseed(client):
+    """(d) write 幂等；用户编辑过的内容不被 seed（非 force）覆盖。"""
+    store = client.app.state.store
+    slug, _ = _distill_scenario_with_file(store)
+    assert slug
+    edited = "job_type: custom_edited\nresume: false\n"
+    store.write_distill_yaml(slug, edited)
+    assert store.read_distill_yaml(slug) == edited
+    store.write_distill_yaml(slug, edited)  # 幂等
+    assert store.read_distill_yaml(slug) == edited
+    store.seed_scenarios()  # 非 force：不覆盖已编辑内容
+    assert store.read_distill_yaml(slug) == edited
+
+
+def test_write_distill_yaml_rejects_invalid(client):
+    """write_distill_yaml 对非法 YAML 抛 ValueError，且不改动原内容。"""
+    store = client.app.state.store
+    slug, _ = _distill_scenario_with_file(store)
+    assert slug
+    before = store.read_distill_yaml(slug)
+    with pytest.raises(ValueError):
+        store.write_distill_yaml(slug, ":\n  - a: [unclosed")
+    assert store.read_distill_yaml(slug) == before
+
+
+def test_distill_yaml_file_materializes_db_content(client):
+    """物化：DB 内容写到 data/console/distill-configs/<slug>.yaml（镜像 spec_file_path）。"""
+    store = client.app.state.store
+    slug, _ = _distill_scenario_with_file(store)
+    assert slug
+    edited = "job_type: materialized\nresume: true\n"
+    store.write_distill_yaml(slug, edited)
+    path = store.distill_yaml_file(slug)
+    try:
+        assert path is not None and path.name == f"{slug}.yaml"
+        assert path.read_text(encoding="utf-8") == edited
+    finally:
+        if path is not None:
+            path.unlink(missing_ok=True)

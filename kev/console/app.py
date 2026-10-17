@@ -650,6 +650,30 @@ def put_scenario_spec(slug: str, payload: dict, store: Store = Depends(get_store
     return {"slug": slug, "saved": True}
 
 
+@console_router.get("/console/api/scenarios/{slug}/distill-yaml")
+def get_scenario_distill_yaml(slug: str, store: Store = Depends(get_store)):
+    row = store.get_scenario_by_slug(slug)
+    if row is None:
+        return _error("validation", f"未知场景 {slug}", status=404)
+    try:
+        content = store.read_distill_yaml(slug)
+    except KeyError:
+        return _error("validation", f"未知场景 {slug}", status=404)
+    return {"slug": slug, "path": row.get("distill_yaml") or "", "content": content}
+
+
+@console_router.put("/console/api/scenarios/{slug}/distill-yaml")
+def put_scenario_distill_yaml(slug: str, payload: dict, store: Store = Depends(get_store)):
+    content = payload.get("content", "")
+    try:
+        store.write_distill_yaml(slug, content)
+    except KeyError:
+        return _error("validation", f"未知场景 {slug}", status=404)
+    except ValueError as error:
+        return _error("validation", str(error), status=400, field="content")
+    return {"slug": slug, "saved": True}
+
+
 # ---- datasets ---------------------------------------------------------
 
 @console_router.get("/console/api/datasets")

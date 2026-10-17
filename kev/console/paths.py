@@ -29,6 +29,10 @@ DB_PATH = ROOT / CONSOLE_REL / "kev-console.db"
 # 冻结脚本按路径读取；不再是仓库内 docs/domains/medical/specs 的真相源，仅是 DB 的投影）。
 CONSOLE_SPECS = ROOT / CONSOLE_REL / "specs"
 
+# 运行时从数据库 distill_yaml_content 物化出来的 EasyDistill 配置目录（供 easydistill CLI 按路径
+# 读取；与 CONSOLE_SPECS 同理，是 DB 的投影，不是仓库内 distill/configs 的真相源）。
+CONSOLE_DISTILL_CONFIGS = ROOT / CONSOLE_REL / "distill-configs"
+
 # tokenizer 的本地镜像根目录（kev.console.tokenizer_mirror）：Hub 直连不通时，precheck 从可达的
 # 镜像（ModelScope / HF 镜像）把 tokenizer 文件拉到这儿，随后 --init-from 只读本地。
 # 与 secrets、DB 同在 data/console 之下，已经被 .gitignore 排除。

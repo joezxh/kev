@@ -138,6 +138,7 @@ COMMENT ON COLUMN scenarios.category     IS '场景分类，默认 medical。';
 COMMENT ON COLUMN scenarios.track        IS '轨制（scenario_specs.derive_track 派生）：rule|distill|both|llm，空串未定。';
 COMMENT ON COLUMN scenarios.generator_kind IS '生成器类型：engine（spec.generator 九件套）|script（legacy gen_<场景>.py）|空串。';
 COMMENT ON COLUMN scenarios.distill_yaml IS '该场景的 EasyDistill 配置（仓库相对路径）或空串。';
+COMMENT ON COLUMN scenarios.distill_yaml_content IS '该 yaml 的可编辑内容（DB 为编辑真相源；空 = 未导入/未编辑，read_distill_yaml 回退读 distill_yaml 路径文件）。';
 COMMENT ON COLUMN scenarios.origin       IS '''domains'' 表示行由 docs/domains 种子导入维护；空串为手工建。';
 COMMENT ON COLUMN scenarios.sort         IS '展示排序，默认 0。';
 COMMENT ON COLUMN scenarios.created_at   IS '创建时间（UTC ISO8601）。';

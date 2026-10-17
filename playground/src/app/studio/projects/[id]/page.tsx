@@ -27,10 +27,10 @@ import {
 } from "@/components/ui/table";
 import { latestJobPerStage } from "@/components/studio/project/selectors";
 
-type Tab = "overview" | "data" | "merge" | "review" | "trainings" | "results" | "lineage";
+// 6 tab（收掉 overview，其内容并入常驻页头 ProjectMasthead，对齐样稿目标态）。
+type Tab = "data" | "merge" | "review" | "trainings" | "results" | "lineage";
 
 const TABS: { id: Tab; zh: string; en: string }[] = [
-  { id: "overview", zh: "概览", en: "Overview" },
   { id: "data", zh: "数据", en: "Data" },
   { id: "merge", zh: "合成", en: "Merge" },
   { id: "review", zh: "标注", en: "Review" },
@@ -49,19 +49,24 @@ export default function StudioProjectDetailPage({
   const [summary, setSummary] = useState<ProjectSummary | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [bundles, setBundles] = useState<Bundle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("data");
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    Promise.all([api.project(id), api.jobs({ project: id }), api.projectArtifacts(id)])
-      .then(([s, j, a]) => {
+    Promise.all([
+      api.project(id), api.jobs({ project: id }), api.projectArtifacts(id),
+      api.bundles(id).catch(() => [] as Bundle[]),
+    ])
+      .then(([s, j, a, b]) => {
         if (!alive) return;
         setSummary(s);
         setJobs(j);
         setArtifacts(a);
+        setBundles(b);
         setError(null);
       })
       .catch((e) => alive && setError(String((e as { message?: string })?.message ?? e)))
@@ -93,6 +98,10 @@ export default function StudioProjectDetailPage({
         <div className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div>
       )}
 
+      {summary && !loading && (
+        <ProjectMasthead summary={summary} jobs={jobs} bundles={bundles} lang={lang} />
+      )}
+
       <div className="flex flex-wrap gap-2">
         {TABS.map((item) => (
           <button
@@ -115,8 +124,6 @@ export default function StudioProjectDetailPage({
         <div className="text-xs text-muted-foreground">{lang === "zh" ? "加载中…" : "Loading…"}</div>
       ) : !summary ? (
         <EmptyState title={lang === "zh" ? "找不到该项目" : "Project not found"} />
-      ) : tab === "overview" ? (
-        <OverviewTab summary={summary} jobs={jobs} lang={lang} />
       ) : tab === "data" ? (
         <DataTab artifacts={artifacts} lang={lang} />
       ) : tab === "merge" ? (
@@ -134,38 +141,60 @@ export default function StudioProjectDetailPage({
   );
 }
 
-function OverviewTab({ summary, jobs, lang }: { summary: ProjectSummary; jobs: Job[]; lang: string }) {
-  const latest = latestJobPerStage(jobs);
+/** 页头 F1–F4 取「最有代表性」的 bundle：已冻结 > 已物化 > 草稿 > 退役，同级取最新。 */
+function pickHeadlineBundle(bundles: Bundle[]): Bundle | null {
+  if (bundles.length === 0) return null;
+  const rank = (b: Bundle) => (b.status === "frozen" ? 3 : b.status === "materialized" ? 2 : b.status === "retired" ? 0 : 1);
+  return [...bundles].sort((a, b) => rank(b) - rank(a) || b.created_at.localeCompare(a.created_at))[0];
+}
+
+/** 常驻页头：本轮目标 + 状态/计数 + 各阶段最新作业 + freeze 门槛 + F1–F4 + 最近活动。
+ *  收掉原 overview tab，把这些项目级信息提到所有 tab 之上（对齐样稿目标态）。 */
+function ProjectMasthead({ summary, jobs, bundles, lang }:
+  { summary: ProjectSummary; jobs: Job[]; bundles: Bundle[]; lang: string }) {
   const zh = lang === "zh";
+  const latest = latestJobPerStage(jobs);
+  const headline = pickHeadlineBundle(bundles);
   return (
-    <div className="space-y-4">
-      <Panel title={zh ? "项目目标" : "Goal"}>
-        <p className="text-sm whitespace-pre-wrap">{summary.goal || (zh ? "（未填写）" : "(empty)")}</p>
-        <dl className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-          <div><dt className="text-muted-foreground">{zh ? "状态" : "status"}</dt><dd>{summary.status}</dd></div>
-          <div><dt className="text-muted-foreground">{zh ? "作业数" : "jobs"}</dt><dd>{summary.jobs}</dd></div>
-          <div><dt className="text-muted-foreground">{zh ? "产物数" : "artifacts"}</dt><dd>{summary.artifacts}</dd></div>
-          <div><dt className="text-muted-foreground">{zh ? "冻结最小记录" : "freeze min records"}</dt><dd>{summary.freeze_min_records}</dd></div>
-          <div><dt className="text-muted-foreground">{zh ? "冻结最小复核比" : "freeze min review ratio"}</dt><dd>{summary.freeze_min_review_ratio}</dd></div>
-        </dl>
-      </Panel>
-
-      <Panel title={zh ? "各阶段最新作业" : "Latest job per stage"}>
-        {Object.keys(latest).length === 0 ? (
-          <EmptyState title={zh ? "还没有作业" : "No jobs yet"} />
-        ) : (
-          <div className="flex flex-wrap gap-4">
-            {Object.entries(latest).map(([stage, job]) => (
-              <div key={stage} className="flex items-center gap-2 text-xs">
-                <span className="font-mono text-muted-foreground">{stage}</span>
-                <StatusBadge status={job.status} />
-              </div>
-            ))}
+    <div className="space-y-3">
+      <div className="space-y-3 rounded-md border border-border bg-[#111111] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{zh ? "本轮目标" : "Goal"}</div>
+            <p className="mt-1 text-sm whitespace-pre-wrap">{summary.goal || (zh ? "（未填写）" : "(empty)")}</p>
           </div>
-        )}
-      </Panel>
+          <div className="flex shrink-0 items-center gap-2">
+            <StatusBadge status={summary.status} />
+            <span className="rounded border border-border bg-[#0d0d0d] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+              {zh ? "作业" : "jobs"} {summary.jobs} · {zh ? "产物" : "artifacts"} {summary.artifacts}
+            </span>
+          </div>
+        </div>
 
-      <Panel title={zh ? "最近事件" : "Recent events"}>
+        <div className="flex flex-wrap gap-2">
+          {Object.keys(latest).length === 0 ? (
+            <span className="text-xs text-muted-foreground">{zh ? "还没有作业" : "No jobs yet"}</span>
+          ) : Object.entries(latest).map(([stage, job]) => (
+            <div key={stage} className="flex items-center gap-2 rounded border border-border bg-[#0d0d0d] px-2 py-1 text-xs">
+              <span className="font-mono text-muted-foreground">{stage}</span>
+              <StatusBadge status={job.status} />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 border-t border-border/60 pt-3 text-xs">
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{zh ? "冻结门槛" : "Freeze gate"}</span>
+          <span>{zh ? "最小记录" : "min records"}: <span className="font-mono text-foreground">{summary.freeze_min_records}</span></span>
+          <span>{zh ? "最小复核比" : "min review ratio"}: <span className="font-mono text-foreground">{summary.freeze_min_review_ratio.toFixed(2)}</span></span>
+          {headline && (
+            <span className="text-muted-foreground">{zh ? "参考 bundle" : "ref bundle"}: <span className="font-mono text-foreground">{headline.name}</span> <BundleStatusBadge status={headline.status} /></span>
+          )}
+        </div>
+      </div>
+
+      <FreezeChecksPanel checks={headline?.freeze_checks ?? []} lang={lang} />
+
+      <Panel title={zh ? "最近活动" : "Recent activity"}>
         <EventList events={summary.recent_events} lang={lang} />
       </Panel>
     </div>
@@ -742,7 +771,6 @@ function MergeTab({ projectId, summary, artifacts, lang }:
               </div>
             </Panel>
 
-            <FreezeChecksPanel checks={selected.freeze_checks} lang={lang} />
             <FreezePolicyPanel projectId={projectId} summary={summary} lang={lang}
               onBusy={setBusy} onError={setError} onMessage={setMessage} />
             <DiffPanel projectId={projectId} selected={selected} bundles={bundles ?? []} lang={lang}

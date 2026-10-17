@@ -42,6 +42,11 @@ export default function StudioUsagePage() {
   }, []);
   const current = usageRows?.find((r) => r.id === projectId) ?? null;
 
+  // 合计行：后端无成本字段，不虚构美元，只对三列真实用量求和（存储 GB / 训练小时 / API 调用）。
+  const sumStorage = (usageRows ?? []).reduce((a, r) => a + r.usage.storage_gb_used, 0);
+  const sumTrain = (usageRows ?? []).reduce((a, r) => a + r.usage.training_hours_used, 0);
+  const sumCalls = (usageRows ?? []).reduce((a, r) => a + r.usage.api_calls_used, 0);
+
   const totalCalls = summary.value.reduce((a, r) => a + r.calls, 0);
   const totalTokens = summary.value.reduce((a, r) => a + r.input_tokens + r.output_tokens, 0);
   const totalDistill = distill.value.reduce((a, r) => a + r.tokens, 0);
@@ -86,14 +91,24 @@ export default function StudioUsagePage() {
                   <TableRow>
                     <TableCell colSpan={4} className="text-sm text-muted-foreground">{t("studio.usage.empty")}</TableCell>
                   </TableRow>
-                ) : usageRows.map((r) => (
-                  <TableRow key={r.id} className={r.id === projectId ? "bg-muted/40" : undefined}>
-                    <TableCell>{r.name} <span className="text-xs text-muted-foreground">({r.slug})</span></TableCell>
-                    <TableCell className="text-right font-mono text-xs">{num(r.usage.storage_gb_used)}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{num(r.usage.training_hours_used, 2)}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.usage.api_calls_used.toLocaleString()}</TableCell>
-                  </TableRow>
-                ))}
+                ) : (
+                  <>
+                    {usageRows.map((r) => (
+                      <TableRow key={r.id} className={r.id === projectId ? "bg-muted/40" : undefined}>
+                        <TableCell>{r.name} <span className="text-xs text-muted-foreground">({r.slug})</span></TableCell>
+                        <TableCell className="text-right font-mono text-xs">{num(r.usage.storage_gb_used)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">{num(r.usage.training_hours_used, 2)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">{r.usage.api_calls_used.toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="border-t border-border font-medium">
+                      <TableCell>{t("studio.usage.totalRow")}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{num(sumStorage)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{num(sumTrain, 2)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{sumCalls.toLocaleString()}</TableCell>
+                    </TableRow>
+                  </>
+                )}
               </TableBody>
             </Table>
           </div>

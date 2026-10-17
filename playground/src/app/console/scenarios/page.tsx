@@ -12,7 +12,8 @@ import {
 import { LangToggle } from "@/components/lang-toggle";
 import { api, type Scenario, type ScenarioTree } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
-import { GeneratorTab } from "./GeneratorTab";
+import { SpecEditor } from "./SpecEditor";
+import { DistillYamlEditor } from "./DistillYamlEditor";
 
 type Selection =
   | { type: "domain"; id: string }
@@ -41,9 +42,10 @@ export default function ScenariosPage() {
   const [specDirty, setSpecDirty] = useState(false);
   const [specError, setSpecError] = useState<string | null>(null);
   const [specHistory, setSpecHistory] = useState<{ ts: string }[]>([]);
-  const [specJson, setSpecJson] = useState<{
-    generator?: unknown; distill?: unknown; routing?: unknown; smoke_probe?: unknown;
-  } | null>(null);
+  // spec_json 解析后的完整对象（SpecEditor 的真相源）；解析失败为 null，回退到原始 textarea。
+  const [specObj, setSpecObj] = useState<Record<string, unknown> | null>(null);
+  // 自增版本号：切换场景 / 载入历史时递增，作为 SpecEditor 的 key 强制重挂载（清空内部 tab/raw 状态）。
+  const [specRev, setSpecRev] = useState(0);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -56,6 +58,16 @@ export default function ScenariosPage() {
     () => tree.map((d) => ({ id: d.id, label_zh: d.label_zh, label_en: d.label_en })),
     [tree],
   );
+
+  // 当前选中的场景对象（从树里找），用于取 track / distill_yaml / spec_path 决定是否渲染蒸馏编辑器。
+  const selectedScenario = useMemo(() => {
+    if (selected?.type !== "scenario") return null;
+    for (const d of tree) {
+      const s = d.scenarios.find((x) => x.id === selected.id);
+      if (s) return s;
+    }
+    return null;
+  }, [selected, tree]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -86,22 +98,18 @@ export default function ScenariosPage() {
       label_en: scenario.label_en, spec_path: scenario.spec_path, category: scenario.category, sort: scenario.sort,
     });
     setBusy(true);
+    setSpecContent(""); setSpecObj(null);
     api.scenarioSpec(scenario.slug)
       .then((res) => {
         setSpecContent(res.content); setSpecDirty(false); setSpecError(null);
         try {
-          const parsed = JSON.parse(res.content) as Record<string, unknown>;
-          setSpecJson({
-            generator: parsed.generator,
-            distill: parsed.distill,
-            routing: parsed.routing,
-            smoke_probe: parsed.smoke_probe,
-          });
+          setSpecObj(JSON.parse(res.content) as Record<string, unknown>);
         } catch {
-          setSpecJson(null);
+          setSpecObj(null);
         }
+        setSpecRev((r) => r + 1);
       })
-      .catch(() => { setSpecContent(""); setSpecError(t("console.scenarios.specLoadFailed")); setSpecJson(null); })
+      .catch(() => { setSpecContent(""); setSpecError(t("console.scenarios.specLoadFailed")); setSpecObj(null); setSpecRev((r) => r + 1); })
       .finally(() => setBusy(false));
     api.specHistory(scenario.slug).then(setSpecHistory).catch(() => setSpecHistory([]));
   };
@@ -211,11 +219,26 @@ export default function ScenariosPage() {
       setSpecContent(res.content);
       setSpecDirty(true);   // 回滚内容需再点「保存配置」才会写回源文件
       setSpecError(null);
+      // 历史内容同样喂给结构化编辑器：重新解析并递增 rev 触发重挂载。
+      try {
+        setSpecObj(JSON.parse(res.content) as Record<string, unknown>);
+      } catch {
+        setSpecObj(null);
+      }
+      setSpecRev((r) => r + 1);
     } catch (e) {
       toast.error((e as { message: string }).message);
     } finally {
       setBusy(false);
     }
+  };
+
+  // SpecEditor 的受控回调：对象变更 -> 同步序列化文本 + dirty；保存仍走页面「保存配置」按钮（saveSpec）。
+  const handleSpecChange = (next: Record<string, unknown>) => {
+    setSpecObj(next);
+    setSpecContent(JSON.stringify(next, null, 2));
+    setSpecDirty(true);
+    setSpecError(null);
   };
 
   return (
@@ -258,13 +281,21 @@ export default function ScenariosPage() {
                       key={scenario.id}
                       type="button"
                       onClick={() => selectScenario(domain.slug, scenario)}
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted ${
+                      className={`flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted ${
                         selected?.type === "scenario" && selected.id === scenario.id ? "bg-muted font-medium" : ""}`}
                     >
-                      <span className="flex-1">{scenario.label}</span>
-                      <span className={`h-1.5 w-1.5 rounded-full ${scenario.exists ? "bg-emerald-500" : "bg-amber-500"}`}
-                            title={scenario.exists ? t("console.scenarios.exists") : t("console.scenarios.missing")} />
-                      <span className="font-mono text-[10px] text-muted-foreground">{scenario.slug}</span>
+                      <span className="flex w-full items-center gap-1.5">
+                        <span className="flex-1 truncate text-sm">{scenario.label}</span>
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${scenario.exists ? "bg-emerald-500" : "bg-amber-500"}`}
+                              title={scenario.exists ? t("console.scenarios.exists") : t("console.scenarios.missing")} />
+                      </span>
+                      <span className="flex w-full items-center gap-1">
+                        <TrackBadge track={scenario.track} label={t("console.scenarios.track")} />
+                        {scenario.generator_kind && (
+                          <GenBadge kind={scenario.generator_kind} label={t("console.scenarios.generatorKind")} />
+                        )}
+                        <span className="ml-auto truncate font-mono text-[10px] text-muted-foreground">{scenario.slug}</span>
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -388,12 +419,18 @@ export default function ScenariosPage() {
                   <Label className="text-sm font-medium">{t("console.scenarios.specEditor")}</Label>
                   {specDirty && <span className="text-xs text-amber-600">●</span>}
                 </div>
-                <Textarea
-                  className="min-h-72 font-mono text-xs"
-                  value={specContent}
-                  onChange={(e) => { setSpecContent(e.target.value); setSpecDirty(true); }}
-                  placeholder="{}"
-                />
+                {scenarioDraft.id !== "__new__" && specObj ? (
+                  <div className="rounded-md border border-border bg-muted/20 p-3">
+                    <SpecEditor key={`${scenarioDraft.slug}-${specRev}`} value={specObj} onChange={handleSpecChange} />
+                  </div>
+                ) : (
+                  <Textarea
+                    className="min-h-72 font-mono text-xs"
+                    value={specContent}
+                    onChange={(e) => { setSpecContent(e.target.value); setSpecDirty(true); }}
+                    placeholder="{}"
+                  />
+                )}
                 {specError && <p className="text-xs text-destructive">{specError}</p>}
                 <div className="flex flex-wrap items-center gap-2">
                   <Button onClick={() => void saveScenario()} disabled={busy}>{t("console.scenarios.save")}</Button>
@@ -418,43 +455,13 @@ export default function ScenariosPage() {
                 </div>
               </div>
 
-              {scenarioDraft.id !== "__new__" && specJson && (
-                <div className="space-y-2 rounded-md border border-border bg-muted/30 p-4">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">Generator</Label>
-                    <span className="text-xs text-muted-foreground">spec_json 子字段编辑器（Fields/Rules/Aug+Plan/Distill/Routing/Smoke 的最小版）</span>
-                  </div>
-                  <GeneratorTab
-                    scenario={scenarioDraft.slug}
-                    spec={specJson}
-                    scenarioId={scenarioDraft.id}
-                    onSave={async (subfields) => {
-                      // 把 4 个子字段合并进当前 spec，重新序列化后保存（沿用 saveSpec 通道）
-                      let next: Record<string, unknown>;
-                      try {
-                        next = JSON.parse(specContent) as Record<string, unknown>;
-                      } catch {
-                        next = {};
-                      }
-                      next.generator = subfields.generator;
-                      next.distill = subfields.distill;
-                      next.routing = subfields.routing;
-                      next.smoke_probe = subfields.smoke_probe;
-                      const merged = JSON.stringify(next, null, 2);
-                      setSpecContent(merged);
-                      setSpecDirty(true);
-                      await api.saveScenarioSpec(scenarioDraft.slug, merged);
-                      setSpecDirty(false);
-                      setSpecJson({
-                        generator: subfields.generator,
-                        distill: subfields.distill,
-                        routing: subfields.routing,
-                        smoke_probe: subfields.smoke_probe,
-                      });
-                      toast.success(t("console.scenarios.specSaved"));
-                    }}
-                  />
-                </div>
+              {scenarioDraft.id !== "__new__" && selectedScenario &&
+                (selectedScenario.track === "distill" || selectedScenario.track === "both" || !!selectedScenario.distill_yaml) && (
+                <DistillYamlEditor
+                  key={selectedScenario.slug}
+                  slug={selectedScenario.slug}
+                  specPath={selectedScenario.spec_path}
+                />
               )}
             </>
           )}
@@ -471,5 +478,38 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {children}
       {hint && <p className="text-[11px] leading-relaxed text-muted-foreground/80">{hint}</p>}
     </div>
+  );
+}
+
+// 轨制徽标的颜色映射（track = rule|distill|both|llm，其余归为未判定）。
+const TRACK_STYLE: Record<string, string> = {
+  rule: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  distill: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
+  both: "bg-teal-500/15 text-teal-600 dark:text-teal-400",
+  llm: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+};
+const TRACK_KEYS = ["rule", "distill", "both", "llm"];
+
+function TrackBadge({ track, label }: { track: string; label: string }) {
+  const { t } = useLang();
+  const key = TRACK_KEYS.includes(track) ? track : "unknown";
+  const style = TRACK_STYLE[track] ?? "bg-muted text-muted-foreground";
+  const text = t(`console.scenarios.track.${key}`);
+  return (
+    <span title={`${label}: ${text}`}
+          className={`inline-flex shrink-0 items-center rounded px-1 py-px text-[9px] font-medium leading-tight ${style}`}>
+      {text}
+    </span>
+  );
+}
+
+function GenBadge({ kind, label }: { kind: string; label: string }) {
+  const { t } = useLang();
+  const text = t(`console.scenarios.gen.${kind === "script" ? "script" : "engine"}`);
+  return (
+    <span title={`${label}: ${kind}`}
+          className="inline-flex shrink-0 items-center rounded border border-border px-1 py-px text-[9px] font-medium leading-tight text-muted-foreground">
+      {text}
+    </span>
   );
 }

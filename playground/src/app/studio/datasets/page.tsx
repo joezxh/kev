@@ -6,8 +6,10 @@ import { useLang } from "@/lib/i18n";
 import { JobStagePage, type FieldSpec } from "@/components/console/JobStagePage";
 import { usePoll } from "@/components/console/usePoll";
 import { formatNumber } from "@/components/console/format";
-import { EmptyState, Pager } from "@/components/studio/primitives";
+import { EmptyState, FilterChip, Pager } from "@/components/studio/primitives";
 import { JobBoard, type JobFilter } from "@/components/studio/JobBoard";
+import { useProjects } from "@/components/studio/ProjectSwitcher";
+import { useSelectedProject } from "@/lib/project-context";
 import Link from "next/link";
 
 const KINDS: Record<string, { kind: string; fields: FieldSpec[] }> = {
@@ -215,7 +217,18 @@ function DatasetTable({
   const [pageSize, setPageSize] = useState(10);
   const [q, setQ] = useState("");
 
+  // 产物无 project_id 列（D2）：归属经 artifact → 生成作业 → job.project_id 派生。
+  const [projectId] = useSelectedProject();
+  const { projects } = useProjects();
+  const [scopeSel, setScopeSel] = useState<"current" | "all" | null>(null);
+  const scope = scopeSel ?? (projectId ? "current" : "all");
+  const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? id.slice(0, 6);
+
   const filtered = datasets.filter((artifact) => {
+    if (scope === "current" && projectId) {
+      const pid = artifactToJob[artifact.id]?.project_id ?? "";
+      if (pid !== projectId) return false;
+    }
     if (!q) return true;
     const hay = `${artifact.id} ${artifact.path}`.toLowerCase();
     return hay.includes(q.toLowerCase());
@@ -227,6 +240,17 @@ function DatasetTable({
 
   return (
     <div className="space-y-3">
+      {projectId && (
+        <div className="flex items-center gap-1">
+          <FilterChip active={scope === "current"} onClick={() => setScopeSel("current")}>
+            {t("studio.board.scopeCurrent")}
+          </FilterChip>
+          <FilterChip active={scope === "all"} onClick={() => setScopeSel("all")}>
+            {t("studio.board.scopeAll")}
+          </FilterChip>
+        </div>
+      )}
+
       <input
         value={q}
         onChange={(e) => { setQ(e.target.value); setPage(1); }}
@@ -242,6 +266,7 @@ function DatasetTable({
             <thead>
               <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="px-3 py-2">{t("studio.board.col.id")}</th>
+                <th className="px-3 py-2">{t("studio.board.col.project")}</th>
                 <th className="px-3 py-2">{t("studio.datasets.col.scenario")}</th>
                 <th className="px-3 py-2">{t("studio.datasets.col.domain")}</th>
                 <th className="px-3 py-2 text-right">{t("studio.datasets.col.records")}</th>
@@ -256,6 +281,7 @@ function DatasetTable({
                 const genJob = artifactToJob[artifact.id];
                 const scenario = datasetScenario(artifact, genJob);
                 const domain = scenarioToDomain[scenario] ?? "—";
+                const projId = genJob?.project_id ?? "";
                 return (
                   <tr key={artifact.id} className="border-b border-border/60 transition-colors hover:bg-[#161616]">
                     <td className="px-3 py-2">
@@ -266,6 +292,13 @@ function DatasetTable({
                       >
                         {artifact.id}
                       </button>
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {projId ? (
+                        <span className="text-muted-foreground">{projectName(projId)}</span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground/60">{t("studio.board.legacy")}</span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <button

@@ -25,6 +25,7 @@ dependencies = [
     "numpy>=2.5.3",
     "peft>=0.21",
     "pydantic>=2.9",
+    "pyyaml>=6",              # distill yaml 内容校验（db.write_distill_yaml）
     "scikit-learn>=1.9.1",
     "simpleeval>=1.0",        # restricted expression evaluation for rules.when (§3.2)
     "torch>=2.6,<2.9",

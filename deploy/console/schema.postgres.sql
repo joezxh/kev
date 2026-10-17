@@ -138,10 +138,12 @@ CREATE TABLE IF NOT EXISTS scenarios (
   -- 轨制与派生事实（kev/console/scenario_specs.derive_track）：track = rule|distill|both|llm，
   -- generator_kind = engine（spec.generator 九件套）|script（legacy gen_<场景>.py）|''，
   -- distill_yaml = 该场景的 EasyDistill 配置（仓库相对路径）或 ''，
+  -- distill_yaml_content = 该 yaml 的可编辑内容（DB 为编辑真相源；空 = 未导入/未编辑），
   -- origin = 'domains' 表示行由 docs/domains 的种子导入维护（'' = 手工建）。
   track           TEXT NOT NULL DEFAULT '',
   generator_kind  TEXT NOT NULL DEFAULT '',
   distill_yaml    TEXT NOT NULL DEFAULT '',
+  distill_yaml_content TEXT,
   origin          TEXT NOT NULL DEFAULT '',
   sort       INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,

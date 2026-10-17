@@ -20,11 +20,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import sqlalchemy as sa
+import yaml
 from sqlalchemy import text
 
 from . import paths
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 # 运行时共享的编排库单例：create_app 启动时写入，stage 模块（data.py 等）借此解析
 # 场景 spec_path。未初始化时返回 None，调用方应回退到 docs/domains/medical/specs 目录。
@@ -244,10 +245,13 @@ CREATE TABLE IF NOT EXISTS scenarios (
   -- 轨制与派生事实（kev/console/scenario_specs.derive_track）：track = rule|distill|both|llm，
   -- generator_kind = engine（spec.generator 九件套）|script（legacy gen_<场景>.py）|''，
   -- distill_yaml = 该场景的 EasyDistill 配置（仓库相对路径）或 ''，
+  -- distill_yaml_content = 该 yaml 的可编辑内容（DB 为编辑真相源；空 = 未导入/未编辑，
+  --   read_distill_yaml 回退读 distill_yaml 路径文件），
   -- origin = 'domains' 表示行由 docs/domains 的种子导入维护（'' = 手工建）。
   track           TEXT NOT NULL DEFAULT '',
   generator_kind  TEXT NOT NULL DEFAULT '',
   distill_yaml    TEXT NOT NULL DEFAULT '',
+  distill_yaml_content TEXT,
   origin          TEXT NOT NULL DEFAULT '',
   sort       INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
@@ -813,6 +817,13 @@ class Store:
                     with self.engine.begin() as conn:
                         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"))
             self._backfill_domain_dirs()
+        # v10: scenarios.distill_yaml_content —— distill yaml 的可编辑内容存库（DB 为编辑真相源，
+        # distill_yaml 路径列保留做参考/回退）。旧库幂等 ALTER，再从路径指向的仓库文件回填内容。
+        if version < 10:
+            if not self._column_exists("scenarios", "distill_yaml_content"):
+                with self.engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE scenarios ADD COLUMN distill_yaml_content TEXT"))
+            self._backfill_distill_yaml()
         # v9: 数据策展新表（artifact_versions / bundles / bundle_members /
         # record_reviews / record_review_history / project_releases）——全是新表，无列可 ALTER，
         # 由 _init_schema 的 CREATE TABLE IF NOT EXISTS 建出（fresh 与升级库同一形状），
@@ -1760,19 +1771,24 @@ class Store:
             for entry in entries:
                 row = conn.execute(text("SELECT * FROM scenarios WHERE slug=:s"),
                                    {"s": entry.slug}).mappings().fetchone()
+                # distill yaml 内容（DB 为编辑真相源）：从路径指向的仓库文件读，不存在则 None。
+                yaml_path = (paths.ROOT / entry.distill_yaml) if entry.distill_yaml else None
+                yaml_content = (yaml_path.read_text(encoding="utf-8")
+                                if yaml_path and yaml_path.is_file() else None)
                 if row is None:
                     conn.execute(
                         self._upsert_ignore_sql(
                             "scenarios",
                             ["id", "domain_id", "slug", "label_zh", "label_en", "spec_path", "spec_json",
-                             "category", "sort", "track", "generator_kind", "distill_yaml", "origin",
-                             "created_at", "updated_at"],
+                             "category", "sort", "track", "generator_kind", "distill_yaml",
+                             "distill_yaml_content", "origin", "created_at", "updated_at"],
                             ["slug"]),
                         dict(id=uuid.uuid4().hex, domain_id=domain_ids[entry.domain.slug],
                              slug=entry.slug, label_zh=entry.label_zh, label_en=entry.label_en,
                              spec_path=entry.spec_path, spec_json=entry.content,
                              category=entry.domain.slug, sort=entry.sort, track=entry.track,
                              generator_kind=entry.generator_kind, distill_yaml=entry.distill_yaml,
+                             distill_yaml_content=yaml_content,
                              origin=self.SEED_ORIGIN, created_at=now, updated_at=now))
                     stats["scenarios_created"] += 1
                     stats["specs_written"] += 1
@@ -1797,6 +1813,10 @@ class Store:
                     sets.append("spec_json=:spec_json")
                     params["spec_json"] = entry.content
                     stats["specs_written"] += 1
+                # distill_yaml_content 为空且文件存在时回填（不覆盖用户已编辑内容，与 spec_json 同策略）。
+                if not row.get("distill_yaml_content") and yaml_content:
+                    sets.append("distill_yaml_content=:distill_yaml_content")
+                    params["distill_yaml_content"] = yaml_content
                 conn.execute(text(f"UPDATE scenarios SET {', '.join(sets)} WHERE id=:id"), params)
                 stats["scenarios_updated"] += 1
 
@@ -1826,6 +1846,22 @@ class Store:
                 self._conn().execute(
                     text("UPDATE scenario_domains SET spec_dir=:d WHERE id=:id"),
                     {"d": target, "id": row["id"]})
+
+    def _backfill_distill_yaml(self) -> None:
+        """给旧库回填 scenarios.distill_yaml_content：内容列为空且 distill_yaml 路径指向的仓库
+        文件存在时，读文件写入（幂等，不覆盖已编辑内容）。"""
+        rows = self._conn().execute(
+            text("SELECT id, distill_yaml, distill_yaml_content FROM scenarios"
+                 " WHERE distill_yaml <> ''")).mappings().fetchall()
+        for row in rows:
+            if row["distill_yaml_content"]:
+                continue
+            path = paths.ROOT / row["distill_yaml"]
+            if not path.is_file():
+                continue
+            self._conn().execute(
+                text("UPDATE scenarios SET distill_yaml_content=:c WHERE id=:id"),
+                {"c": path.read_text(encoding="utf-8"), "id": row["id"]})
 
     # ---- stage param specs ------------------------------------------------
 
@@ -2207,6 +2243,57 @@ class Store:
             text("UPDATE scenarios SET spec_json=:spec, updated_at=:ts WHERE id=:id"),
             dict(spec=content, ts=now, id=row["id"]))
         self._prune_spec_history(row["id"])
+
+    # ---- distill yaml 内容持久化（DB 为编辑真相源，distill_yaml 路径列做回退）----
+
+    def read_distill_yaml(self, slug: str) -> str:
+        """读取场景的 distill yaml 内容：优先 DB 的 distill_yaml_content，缺失时回退读
+        distill_yaml 路径指向的仓库文件；都没有返回 ''（非蒸馏轨场景合法）。场景不存在抛 KeyError。"""
+        row = self.get_scenario_by_slug(slug)
+        if row is None:
+            raise KeyError(slug)
+        content = row.get("distill_yaml_content")
+        if content:
+            return content
+        rel = row.get("distill_yaml")
+        if rel:
+            path = paths.ROOT / rel
+            if path.is_file():
+                return path.read_text(encoding="utf-8")
+        return ""
+
+    def write_distill_yaml(self, slug: str, content: str) -> None:
+        """把 distill yaml 内容写入 DB（不回写仓库文件）。校验 YAML 可解析，失败抛 ValueError。
+        不做历史版本（与 spec_json 不同，控制范围）。"""
+        row = self.get_scenario_by_slug(slug)
+        if row is None:
+            raise KeyError(slug)
+        if content.strip():
+            try:
+                yaml.safe_load(content)
+            except yaml.YAMLError as error:
+                raise ValueError(f"distill yaml 不是合法 YAML：{error}") from error
+        self._conn().execute(
+            text("UPDATE scenarios SET distill_yaml_content=:c, updated_at=:ts WHERE id=:id"),
+            dict(c=content, ts=_now(), id=row["id"]))
+
+    def distill_yaml_file(self, slug: str) -> "Path | None":
+        """把 DB 的 distill yaml 内容物化到 data/console/distill-configs/<slug>.yaml，供 easydistill
+        CLI 按路径读取（DB 的投影，镜像 spec_file_path）。内容为空时回退到仓库 distill_yaml 路径文件；
+        都没有返回 None。"""
+        row = self.get_scenario_by_slug(slug)
+        if row is None:
+            return None
+        content = row.get("distill_yaml_content")
+        if content:
+            directory = paths.CONSOLE_DISTILL_CONFIGS
+            directory.mkdir(parents=True, exist_ok=True)
+            path = directory / f"{slug}.yaml"
+            path.write_text(content, encoding="utf-8")
+            return path
+        rel = row.get("distill_yaml")
+        fallback = (paths.ROOT / rel).resolve() if rel else None
+        return fallback if fallback and fallback.is_file() else None
 
     SPEC_HISTORY_LIMIT = 20
 

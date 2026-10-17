@@ -354,7 +354,9 @@ def test_schema_version_is_stamped(store):
     # v9 lands the data-curation tables: artifact_versions / bundles /
     # bundle_members / record_reviews / record_review_history / project_releases
     # (Project Hub v7 实现计划 PR A，设计稿 §4.2-§4.5)。
-    assert store.schema_version() == 9
+    # v10 adds scenarios.distill_yaml_content: the editable distill YAML body
+    # (DB is the editing source of truth; falls back to the repo file).
+    assert store.schema_version() == 10
 
 
 def test_schema_v7_adds_project_columns(store):
@@ -369,7 +371,7 @@ def test_store_reopens_idempotently(tmp_path):
     first = Store(path)
     version = first.schema_version()
     second = Store(path)
-    assert second.schema_version() == version == 9
+    assert second.schema_version() == version == 10
 
 
 # ---- schema v9：数据策展新表（Project Hub PR A） ---------------------------
@@ -379,7 +381,7 @@ V9_TABLES = ("artifact_versions", "bundles", "bundle_members",
 
 
 def test_schema_v9_adds_curation_tables(store):
-    assert store.schema_version() == 9
+    assert store.schema_version() == 10
     for table in V9_TABLES:
         assert store._table_exists(table)
 
@@ -388,11 +390,17 @@ def test_idempotent_v9(tmp_path):
     # v9 全是新表（无列可 ALTER）：同一库跑两次 Store() 无变化，fresh 与升级收敛到同一形状。
     path = tmp_path / "kev-console.db"
     first = Store(path)
-    assert first.schema_version() == 9
+    assert first.schema_version() == 10
     second = Store(path)
-    assert second.schema_version() == 9
+    assert second.schema_version() == 10
     for table in V9_TABLES:
         assert second._table_exists(table)
+
+
+def test_schema_v10_adds_distill_yaml_content(store):
+    # v10 给 scenarios 加可编辑的 distill yaml 内容列（DB 为编辑真相源，回退读仓库文件）。
+    assert store.schema_version() == 10
+    assert store._column_exists("scenarios", "distill_yaml_content")
 
 
 def _insert_v9_rows(store, pid):

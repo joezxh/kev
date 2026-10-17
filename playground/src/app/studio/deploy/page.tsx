@@ -3,13 +3,15 @@
 import { useCallback, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api } from "@/lib/console";
+import { api, type Artifact, type Job } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
 import { JobStagePage } from "@/components/console/JobStagePage";
 import { usePoll } from "@/components/console/usePoll";
-import { EmptyState } from "@/components/studio/primitives";
+import { EmptyState, FilterChip } from "@/components/studio/primitives";
 import { JobBoardSection } from "@/components/studio/JobBoardSection";
 import { StudioTabs } from "@/components/studio/StudioTabs";
+import { useProjects } from "@/components/studio/ProjectSwitcher";
+import { useSelectedProject } from "@/lib/project-context";
 
 const DEPLOY_TABS = [
   { href: "/studio/deploy", labelKey: "studio.tab.run" },
@@ -28,6 +30,23 @@ export default function StudioDeployPage() {
   const latestCal = calibrations.value[0];
   const temperature = latestCal ? String(latestCal.meta?.workload_temperature ?? "") : "";
   const calRun = latestCal ? String(latestCal.id).split(":")[1] ?? "" : "";
+
+  // endpoints 是 Artifact，无 project_id 列（D2）：优先看 meta.project_id，否则经部署作业的 artifacts_out 派生。
+  const loadJobs = useCallback(() => api.jobs(), []);
+  const jobs = usePoll(loadJobs, [] as Job[]);
+  const [projectId] = useSelectedProject();
+  const { projects } = useProjects();
+  const [scopeSel, setScopeSel] = useState<"current" | "all" | null>(null);
+  const scope = scopeSel ?? (projectId ? "current" : "all");
+  const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? id.slice(0, 6);
+  const endpointProject = (e: Artifact) => {
+    const raw = e.meta?.project_id;
+    if (typeof raw === "string" && raw) return raw;
+    const gen = (jobs.value ?? []).find((j) => (j.artifacts_out ?? []).includes(e.id));
+    return gen?.project_id ?? "";
+  };
+  const shownEndpoints = endpoints.value.endpoints.filter((e) =>
+    scope === "current" && projectId ? endpointProject(e) === projectId : true);
 
   return (
     <div className="space-y-8">
@@ -89,28 +108,57 @@ export default function StudioDeployPage() {
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium">{t("studio.deploy.endpoints")}</h2>
-        {endpoints.value.endpoints.length === 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-medium">{t("studio.deploy.endpoints")}</h2>
+          {projectId && (
+            <div className="flex items-center gap-1">
+              <FilterChip active={scope === "current"} onClick={() => setScopeSel("current")}>
+                {t("studio.board.scopeCurrent")}
+              </FilterChip>
+              <FilterChip active={scope === "all"} onClick={() => setScopeSel("all")}>
+                {t("studio.board.scopeAll")}
+              </FilterChip>
+            </div>
+          )}
+        </div>
+        {shownEndpoints.length === 0 ? (
           <EmptyState title={t("studio.deploy.noEndpoints")} />
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>id</TableHead>
+                <TableHead>{t("studio.board.col.project")}</TableHead>
                 <TableHead>path</TableHead>
                 <TableHead>port</TableHead>
+                <TableHead>{lang === "zh" ? "镜像" : "image"}</TableHead>
+                <TableHead>base</TableHead>
+                <TableHead className="text-right">size</TableHead>
                 <TableHead className="text-right">status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {endpoints.value.endpoints.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell className="font-mono text-xs">{e.id}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{e.path}</TableCell>
-                  <TableCell className="font-mono text-xs">{String(e.meta?.port ?? "—")}</TableCell>
-                  <TableCell className="text-right text-xs text-muted-foreground">{String(e.meta?.status ?? "—")}</TableCell>
-                </TableRow>
-              ))}
+              {shownEndpoints.map((e) => {
+                const pid = endpointProject(e);
+                return (
+                  <TableRow key={e.id}>
+                    <TableCell className="font-mono text-xs">{e.id}</TableCell>
+                    <TableCell className="text-xs">
+                      {pid ? (
+                        <span className="text-muted-foreground">{projectName(pid)}</span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground/60">{t("studio.board.legacy")}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{e.path}</TableCell>
+                    <TableCell className="font-mono text-xs">{String(e.meta?.port ?? "—")}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{String(e.meta?.image ?? "—")}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{String(e.meta?.base ?? "—")}</TableCell>
+                    <TableCell className="text-right font-mono text-xs text-muted-foreground">{String(e.meta?.size ?? "—")}</TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground">{String(e.meta?.status ?? "—")}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
