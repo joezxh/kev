@@ -57,7 +57,7 @@ const GROUPS: NavGroup[] = [
   {
     title: "studio.nav.admin",
     items: [
-      { href: "/studio/projects", label: "studio.nav.projects", icon: FolderKanban, badge: "soon" },
+      { href: "/studio/projects", label: "studio.nav.projects", icon: FolderKanban, badge: "hub" },
       { href: "/studio/members", label: "studio.nav.members", icon: Users, badge: "soon" },
       { href: "/studio/quota", label: "studio.nav.quota", icon: Gauge, badge: "soon" },
       { href: "/studio/webhooks", label: "studio.nav.webhooks", icon: Webhook, badge: "soon" },

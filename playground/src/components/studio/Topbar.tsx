@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { useLang } from "@/lib/i18n";
+import { ProjectSwitcher, useProjects } from "@/components/studio/ProjectSwitcher";
+import { useSelectedProject } from "@/lib/project-context";
 
 export function StudioTopbar() {
   const { t, lang, setLang } = useLang();
+  const { projects } = useProjects();
+  const [projectId, setProjectId] = useSelectedProject();
   return (
     <header className="flex h-11 shrink-0 items-center gap-3 border-b border-border bg-[#111111] px-4">
       <Link href="/studio" className="text-sm font-semibold tracking-tight">
@@ -19,6 +23,7 @@ export function StudioTopbar() {
         </Link>
       </nav>
       <div className="ml-auto flex items-center gap-2">
+        <ProjectSwitcher projectId={projectId} onChange={setProjectId} projects={projects} />
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-[#161616] px-2 py-0.5 text-[11px] text-[#22c55e]">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#22c55e]" />
           live
