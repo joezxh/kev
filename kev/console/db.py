@@ -593,6 +593,14 @@ def _bundle_member(row) -> dict:
     return out
 
 
+def _review(row) -> dict:
+    """record_reviews 行 → dict；patch/labels 是 JSON（patch 可空），其余列原样透出（nullable 保留 None）。"""
+    out = dict(row)
+    out["patch"] = _loads(out["patch"]) if out.get("patch") else None
+    out["labels"] = _loads(out["labels"]) if out.get("labels") is not None else []
+    return out
+
+
 class Store:
     """每线程一个连接。WAL 让读不阻塞写，事件轮询与日志落库可以并发。"""
 
@@ -1112,46 +1120,148 @@ class Store:
                  " updated_at=:t WHERE id=:id"),
             dict(fc=_dumps(freeze_checks), t=now, id=bundle_id))
 
-    # ---- record reviews 覆盖层（PR C 读 + 最简写；PR D 扩 history/queue/import）----
+    # ---- record reviews 覆盖层（PR D：场景作用域 + 覆盖前归档 + queue/import）----
+
+    REVIEW_HISTORY_LIMIT = 20
 
     def upsert_record_review(self, *, scenario, origin_project_id, fingerprint, verdict,
                              patch=None, labels=None, note="", reviewer="",
-                             record_id=None, source_version_id=None) -> str:
-        """按 UNIQUE(scenario, fingerprint) upsert 一条标注决定（覆盖保留 created_at，刷新 updated_at）。
+                             record_id=None, source_version_id=None,
+                             fingerprint_after=None) -> str:
+        """按 UNIQUE(scenario, fingerprint) upsert 一条标注决定；覆盖前把旧决定归档进
+        record_review_history（抄 scenario_spec_history 的写法，限 REVIEW_HISTORY_LIMIT），
+        整体一个事务。新建不归档、保留 created_at、刷新 updated_at。返回 review 行 id。
 
-        PR C 只落最简写供 materialize overlay / freeze F4 读取；PR D 会在此加覆盖前归档
-        （record_review_history）+ fingerprint_after + 空场景 409 守卫。
+        注：不改源 JSONL（P7/D6），只写覆盖层；源文件指纹永不变，fingerprint_after 供
+        edit/relabel 记「改后内容」的指纹（可空）。
         """
         now = _now()
-        conn = self._conn()
-        row = conn.execute(
-            text("SELECT id FROM record_reviews WHERE scenario=:s AND fingerprint=:f"),
-            {"s": scenario, "f": fingerprint}).mappings().fetchone()
-        payload = dict(o=origin_project_id, v=verdict, p=_dumps(patch) if patch is not None else None,
-                       l=_dumps(labels if labels is not None else []), n=note or "", r=reviewer or "",
-                       ri=record_id, sv=source_version_id, t=now)
-        if row:
+        payload = dict(o=origin_project_id, v=verdict,
+                       p=_dumps(patch) if patch is not None else None,
+                       l=_dumps(labels if labels is not None else []), n=note or "",
+                       r=reviewer or "", fa=fingerprint_after, ri=record_id,
+                       sv=source_version_id, t=now)
+        with self.tx() as conn:
+            row = conn.execute(
+                text("SELECT id, verdict, patch, labels, note, reviewer FROM record_reviews"
+                     " WHERE scenario=:s AND fingerprint=:f"),
+                {"s": scenario, "f": fingerprint}).mappings().fetchone()
+            if row:
+                review_id = row["id"]
+                # 覆盖前把「上一版」决定归档（历史只存被覆盖的旧值，当前值不重复入历史）。
+                conn.execute(
+                    text("INSERT INTO record_review_history"
+                         " (id, review_id, verdict, patch, labels, note, reviewer, created_at)"
+                         " VALUES (:id,:rid,:v,:p,:l,:n,:r,:t)"),
+                    dict(id=uuid.uuid4().hex, rid=review_id, v=row["verdict"], p=row["patch"],
+                         l=row["labels"] if row["labels"] is not None else "[]",
+                         n=row["note"] or "", r=row["reviewer"] or "", t=now))
+                conn.execute(
+                    text("UPDATE record_reviews SET origin_project_id=:o, verdict=:v, patch=:p,"
+                         " fingerprint_after=:fa, labels=:l, note=:n, reviewer=:r, record_id=:ri,"
+                         " source_version_id=:sv, updated_at=:t WHERE id=:id"),
+                    {**payload, "id": review_id})
+            else:
+                review_id = uuid.uuid4().hex
+                conn.execute(
+                    text("INSERT INTO record_reviews (id, scenario, origin_project_id, fingerprint,"
+                         " record_id, verdict, patch, fingerprint_after, labels, note, reviewer,"
+                         " source_version_id, created_at, updated_at)"
+                         " VALUES (:id,:s,:o,:f,:ri,:v,:p,:fa,:l,:n,:r,:sv,:t,:t)"),
+                    {**payload, "id": review_id, "s": scenario, "f": fingerprint})
             conn.execute(
-                text("UPDATE record_reviews SET origin_project_id=:o, verdict=:v, patch=:p,"
-                     " labels=:l, note=:n, reviewer=:r, record_id=:ri, source_version_id=:sv,"
-                     " updated_at=:t WHERE id=:id"), {**payload, "id": row["id"]})
-            return row["id"]
-        review_id = uuid.uuid4().hex
-        conn.execute(
-            text("INSERT INTO record_reviews (id, scenario, origin_project_id, fingerprint, record_id,"
-                 " verdict, patch, labels, note, reviewer, source_version_id, created_at, updated_at)"
-                 " VALUES (:id,:s,:o,:f,:ri,:v,:p,:l,:n,:r,:sv,:t,:t)"),
-            {**payload, "id": review_id, "s": scenario, "f": fingerprint})
+                text("DELETE FROM record_review_history WHERE review_id=:rid AND id NOT IN ("
+                     "SELECT id FROM record_review_history WHERE review_id=:rid"
+                     " ORDER BY created_at DESC, id DESC LIMIT :limit)"),
+                dict(rid=review_id, limit=self.REVIEW_HISTORY_LIMIT))
         return review_id
 
-    def record_reviews_by_fingerprint(self, scenario) -> dict:
-        """场景作用域的覆盖层：{fingerprint -> {verdict, patch}}（跨轮继承靠它，D13）。"""
+    def list_record_review_history(self, review_id) -> list[dict]:
+        """一条 review 的归档历史（新在前）：每次覆盖前的旧决定，最多 REVIEW_HISTORY_LIMIT 条。"""
         rows = self._conn().execute(
-            text("SELECT fingerprint, verdict, patch FROM record_reviews WHERE scenario=:s"),
+            text("SELECT id, review_id, verdict, patch, labels, note, reviewer, created_at"
+                 " FROM record_review_history WHERE review_id=:rid"
+                 " ORDER BY created_at DESC, id DESC LIMIT :limit"),
+            dict(rid=review_id, limit=self.REVIEW_HISTORY_LIMIT)).mappings().fetchall()
+        out = []
+        for row in rows:
+            item = dict(row)
+            item["patch"] = _loads(item["patch"]) if item["patch"] else None
+            item["labels"] = _loads(item["labels"]) if item["labels"] is not None else []
+            out.append(item)
+        return out
+
+    def record_reviews_by_fingerprint(self, scenario) -> dict:
+        """场景作用域的覆盖层：{fingerprint -> {verdict, patch, origin}}（跨轮继承靠它，D13）。
+
+        origin = origin_project_id，供 materialize 把 reviewed 拆成 native/inherited（PR D）。
+        """
+        rows = self._conn().execute(
+            text("SELECT fingerprint, verdict, patch, origin_project_id FROM record_reviews"
+                 " WHERE scenario=:s"),
             {"s": scenario}).mappings().fetchall()
         return {row["fingerprint"]: {"verdict": row["verdict"],
-                                     "patch": _loads(row["patch"]) if row["patch"] else None}
+                                     "patch": _loads(row["patch"]) if row["patch"] else None,
+                                     "origin": row["origin_project_id"]}
                 for row in rows}
+
+    def record_review_for(self, scenario, fingerprint) -> dict | None:
+        """单条决定查询（场景作用域）；无则 None。值形状同 record_reviews_by_fingerprint。"""
+        row = self._conn().execute(
+            text("SELECT verdict, patch, origin_project_id FROM record_reviews"
+                 " WHERE scenario=:s AND fingerprint=:f"),
+            {"s": scenario, "f": fingerprint}).mappings().fetchone()
+        if row is None:
+            return None
+        return {"verdict": row["verdict"],
+                "patch": _loads(row["patch"]) if row["patch"] else None,
+                "origin": row["origin_project_id"]}
+
+    def get_record_review(self, review_id) -> dict | None:
+        """按 id 取一条完整标注行（PUT 后的回读）。"""
+        row = self._conn().execute(
+            text("SELECT * FROM record_reviews WHERE id=:id"),
+            {"id": review_id}).mappings().fetchone()
+        return _review(row) if row else None
+
+    def list_record_reviews(self, scenario, *, verdict=None, labels=None, origin=None,
+                            project_id=None, page=0, page_size=50) -> dict:
+        """场景作用域列出标注行，带 origin_project_slug（继承来的能看出从哪轮来）。
+
+        origin: self=本项目、inherited=别的项目、all/None=不限。verdict 精确过滤；
+        labels（单个标签或多个）要求行内标签命中任一个。返回 {items, total}（total 是过滤后总数）。
+        """
+        where = ["record_reviews.scenario = :s"]
+        params: dict = {"s": scenario}
+        if verdict:
+            where.append("record_reviews.verdict = :verdict")
+            params["verdict"] = verdict
+        if origin == "self" and project_id:
+            where.append("record_reviews.origin_project_id = :pid")
+            params["pid"] = project_id
+        elif origin == "inherited" and project_id:
+            where.append("record_reviews.origin_project_id <> :pid")
+            params["pid"] = project_id
+        clause = " AND ".join(where)
+        rows = self._conn().execute(
+            text("SELECT record_reviews.*, projects.slug AS origin_project_slug"
+                 " FROM record_reviews LEFT JOIN projects"
+                 " ON record_reviews.origin_project_id = projects.id"
+                 f" WHERE {clause} ORDER BY record_reviews.updated_at DESC, record_reviews.id"),
+            params).mappings().fetchall()
+        wanted = None
+        if labels:
+            wanted = {labels} if isinstance(labels, str) else set(labels)
+        items = []
+        for row in rows:
+            item = _review(row)
+            if wanted is not None and not (wanted & set(item["labels"] or [])):
+                continue
+            item["origin_project_slug"] = row["origin_project_slug"] or ""
+            items.append(item)
+        total = len(items)
+        start = int(page) * int(page_size)
+        return {"items": items[start:start + int(page_size)], "total": total}
 
     # ---- lineage ----------------------------------------------------------
 

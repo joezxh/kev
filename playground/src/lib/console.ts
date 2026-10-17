@@ -425,6 +425,32 @@ export const api = {
   bundleDiff: (bundleId: string, other: string) =>
     call<BundleDiff>(`bundles/${bundleId}/diff?other=${encodeURIComponent(other)}`),
 
+  // ---- 人工标注：reviews / review-queue / import（PR D）----
+  upsertReview: (projectId: string, fingerprint: string,
+                 p: { verdict: ReviewVerdict; patch?: unknown; labels?: string[]; note?: string;
+                      reviewer?: string; record_id?: string; source_version_id?: string;
+                      fingerprint_after?: string }) =>
+    call<Review>(`projects/${projectId}/reviews/${encodeURIComponent(fingerprint)}`,
+      { method: "PUT", body: JSON.stringify(p) }),
+  listReviews: (projectId: string, q?: { verdict?: string; labels?: string; origin?: string; page?: number }) => {
+    const s = new URLSearchParams();
+    if (q?.verdict) s.set("verdict", q.verdict);
+    if (q?.labels) s.set("labels", q.labels);
+    if (q?.origin) s.set("origin", q.origin);
+    if (q?.page) s.set("page", String(q.page));
+    return call<ReviewPage>(`projects/${projectId}/reviews${s.toString() ? `?${s}` : ""}`);
+  },
+  reviewQueue: (projectId: string, q?: { limit?: number; seed?: number; include_decided?: 0 | 1 }) => {
+    const s = new URLSearchParams();
+    if (q?.limit != null) s.set("limit", String(q.limit));
+    if (q?.seed != null) s.set("seed", String(q.seed));
+    if (q?.include_decided) s.set("include_decided", "1");
+    return call<ReviewQueue>(`projects/${projectId}/review-queue${s.toString() ? `?${s}` : ""}`);
+  },
+  importReviews: (projectId: string, rows: Record<string, unknown>[]) =>
+    call<ReviewImportResult>(`projects/${projectId}/reviews/import`,
+      { method: "POST", body: JSON.stringify({ rows }) }),
+
   members: (projectId: string) => call<Member[]>(`projects/${projectId}/members`),
   inviteMember: (projectId: string, p: { email: string; name?: string; role?: string; status?: string }) =>
     call<Member>(`projects/${projectId}/members`, { method: "POST", body: JSON.stringify(p) }),
@@ -513,6 +539,34 @@ export type FreezeResult = { bundle: Bundle; warnings: Gate[] };
 export type BundleDiff = {
   only_left: string[]; only_right: string[]; common: string[];
   changed: { fingerprint: string; from: unknown; to: unknown }[];
+};
+
+/** verdict 五态（PR D，D6）：accept/relabel/edit/drop/flag。 */
+export type ReviewVerdict = "accept" | "relabel" | "edit" | "drop" | "flag";
+
+/** record_reviews 的一行（PR D，场景作用域 UNIQUE(scenario,fingerprint)）：
+ * patch 存仅新值、fingerprint_after 存改后内容指纹；origin_project_slug 供继承溯源。 */
+export type Review = {
+  id: string; scenario: string; origin_project_id: string; fingerprint: string;
+  record_id: string | null; verdict: ReviewVerdict; patch: Record<string, unknown> | null;
+  fingerprint_after: string | null; labels: string[]; note: string; reviewer: string;
+  source_version_id: string | null; created_at: string; updated_at: string;
+  origin_project_slug?: string;
+};
+
+/** GET /projects/{id}/reviews 的响应（含继承来的）。 */
+export type ReviewPage = { items: Review[]; total: number };
+
+/** GET /projects/{id}/review-queue 的一项：待标注记录 + 已有决定（include_decided 时）。 */
+export type ReviewQueueItem = {
+  fingerprint: string; record: Record<string, unknown>; existing_verdict?: ReviewVerdict;
+};
+export type ReviewQueue = { items: ReviewQueueItem[]; count: number };
+
+/** POST /projects/{id}/reviews/import 的回报：逐行落库 + unmatched 原因。 */
+export type ReviewImportResult = {
+  imported: number;
+  unmatched: { row: Record<string, unknown>; reason: string }[];
 };
 /** GET /projects/{id} 的响应：Project 原始列 + 派生计数/阶段/最近事件（Task 5 project_summary）。 */
 export type ProjectSummary = Project & {

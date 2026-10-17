@@ -15,6 +15,9 @@ import {
   type Job,
   type JobDetail,
   type ProjectSummary,
+  type Review,
+  type ReviewQueueItem,
+  type ReviewVerdict,
 } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
 import { EmptyState, PageHead, Panel, StatusBadge } from "@/components/studio/primitives";
@@ -23,12 +26,13 @@ import {
 } from "@/components/ui/table";
 import { latestJobPerStage } from "@/components/studio/project/selectors";
 
-type Tab = "overview" | "data" | "merge" | "trainings" | "results" | "lineage";
+type Tab = "overview" | "data" | "merge" | "review" | "trainings" | "results" | "lineage";
 
 const TABS: { id: Tab; zh: string; en: string }[] = [
   { id: "overview", zh: "概览", en: "Overview" },
   { id: "data", zh: "数据", en: "Data" },
   { id: "merge", zh: "合成", en: "Merge" },
+  { id: "review", zh: "标注", en: "Review" },
   { id: "trainings", zh: "训练", en: "Trainings" },
   { id: "results", zh: "结果", en: "Results" },
   { id: "lineage", zh: "血缘", en: "Lineage" },
@@ -116,6 +120,8 @@ export default function StudioProjectDetailPage({
         <DataTab artifacts={artifacts} lang={lang} />
       ) : tab === "merge" ? (
         <MergeTab projectId={id} summary={summary} artifacts={artifacts} lang={lang} />
+      ) : tab === "review" ? (
+        <ReviewTab projectId={id} summary={summary} lang={lang} />
       ) : tab === "trainings" ? (
         <TrainingsTab jobs={jobs} lang={lang} />
       ) : tab === "results" ? (
@@ -664,6 +670,208 @@ function MemberStats({ member }: { member: BundleMember }) {
     <span className="font-mono text-[11px] text-muted-foreground">
       {member.records_kept ?? "—"}/{member.records_in ?? "—"}{reasons ? ` (${reasons})` : ""}
     </span>
+  );
+}
+
+function ReviewVerdictBadge({ verdict }: { verdict: ReviewVerdict }) {
+  const tone =
+    verdict === "accept" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+    : verdict === "drop" ? "border-destructive/40 bg-destructive/10 text-destructive"
+    : verdict === "flag" ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
+    : verdict === "relabel" ? "border-sky-500/40 bg-sky-500/10 text-sky-400"
+    : "border-border bg-[#111111] text-muted-foreground";
+  return <span className={`rounded border px-1.5 py-0.5 font-mono text-[10px] ${tone}`}>{verdict}</span>;
+}
+
+function ReviewTab({ projectId, summary, lang }:
+  { projectId: string; summary: ProjectSummary; lang: string }) {
+  const zh = lang === "zh";
+  const [queue, setQueue] = useState<ReviewQueueItem[] | null>(null);
+  const [reviews, setReviews] = useState<{ items: Review[]; total: number } | null>(null);
+  const [seed, setSeed] = useState(42);
+  const [includeDecided, setIncludeDecided] = useState(false);
+  const [index, setIndex] = useState(0);
+  const [note, setNote] = useState("");
+  const [labels, setLabels] = useState("");
+  const [importText, setImportText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const emptyScenario = !summary.scenario;
+
+  async function load() {
+    const [q, r] = await Promise.all([
+      api.reviewQueue(projectId, { seed, include_decided: includeDecided ? 1 : 0 }),
+      api.listReviews(projectId, { origin: "all" }),
+    ]);
+    setQueue(q.items); setReviews(r); setIndex(0);
+  }
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all([
+      api.reviewQueue(projectId, { seed, include_decided: includeDecided ? 1 : 0 }),
+      api.listReviews(projectId, { origin: "all" }),
+    ])
+      .then(([q, r]) => { if (alive) { setQueue(q.items); setReviews(r); setIndex(0); } })
+      .catch((e) => alive && setError(String((e as { message?: string })?.message ?? e)));
+    return () => { alive = false; };
+  }, [projectId, seed, includeDecided]);
+
+  async function decide(verdict: ReviewVerdict) {
+    const item = queue?.[index];
+    if (!item || emptyScenario) return;
+    setBusy(true); setError(null); setMessage(null);
+    try {
+      const parsedLabels = labels.split(",").map((s) => s.trim()).filter(Boolean);
+      await api.upsertReview(projectId, item.fingerprint,
+        { verdict, note, labels: parsedLabels.length ? parsedLabels : undefined });
+      setNote(""); setLabels("");
+      await load();
+      setMessage(zh ? "已记录决定" : "Decision recorded");
+    } catch (e) {
+      setError(String((e as { message?: string })?.message ?? e));
+    } finally { setBusy(false); }
+  }
+
+  async function runImport() {
+    const rows = importText.split("\n").map((l) => l.trim()).filter(Boolean)
+      .map((l) => { try { return JSON.parse(l) as Record<string, unknown>; } catch { return null; } })
+      .filter((x): x is Record<string, unknown> => x !== null);
+    if (!rows.length) return;
+    setBusy(true); setError(null); setMessage(null);
+    try {
+      const res = await api.importReviews(projectId, rows);
+      setMessage(zh ? `导入 ${res.imported} 条，${res.unmatched.length} 条未匹配`
+        : `imported ${res.imported}, unmatched ${res.unmatched.length}`);
+      setImportText("");
+      await load();
+    } catch (e) {
+      setError(String((e as { message?: string })?.message ?? e));
+    } finally { setBusy(false); }
+  }
+
+  function onKey(e: React.KeyboardEvent) {
+    if (busy || emptyScenario) return;
+    const k = e.key.toLowerCase();
+    if (k === "y" || k === "enter") { e.preventDefault(); void decide("accept"); }
+    else if (k === "x") { void decide("drop"); }
+    else if (k === "f") { void decide("flag"); }
+    else if (k === "r") { void decide("relabel"); }
+    else if (k === "arrowright") setIndex((i) => Math.min(i + 1, Math.max(0, (queue?.length ?? 1) - 1)));
+    else if (k === "arrowleft") setIndex((i) => Math.max(i - 1, 0));
+  }
+
+  const current = queue?.[index] ?? null;
+  const questions = (current?.record?.questions ?? {}) as Record<string, { type?: string; label?: unknown }>;
+
+  return (
+    <div className="space-y-4" tabIndex={0} onKeyDown={onKey}>
+      {error && <div className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div>}
+      {message && <div className="rounded border border-border bg-[#111111] px-3 py-2 text-xs text-muted-foreground">{message}</div>}
+      {emptyScenario && (
+        <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+          {zh ? "项目未绑定场景，先补场景才能标注（决定作用域是场景）。" : "Project has no scenario; set one before labelling."}
+        </div>
+      )}
+
+      <Panel title={zh ? "标注队列" : "Review queue"}>
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <span className="text-muted-foreground">{zh ? "已复核(含继承)" : "decided"}:
+            <span className="ml-1 font-mono text-foreground">{reviews?.total ?? "—"}</span></span>
+          <span className="text-muted-foreground">{zh ? "待标注" : "in queue"}:
+            <span className="ml-1 font-mono text-foreground">{queue?.length ?? "—"}</span></span>
+          <span className="text-muted-foreground">F3 min:
+            <span className="ml-1 font-mono text-foreground">{summary.freeze_min_review_ratio.toFixed(2)}</span></span>
+          <label className="flex items-center gap-1 text-muted-foreground">
+            seed
+            <input type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value) || 0)}
+              className="w-16 rounded border border-border bg-[#0d0d0d] px-1 py-0.5 font-mono" />
+          </label>
+          <label className="flex items-center gap-1 text-muted-foreground">
+            <input type="checkbox" checked={includeDecided} onChange={(e) => setIncludeDecided(e.target.checked)} />
+            {zh ? "含已决定" : "include decided"}
+          </label>
+          <button type="button" disabled={busy} onClick={() => { setBusy(true); void load().finally(() => setBusy(false)); }}
+            className="rounded border border-border px-2 py-0.5 hover:text-foreground disabled:opacity-50">{zh ? "刷新" : "Reload"}</button>
+          <span className="ml-auto text-[10px] text-muted-foreground">{zh ? "键位：y/Enter 接受 · r 重标 · x 丢弃 · f 标记 · ←→ 切换" : "keys: y/Enter accept · r relabel · x drop · f flag · ←→ nav"}</span>
+        </div>
+
+        <div className="mt-4">
+          {!current ? (
+            <EmptyState title={queue === null ? (zh ? "加载中…" : "Loading…") : (zh ? "队列为空" : "Queue empty")} />
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[11px] text-muted-foreground">{current.fingerprint.slice(0, 16)}…</span>
+                <span className="text-[11px] text-muted-foreground">{index + 1} / {queue?.length ?? 0}</span>
+                {current.existing_verdict && <span className="text-[11px] text-muted-foreground">已有: <ReviewVerdictBadge verdict={current.existing_verdict} /></span>}
+              </div>
+              <div className="max-h-40 overflow-auto rounded border border-border bg-[#0d0d0d] p-2 text-xs whitespace-pre-wrap">
+                {String((current.record as { state?: string }).state ?? "—")}
+              </div>
+              <div className="space-y-1">
+                {Object.entries(questions).map(([qid, q]) => (
+                  <div key={qid} className="flex items-center gap-2 text-xs">
+                    <span className="font-mono text-muted-foreground">{qid}</span>
+                    <span className="text-foreground">{String(q.type ?? "?")} = {String(q.label ?? "—")}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input value={note} onChange={(e) => setNote(e.target.value)}
+                  placeholder={zh ? "备注（可选）" : "note (optional)"}
+                  className="min-w-0 flex-1 rounded border border-border bg-[#0d0d0d] px-2 py-1 text-xs" />
+                <input value={labels} onChange={(e) => setLabels(e.target.value)}
+                  placeholder={zh ? "标签，逗号分隔" : "labels, comma-sep"}
+                  className="w-40 rounded border border-border bg-[#0d0d0d] px-2 py-1 text-xs" />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(["accept", "relabel", "drop", "flag"] as ReviewVerdict[]).map((v) => (
+                  <button key={v} type="button" disabled={busy || emptyScenario} onClick={() => void decide(v)}
+                    className="rounded border border-border px-2 py-1 text-xs hover:text-foreground disabled:opacity-50">{v}</button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Panel>
+
+      <Panel title={zh ? "已有决定（含继承，标出来源轮）" : "Decided (incl. inherited)"}>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>fingerprint</TableHead><TableHead>verdict</TableHead>
+              <TableHead>{zh ? "来源" : "origin"}</TableHead><TableHead>labels</TableHead><TableHead>{zh ? "备注" : "note"}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(reviews?.items ?? []).map((rv) => (
+              <TableRow key={rv.id}>
+                <TableCell className="font-mono text-[11px]">{rv.fingerprint.slice(0, 12)}…</TableCell>
+                <TableCell><ReviewVerdictBadge verdict={rv.verdict} /></TableCell>
+                <TableCell className="font-mono text-[11px] text-muted-foreground">{rv.origin_project_slug || "—"}</TableCell>
+                <TableCell className="text-[11px]">{(rv.labels ?? []).join(", ")}</TableCell>
+                <TableCell className="text-[11px] text-muted-foreground">{rv.note}</TableCell>
+              </TableRow>
+            ))}
+            {reviews !== null && reviews.items.length === 0 && (
+              <TableRow><TableCell colSpan={5} className="text-xs text-muted-foreground">{zh ? "还没有标注" : "No reviews yet"}</TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </Panel>
+
+      <Panel title={zh ? "导入 reviews.jsonl" : "Import reviews.jsonl"}>
+        <textarea value={importText} onChange={(e) => setImportText(e.target.value)} rows={4}
+          placeholder={zh ? "每行一条 JSON（带 fingerprint，或带 record_id 反查）" : "one JSON row per line (fingerprint, or record_id lookup)"}
+          className="w-full rounded border border-border bg-[#0d0d0d] p-2 font-mono text-xs" />
+        <button type="button" disabled={busy || !importText.trim() || emptyScenario}
+          onClick={() => void runImport()}
+          className="mt-2 rounded border border-border px-2 py-1 text-xs hover:text-foreground disabled:opacity-50">{zh ? "导入" : "Import"}</button>
+      </Panel>
+    </div>
   );
 }
 

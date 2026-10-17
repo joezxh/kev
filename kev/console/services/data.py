@@ -285,8 +285,9 @@ class DataService:
                     continue
                 if verdict in ("accept", "relabel", "edit", "flag"):
                     reviewed["total"] += 1
-                    reviewed["native" if (decision.get("origin") in (None, bundle["project_id"]))
-                             or True else "inherited"] += 1  # origin 拆分在 PR D 精化，此处先计 native
+                    # F3 分子拆 native/inherited（PR D）：origin=本项目算 native，否则是继承来的。
+                    reviewed["native" if decision.get("origin") == bundle["project_id"]
+                             else "inherited"] += 1
                 if verdict == "flag":
                     stat["drop_reasons"]["review_unresolved"] += 1
                 offered.append((idx, record, fp))

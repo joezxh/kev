@@ -19,6 +19,7 @@ import asyncio
 import hashlib
 import json
 import os
+import random
 import sys
 import threading
 import time
@@ -1391,6 +1392,153 @@ def bundle_diff(bundle_id: str, other: str = "", store: Store = Depends(get_stor
     lset, rset = set(left_fps), set(right_fps)
     return {"only_left": sorted(lset - rset), "only_right": sorted(rset - lset),
             "common": sorted(lset & rset), "changed": []}
+
+
+# ---- record reviews（人工标注 / 场景作用域覆盖层，PR D §5、D6/D7/D13、P7）----
+
+_REVIEW_VERDICTS = ("accept", "relabel", "edit", "drop", "flag")
+
+
+def _bundle_output_records(store: Store, bundle: dict) -> list[tuple[str, dict]]:
+    """读已物化 bundle 的产物 JSONL，逐 (fingerprint, record)。文件缺失返回空。
+    指纹复用 artifacts._record_fingerprint（与 materialize / diff / F4 同一规范化）。"""
+    target = Path(paths.ROOT) / artifacts.resolve(bundle["artifact_id"])
+    if not target.is_file():
+        return []
+    out = []
+    for line in target.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            record = json.loads(line)
+            out.append((artifacts._record_fingerprint(record), record))
+    return out
+
+
+def _project_record_index(store: Store, project_id: str) -> dict:
+    """项目的 {record_id -> fingerprint} 反查索引：扫本项目 dataset 产物各版本指向的文件，
+    取带 id 字段的记录（reviews.jsonl 行无 fingerprint 时按 record_id 反查）。"""
+    index: dict[str, str] = {}
+    for artifact in store.list_project_artifacts(project_id):
+        if artifact.get("kind") != "dataset":
+            continue
+        for version in store.list_artifact_versions(artifact["id"]):
+            target = Path(paths.ROOT) / version["path"]
+            if not target.is_file():
+                continue
+            for line in target.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                rid = record.get("id")
+                if rid:
+                    index[str(rid)] = artifacts._record_fingerprint(record)
+    return index
+
+
+@console_router.put("/console/api/projects/{project_id}/reviews/{fingerprint}")
+def put_review(project_id: str, fingerprint: str, payload: dict, store: Store = Depends(get_store)):
+    """写一条场景作用域标注决定（覆盖前自动归档 history）。空场景项目 → 409（先补场景才能标）。"""
+    project = store.get_project(project_id)
+    if project is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    scenario = project.get("scenario") or ""
+    if not scenario:
+        return _error("conflict", "项目未绑定场景，先补场景才能标注", status=409, field="scenario",
+                      hint="record_reviews 作用域是场景，空场景无法继承/落决定")
+    verdict = payload.get("verdict")
+    if verdict not in _REVIEW_VERDICTS:
+        return _error("validation", f"verdict 必须是 {list(_REVIEW_VERDICTS)}", status=400, field="verdict")
+    review_id = store.upsert_record_review(
+        scenario=scenario, origin_project_id=project_id, fingerprint=fingerprint, verdict=verdict,
+        patch=payload.get("patch"), labels=payload.get("labels"), note=payload.get("note") or "",
+        reviewer=payload.get("reviewer") or "", record_id=payload.get("record_id"),
+        source_version_id=payload.get("source_version_id"),
+        fingerprint_after=payload.get("fingerprint_after"))
+    return store.get_record_review(review_id)
+
+
+@console_router.get("/console/api/projects/{project_id}/reviews")
+def list_reviews(project_id: str, verdict: str = "", labels: str = "", origin: str = "all",
+                 page: int = 0, store: Store = Depends(get_store)):
+    """场景作用域标注列表（含继承来的，默认 all）：{items:[Review + origin_project_slug], total}。"""
+    project = store.get_project(project_id)
+    if project is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    scenario = project.get("scenario") or ""
+    label_list = [x for x in (labels or "").split(",") if x] or None
+    return store.list_record_reviews(scenario, verdict=verdict or None, labels=label_list,
+                                     origin=origin, project_id=project_id, page=int(page))
+
+
+@console_router.get("/console/api/projects/{project_id}/review-queue")
+def review_queue(project_id: str, limit: int = 50, seed: int = 42, include_decided: int = 0,
+                 store: Store = Depends(get_store)):
+    """服务端抽样待标注：从本项目已物化 bundle 的产物记录出发，seed 固定 → 换机器同批；
+    默认跳过已决定指纹（含跨轮继承，D13）；include_decided=1 时把已决定的带 existing_verdict 一并给出。"""
+    project = store.get_project(project_id)
+    if project is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    scenario = project.get("scenario") or ""
+    overlay = store.record_reviews_by_fingerprint(scenario)
+    candidates: dict[str, dict] = {}
+    for bundle in store.list_bundles(project_id):
+        if not bundle.get("sha256"):
+            continue
+        for fp, record in _bundle_output_records(store, bundle):
+            candidates.setdefault(fp, record)
+    fps = sorted(candidates)                       # 稳定基序，再叠 seed 打乱 → 跨机一致
+    random.Random(int(seed)).shuffle(fps)
+    if not include_decided:
+        fps = [fp for fp in fps if fp not in overlay]
+    fps = fps[:max(0, int(limit))]
+    items = []
+    for fp in fps:
+        item = {"fingerprint": fp, "record": candidates[fp]}
+        if fp in overlay:
+            item["existing_verdict"] = overlay[fp]["verdict"]
+        items.append(item)
+    return {"items": items, "count": len(items)}
+
+
+@console_router.post("/console/api/projects/{project_id}/reviews/import")
+def import_reviews(project_id: str, payload: dict, store: Store = Depends(get_store)):
+    """逐行导入 reviews.jsonl（tools/review 导出格式）：优先按 fingerprint，无则按 record_id
+    反查本项目 dataset；回报 {imported, unmatched:[{row, reason}]}。空场景项目 → 409。"""
+    project = store.get_project(project_id)
+    if project is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    scenario = project.get("scenario") or ""
+    if not scenario:
+        return _error("conflict", "项目未绑定场景，先补场景才能导入标注", status=409, field="scenario")
+    rows = payload.get("rows") or payload.get("items") or []
+    index: dict[str, str] | None = None
+    imported, unmatched = 0, []
+    for row in rows:
+        verdict = row.get("verdict")
+        if verdict not in _REVIEW_VERDICTS:
+            unmatched.append({"row": row, "reason": f"invalid verdict {verdict!r}"})
+            continue
+        fp = (row.get("fingerprint") or "").strip()
+        if not fp:
+            rid = row.get("record_id") or row.get("id")
+            if rid is None:
+                unmatched.append({"row": row, "reason": "missing fingerprint/record_id"})
+                continue
+            if index is None:
+                index = _project_record_index(store, project_id)
+            fp = index.get(str(rid))
+            if not fp:
+                unmatched.append({"row": row, "reason": f"unknown record_id {rid!r}"})
+                continue
+        store.upsert_record_review(
+            scenario=scenario, origin_project_id=project_id, fingerprint=fp, verdict=verdict,
+            patch=row.get("patch"), labels=row.get("labels"), note=row.get("note") or "",
+            reviewer=row.get("reviewer") or row.get("reviewed_at") or "",
+            record_id=row.get("record_id"))
+        imported += 1
+    return {"imported": imported, "unmatched": unmatched}
 
 
 # ---- members -----------------------------------------------------------
