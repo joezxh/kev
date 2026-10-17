@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { JobStagePage } from "@/components/console/JobStagePage";
 import { useLang } from "@/lib/i18n";
 
@@ -27,11 +25,6 @@ export default function GoldsetPage() {
         <AlertTitle>{t("console.nav.goldset")}</AlertTitle>
         <AlertDescription>{t("console.goldset.auditHint")}</AlertDescription>
       </Alert>
-      <div>
-        <Link href="/console/goldset/review">
-          <Button variant="secondary" size="sm">{t("console.goldset.openReview")}</Button>
-        </Link>
-      </div>
     </JobStagePage>
   );
 }

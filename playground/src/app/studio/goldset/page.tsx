@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { JobStagePage } from "@/components/console/JobStagePage";
 import { useLang } from "@/lib/i18n";
 
@@ -34,13 +32,7 @@ export default function StudioGoldsetPage() {
           { key: "out", label: "--out", hint: lang === "zh" ? "分歧记录输出（可空）" : "disagreement output (optional)" },
           { key: "threshold", label: "--threshold", hint: lang === "zh" ? "最差问题分歧率超此值则非 0 退出" : "worst-question disagreement above this exits non-zero" },
         ]}
-      >
-        <div>
-          <Link href="/console/goldset/review">
-            <Button variant="secondary" size="sm">{t("studio.goldset.review")}</Button>
-          </Link>
-        </div>
-      </JobStagePage>
+      />
     </div>
   );
 }
