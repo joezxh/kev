@@ -659,8 +659,11 @@ class Store:
         """一个写事务：BEGIN IMMEDIATE 当场拿写锁，让「读-改-写」整体串行化。
 
         连接是每线程一个（FastAPI 的同步路由跑在线程池里），所以这里只能锁住**本线程**的连接：
-        事务里不要把连接交出去给别的线程，也不要调会自己 commit 的方法
-        （put_artifact / add_lineage 的 commit=True 会提前结束事务）。
+        事务里不要把连接交出去给别的线程。
+
+        关于 `commit` 形参（§4.6-1，更正旧措辞）：`put_artifact` / `add_lineage` 的 `commit=True`
+        对 `_Conn` 没有作用——是否留在本事务由 `_local.in_tx` 决定，不是某个形参。在 tx() 内这些
+        方法**不会**提前 commit，而是交给本事务统一收尾；新增的写方法照 `_Conn` 这一真实语义写。
 
         SQLite 专有写法（PRAGMA、SELECT）会触发 SQLAlchemy 的 autobegin 留下悬挂事务，
         这里在开新事务前先回滚它（仅含已自动提交的读/PRAGMA，无未提交写入）。
@@ -2321,7 +2324,22 @@ class Store:
         summary["artifacts"] = len(artifacts)
         summary["recent_events"] = self.project_events(project_id, limit=200)[-5:]
         summary["stages"] = stages
+        # 用量真数（§4.6-2）：只读 peek，不因摘要读取就补一行 quota（那是写）。
+        # 从未 add_usage 过的三列天然是 0，向后兼容旧前端只读原形状。
+        summary["usage"] = self._peek_usage(project_id)
         return summary
+
+    def _peek_usage(self, project_id: str) -> dict:
+        """读项目用量的三列，缺行返回全 0（不插入，区别于 get_quota 的补行语义）。"""
+        row = self._conn().execute(
+            text("SELECT storage_gb_used, training_hours_used, api_calls_used"
+                 " FROM project_quota WHERE project_id=:pid"),
+            dict(pid=project_id)).mappings().fetchone()
+        if row is None:
+            return {"storage_gb_used": 0.0, "training_hours_used": 0.0, "api_calls_used": 0}
+        return {"storage_gb_used": row["storage_gb_used"],
+                "training_hours_used": row["training_hours_used"],
+                "api_calls_used": row["api_calls_used"]}
 
     def create_project(self, slug: str, name: str, description: str = "",
                        scenario: str = "", status: str = "active", goal: str = "",
@@ -2525,6 +2543,35 @@ class Store:
             params["ts"] = _now()
             self._conn().execute(
                 text(f"UPDATE project_quota SET {', '.join(sets)} WHERE project_id=:pid"), params)
+        return self.get_quota(project_id)
+
+    def add_usage(self, project_id: str, *, storage_bytes: int = 0,
+                  training_seconds: int = 0, api_calls: int = 0) -> dict | None:
+        """配额真实用量的累加（§4.6-2：今天三列无任何写入者，页面上是一排 0）。
+
+        单条 UPDATE 把增量加到 `storage_gb_used/training_hours_used/api_calls_used`，
+        字节→GB（除以 1024**3）、秒→小时（除以 3600）、调用按整型。不与 `register` 的
+        写事务纠缠：调用点都在自身事务之外，这里靠 `_Conn` 的自动提交落库（无行先补全 0）。
+        空 project_id（legacy 作业，归属不到项目）直接返回 None，不落任何一列。
+        """
+        if not project_id:
+            return None
+        if not (storage_bytes or training_seconds or api_calls):
+            return self.get_quota(project_id)
+        # 用量只能归属到一个真实存在的项目：project_quota.project_id 外键指向 projects.id，
+        # 给不存在的项目补行会撞 FK。作业引用不存在/已删项目时静默跳过，绝不让用量记账打断注册。
+        if self._conn().execute(
+                text("SELECT 1 FROM projects WHERE id=:pid"), {"pid": project_id}).fetchone() is None:
+            return None
+        self.get_quota(project_id)  # 没有行则补一条全 0 的，累加才有落点
+        self._conn().execute(
+            text("UPDATE project_quota SET"
+                 " storage_gb_used = storage_gb_used + :gb,"
+                 " training_hours_used = training_hours_used + :hrs,"
+                 " api_calls_used = api_calls_used + :calls,"
+                 " updated_at = :ts WHERE project_id = :pid"),
+            dict(gb=float(storage_bytes) / (1024 ** 3), hrs=float(training_seconds) / 3600.0,
+                 calls=int(api_calls), ts=_now(), pid=project_id))
         return self.get_quota(project_id)
 
     # ---- webhooks ----

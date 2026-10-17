@@ -161,6 +161,7 @@ def register(store, job: dict) -> list[str]:
     """
     relation = RELATION.get(job["kind"], "produced_by")
     registered = []
+    version_bytes = 0
     with store.tx():
         for artifact_id in job["artifacts_out"]:
             relative = resolve(artifact_id)
@@ -176,9 +177,14 @@ def register(store, job: dict) -> list[str]:
                 store.record_artifact_version(artifact_id=artifact_id, job_id=job["id"],
                                               path=relative, sha256=sha256, records=records,
                                               bytes=size, meta=meta)
+                version_bytes += size or 0
             for parent in job["artifacts_in"]:
                 store.add_lineage(parent, artifact_id, relation, job_id=job["id"], commit=False)
             registered.append(artifact_id)
+    # 存储用量真写（§4.6-2）：版本字节增量落在事务之外，不与 register 的写事务纠缠。
+    # 目录类产物 / 未落盘文件不写版本，因此不计增量；legacy 作业（无 project_id）跳过。
+    if job.get("project_id") and version_bytes:
+        store.add_usage(job["project_id"], storage_bytes=version_bytes)
     return registered
 
 

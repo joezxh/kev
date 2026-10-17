@@ -24,6 +24,7 @@ import sys
 import threading
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -156,6 +157,22 @@ def _persist_plan(store: Store, job: dict) -> None:
     target.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _train_runtime_seconds(job: dict) -> float:
+    """train 作业的运行秒数（finished_at - started_at）；缺任一端或解析失败返回 0。
+
+    时间戳来自 `db._now()`（UTC ISO、timespec=seconds）。两个带时区的 ISO 串相减得到
+    真实历时；started_at 因 COALESCE 只在首次 running 落一次，重跑不会归零。
+    """
+    started, finished = job.get("started_at"), job.get("finished_at")
+    if not started or not finished:
+        return 0.0
+    try:
+        delta = datetime.fromisoformat(finished) - datetime.fromisoformat(started)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, delta.total_seconds())
+
+
 def register_finished(store: Store, job_id: str, exit_code: int) -> None:
     """产物注册的唯一入口（长驻作业除外，它们在 spawn 后立刻注册）。
 
@@ -179,6 +196,12 @@ def register_finished(store: Store, job_id: str, exit_code: int) -> None:
         store.append_events(
             job_id, [("system", f"产物注册失败：{error!r}（重跑该作业即可重新注册）")])
         raise
+    # 训练时长用量真写（§4.6-2）：train 成功后按 finished_at - started_at 落 hours。
+    # 只在成功路径（exit_code==0，上方已拦）、归属到具体项目时累加；失败作业不计。
+    if job["kind"] == "train" and job.get("project_id"):
+        seconds = _train_runtime_seconds(job)
+        if seconds > 0:
+            store.add_usage(job["project_id"], training_seconds=seconds)
 
 
 def _resolve_service_callable(stage, request: JobRequest, store, cancel,

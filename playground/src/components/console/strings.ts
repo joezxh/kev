@@ -521,6 +521,24 @@ export const CONSOLE_STRINGS = {
   "studio.usage.total": { en: "Total", zh: "合计" },
   "studio.usage.empty": { en: "No usage recorded.", zh: "暂无用量记录。" },
 
+  "studio.usage.projectSection": {
+    en: "Project quota usage", zh: "项目配额用量",
+  },
+  "studio.usage.projectSectionDesc": {
+    en: "Real storage and training-hour counters written by version registration and successful training.",
+    zh: "由版本登记与训练成功落库的真实存储与训练时长计数。",
+  },
+  "studio.usage.currentProject": { en: "Current project", zh: "当前项目" },
+  "studio.usage.allProjects": { en: "All projects", zh: "全部项目" },
+  "studio.usage.storageGb": { en: "Storage (GB)", zh: "存储 (GB)" },
+  "studio.usage.trainHours": { en: "Training hours", zh: "训练时长" },
+  "studio.usage.apiCalls": { en: "API calls", zh: "API 调用" },
+  "studio.usage.projectCol": { en: "Project", zh: "项目" },
+  "studio.usage.noProjectSelected": {
+    en: "No project selected — the table below lists every project's usage.",
+    zh: "未选择项目——下方表格列出每个项目的用量。",
+  },
+
   "studio.admin.comingSoon": {
     en: "This surface is planned for a later Wave C commit. The API contract is not live yet.",
     zh: "该模块计划在后续 Wave C 提交中落地，对应 API 尚未上线。",

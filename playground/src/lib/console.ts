@@ -604,10 +604,15 @@ export type LineageNode = { id: string; kind: string; version: number | null };
 export type LineageEdge = { parent: string; child: string; relation: string; job_id?: string | null };
 export type Lineage = { nodes: LineageNode[]; edges: LineageEdge[] };
 
-/** GET /projects/{id} 的响应：Project 原始列 + 派生计数/阶段/最近事件（Task 5 project_summary）。 */
+/** GET /projects/{id} 的响应：Project 原始列 + 派生计数/阶段/最近事件（Task 5 project_summary）。
+ *  usage 是 PR F 落库的真实配额用量（§4.6-2），只加字段、向后兼容。 */
+export type ProjectUsage = {
+  storage_gb_used: number; training_hours_used: number; api_calls_used: number;
+};
 export type ProjectSummary = Project & {
   jobs: number; artifacts: number;
   recent_events: Event[]; stages: Record<string, JobStatus>;
+  usage: ProjectUsage;
 };
 export type Member = {
   id: string; project_id: string; email: string; name: string;

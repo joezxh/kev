@@ -1,11 +1,16 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api } from "@/lib/console";
+import { api, type ProjectUsage } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
 import { usePoll } from "@/components/console/usePoll";
+import { useSelectedProject } from "@/lib/project-context";
 import { Kpi, PageHead, Panel, Sparkline } from "@/components/studio/primitives";
+
+type ProjectUsageRow = { id: string; name: string; slug: string; usage: ProjectUsage };
+
+const num = (v: number, digits = 3) => (v == null ? "—" : v.toFixed(digits));
 
 export default function StudioUsagePage() {
   const { t } = useLang();
@@ -13,6 +18,29 @@ export default function StudioUsagePage() {
   const loadDistill = useCallback(() => api.distillUsageTotals(), []);
   const summary = usePoll(loadSummary, []);
   const distill = usePoll(loadDistill, []);
+
+  const [projectId] = useSelectedProject();
+  const [usageRows, setUsageRows] = useState<ProjectUsageRow[] | null>(null);
+  const [usageError, setUsageError] = useState<string | null>(null);
+  // 跨项目用量：列表接口只返回原始项目行，逐个项目读 summary 的真实三列（PR F §4.6-2）。
+  useEffect(() => {
+    let alive = true;
+    api.projects()
+      .then((ps) => Promise.all(ps.map((p) =>
+        api.project(p.id).then((s) => ({ id: p.id, name: p.name, slug: p.slug, usage: s.usage })))))
+      .then((rows) => {
+        if (!alive) return;
+        setUsageRows(rows);
+        setUsageError(null);
+      })
+      .catch((e) => {
+        if (alive) setUsageError(String(e?.message ?? e));
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const current = usageRows?.find((r) => r.id === projectId) ?? null;
 
   const totalCalls = summary.value.reduce((a, r) => a + r.calls, 0);
   const totalTokens = summary.value.reduce((a, r) => a + r.input_tokens + r.output_tokens, 0);
@@ -22,6 +50,55 @@ export default function StudioUsagePage() {
   return (
     <div className="space-y-6">
       <PageHead title={t("studio.usage.title")} subtitle={t("studio.usage.subtitle")} />
+
+      <Panel title={t("studio.usage.projectSection")} desc={t("studio.usage.projectSectionDesc")}>
+        {usageError ? (
+          <p className="text-sm text-red-400">{usageError}</p>
+        ) : usageRows === null ? (
+          <p className="text-sm text-muted-foreground">…</p>
+        ) : (
+          <div className="space-y-4">
+            {current ? (
+              <div>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  {t("studio.usage.currentProject")}: {current.name} ({current.slug})
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  <Kpi label={t("studio.usage.storageGb")} value={num(current.usage.storage_gb_used)} />
+                  <Kpi label={t("studio.usage.trainHours")} value={num(current.usage.training_hours_used, 2)} />
+                  <Kpi label={t("studio.usage.apiCalls")} value={current.usage.api_calls_used.toLocaleString()} />
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("studio.usage.noProjectSelected")}</p>
+            )}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("studio.usage.projectCol")}</TableHead>
+                  <TableHead className="text-right">{t("studio.usage.storageGb")}</TableHead>
+                  <TableHead className="text-right">{t("studio.usage.trainHours")}</TableHead>
+                  <TableHead className="text-right">{t("studio.usage.apiCalls")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {usageRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-sm text-muted-foreground">{t("studio.usage.empty")}</TableCell>
+                  </TableRow>
+                ) : usageRows.map((r) => (
+                  <TableRow key={r.id} className={r.id === projectId ? "bg-muted/40" : undefined}>
+                    <TableCell>{r.name} <span className="text-xs text-muted-foreground">({r.slug})</span></TableCell>
+                    <TableCell className="text-right font-mono text-xs">{num(r.usage.storage_gb_used)}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{num(r.usage.training_hours_used, 2)}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{r.usage.api_calls_used.toLocaleString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </Panel>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kpi label={t("studio.usage.calls")} value={totalCalls.toLocaleString()} />
