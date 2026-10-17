@@ -154,10 +154,10 @@ PR A (schema v9 新表 + Store 骨架 + D9 slug 守卫)
 - `git revert` 本 PR commit 即可（只加表 + 幂等迁移块 + update_project 守卫，无数据写路径改动）。已建 v9 表对旧代码不可见（旧代码不查它们），revert 后 SCHEMA_VERSION 回 8 但库里的 v9 表成为惰性死表，下次升级重建无冲突（`IF NOT EXISTS`）。postgres 迁移文件同步 revert。
 
 ### 检查点
-- `- [ ]` 写失败测试：`test_schema_v9_adds_curation_tables(store)` 断言 `store.schema_version()==9` 且 6 表 `_table_exists`；`test_idempotent_v9(store)` 同库跑两次 `Store()` 无变化；`test_delete_project_cascade_preserves_reviews`：建 review → 删 origin 项目 → review 行仍在、`origin_project_id==''`；`test_slug_guard_rejects_when_has_job`。**先跑验证 FAIL**。
-- `- [ ]` 实现 `_ddl` + `_migrate` + `delete_project` + `update_project` 守卫，`uv run python -m pytest tests/test_console_db.py -q` → PASS；`uv run python -m pytest tests/ -q -k "console or rounds or app"` 既有全绿（迁移期不回归）。
-- `- [ ]` postgres 侧：本地起库跑 `migration_project_hub_v9.postgres.sql` 两次无错。
-- `- [ ]` commit：`feat(console): schema v9 curation tables + D9 slug guard`。
+- `- [x]` 写失败测试：`test_schema_v9_adds_curation_tables(store)` 断言 `store.schema_version()==9` 且 6 表 `_table_exists`；`test_idempotent_v9(store)` 同库跑两次 `Store()` 无变化；`test_delete_project_cascade_preserves_reviews`：建 review → 删 origin 项目 → review 行仍在、`origin_project_id==''`；`test_slug_guard_rejects_when_has_job`。**先跑验证 FAIL**。
+- `- [x]` 实现 `_ddl` + `_migrate` + `delete_project` + `update_project` 守卫，`uv run python -m pytest tests/test_console_db.py -q` → PASS；`uv run python -m pytest tests/ -q -k "console or rounds or app"` 既有全绿（迁移期不回归）。
+- `- [x]` postgres 侧：本地起库跑 `migration_project_hub_v9.postgres.sql` 两次无错。
+- `- [x]` commit：`feat(console): schema v9 curation tables + D9 slug guard`。
 
 ---
 
@@ -199,10 +199,10 @@ GET /console/api/artifact-versions/{vid}/export -> StreamingResponse（文件名
 - `revert` commit：`register` 回到不写版本行；3 端点删除；data tab 回到产物列表。已写入的 `artifact_versions` 行无害（旧代码不读）。
 
 ### 检查点
-- `- [ ]` 失败测试：`test_register_writes_version_seq` 两次注册同 artifact → seq [1,2]；`test_integrity_drift_missing`（改文件 / 删文件）；`test_versions_history_empty_not_500`。跑 FAIL。
-- `- [ ]` 实现后端 → `uv run python -m pytest tests/test_console_artifacts.py -q` PASS。
-- `- [ ]` 前端：`console.ts` 类型 + `npm run test:console`（若有纯 selector）；`page.tsx` data tab → `npm run lint && npm run build` PASS。
-- `- [ ]` commit：`feat(console): artifact_versions registry + integrity read APIs + project data tab`。
+- `- [x]` 失败测试：`test_register_writes_version_seq` 两次注册同 artifact → seq [1,2]；`test_integrity_drift_missing`（改文件 / 删文件）；`test_versions_history_empty_not_500`。跑 FAIL。
+- `- [x]` 实现后端 → `uv run python -m pytest tests/test_console_artifacts.py -q` PASS。
+- `- [x]` 前端：`console.ts` 类型 + `npm run test:console`（若有纯 selector）；`page.tsx` data tab → `npm run lint && npm run build` PASS。
+- `- [x]` commit：`feat(console): artifact_versions registry + integrity read APIs + project data tab`。
 
 ---
 
@@ -255,11 +255,11 @@ F1–F4（D11）：F1 `materialized`（sha 非空且 records 非空且 ≥1 incl
 - `revert`：materialize stage 出 REGISTRY、5 端点删、merge tab 移除、bundle 方法删。已物化的 bundle JSONL 文件保留（旧产物永久保留），已写 bundle 行惰性。F1–F4 未落 freeze 调用即不触发。
 
 ### 检查点
-- `- [ ]` 失败测试：`test_union_idempotent_sha`（两批并集两次跑同 sha）；`test_drop_reasons_match_dedupe`（property：`dup`+`state_conflict` == `split_data.dedupe` 丢弃数）；`test_freeze_f1_f4_hard_refuse`（409）；`test_freeze_f2_f3_warn_only`（200+warnings）；`test_threshold_zero_byte_identical`；`test_p8_min_records_plus_one_refuses`（F2 actual/need）。跑 FAIL。
-- `- [ ]` 实现 materialize service 复用 `split_data.dedupe`（**grep 确认 import 而非复制实现**，反目标 §2.3）。
-- `- [ ]` `uv run python -m pytest tests/test_console_bundles.py tests/test_console_materialize.py -q` PASS。
-- `- [ ]` 前端 merge tab + 6 tab 改造 → `npm run lint && npm run build` PASS。
-- `- [ ]` commit：`feat(console): materialize stage + bundles + F1-F4 freeze + merge tab`。
+- `- [x]` 失败测试：`test_union_idempotent_sha`（两批并集两次跑同 sha）；`test_drop_reasons_match_dedupe`（property：`dup`+`state_conflict` == `split_data.dedupe` 丢弃数）；`test_freeze_f1_f4_hard_refuse`（409）；`test_freeze_f2_f3_warn_only`（200+warnings）；`test_threshold_zero_byte_identical`；`test_p8_min_records_plus_one_refuses`（F2 actual/need）。跑 FAIL。
+- `- [x]` 实现 materialize service 复用 `split_data.dedupe`（**grep 确认 import 而非复制实现**，反目标 §2.3）。
+- `- [x]` `uv run python -m pytest tests/test_console_bundles.py tests/test_console_materialize.py -q` PASS。
+- `- [x]` 前端 merge tab + 6 tab 改造 → `npm run lint && npm run build` PASS。
+- `- [x]` commit：`feat(console): materialize stage + bundles + F1-F4 freeze + merge tab`。
 
 ---
 
@@ -308,10 +308,10 @@ POST /console/api/projects/{id}/reviews/import   {rows:[reviews.jsonl 行]} -> {
 - `revert`：4 端点删、review tab 移除、`record_reviews` 方法删。旧入口页 `git revert` 复原（其删除是本 PR 的一个 commit）。已落库的 review 行惰性（旧代码不读）。**注意**：删旧页要独立成一个 commit，方便单独回滚不误伤 review tab。
 
 ### 检查点
-- `- [ ]` 失败测试：`test_source_sha_unchanged_after_relabel`；`test_scenario_scope_inherits_next_round`（第二轮同 fingerprint 命中上轮决定）；`test_empty_scenario_409`；`test_history_archived_before_overwrite`（+ `REVIEW_HISTORY_LIMIT` 裁剪）；`test_import_unmatched_reported`；`test_queue_skips_decided_including_inherited`。跑 FAIL。
-- `- [ ]` 实现 → `uv run python -m pytest tests/test_console_reviews.py tests/test_console_materialize.py -q` PASS（overlay 应用后 materialize 测试仍绿）。
-- `- [ ]` 前端 review tab → `npm run lint && npm run build`；`uv run python -m pytest tests/test_conventions.py -q`（goldset/label 硬编码行消失）。
-- `- [ ]` commit（两个）：`feat(console): record_reviews scenario-scoped + review-queue + import + review tab`；`refactor(playground): retire browser-only goldset/label review in favor of project review tab`。
+- `- [x]` 失败测试：`test_source_sha_unchanged_after_relabel`；`test_scenario_scope_inherits_next_round`（第二轮同 fingerprint 命中上轮决定）；`test_empty_scenario_409`；`test_history_archived_before_overwrite`（+ `REVIEW_HISTORY_LIMIT` 裁剪）；`test_import_unmatched_reported`；`test_queue_skips_decided_including_inherited`。跑 FAIL。
+- `- [x]` 实现 → `uv run python -m pytest tests/test_console_reviews.py tests/test_console_materialize.py -q` PASS（overlay 应用后 materialize 测试仍绿）。
+- `- [x]` 前端 review tab → `npm run lint && npm run build`；`uv run python -m pytest tests/test_conventions.py -q`（goldset/label 硬编码行消失）。
+- `- [x]` commit（两个）：`feat(console): record_reviews scenario-scoped + review-queue + import + review tab`；`refactor(playground): retire browser-only goldset/label review in favor of project review tab`。
 
 ---
 
@@ -353,10 +353,10 @@ GET  /console/api/projects/{id}/lineage           -> {nodes:[{id,kind,version}],
 - `revert`：3 端点删、results/lineage tab 回到 foundation 形态、release 方法删。已落 release 行惰性。lineage 表本身没改（只新读法）。
 
 ### 检查点
-- `- [ ]` 失败测试：`test_release_snapshot_survives_eval_removal`；`test_release_backchain_to_fingerprint`（release → bundle_members → versions → jobs → reviews）；`test_lineage_nodes_edges_shape`。跑 FAIL。
-- `- [ ]` 实现 → `uv run python -m pytest tests/test_console_releases.py -q` PASS。
-- `- [ ]` 前端 results/lineage 升级 → `npm run lint && npm run build` PASS。
-- `- [ ]` commit：`feat(console): project_releases + gates_snapshot + lineage API; upgrade results/lineage tabs`。
+- `- [x]` 失败测试：`test_release_snapshot_survives_eval_removal`；`test_release_backchain_to_fingerprint`（release → bundle_members → versions → jobs → reviews）；`test_lineage_nodes_edges_shape`。跑 FAIL。
+- `- [x]` 实现 → `uv run python -m pytest tests/test_console_releases.py -q` PASS。
+- `- [x]` 前端 results/lineage 升级 → `npm run lint && npm run build` PASS。
+- `- [x]` commit：`feat(console): project_releases + gates_snapshot + lineage API; upgrade results/lineage tabs`。
 
 ---
 
@@ -392,10 +392,10 @@ GET  /console/api/projects/{id}/lineage           -> {nodes:[{id,kind,version}],
 - `revert`：`add_usage` 调用点删（三列回到不动）、摘要字段删、页面前端回到占位。已累加的数不影响读取路径。
 
 ### 检查点
-- `- [ ]` 失败测试：`test_add_usage_accumulates`；`test_register_bumps_storage_used`；`test_train_success_bumps_hours`。跑 FAIL。
-- `- [ ]` 实现 → `uv run python -m pytest tests/test_console_quota.py -q` PASS。
-- `- [ ]` 前端用量/监控页 → `npm run lint && npm run build` PASS。
-- `- [ ]` commit：`feat(console): add_usage wiring so quota shows real numbers`。
+- `- [x]` 失败测试：`test_add_usage_accumulates`；`test_register_bumps_storage_used`；`test_train_success_bumps_hours`。跑 FAIL。
+- `- [x]` 实现 → `uv run python -m pytest tests/test_console_quota.py -q` PASS。
+- `- [x]` 前端用量/监控页 → `npm run lint && npm run build` PASS。
+- `- [x]` commit：`feat(console): add_usage wiring so quota shows real numbers`。
 
 ---
 
@@ -431,10 +431,10 @@ GET  /console/api/projects/{id}/lineage           -> {nodes:[{id,kind,version}],
 - 每页改动独立小 commit，按页 revert；开关默认「全部」时行为回到今天（不破坏既有页面）。`Job.project_id` 类型补全是纯增量，revert 不影响后端。
 
 ### 检查点
-- `- [ ]` `console.ts` 加 `project_id` → `npm run build` 类型通过。
-- `- [ ]` 各 studio 读页项目列 + 开关：`npm run lint && npm run build` PASS；手动核对样稿对应视图（项目列、本项目/全部切换、总览 KPI 联动、legacy 半透明行只在「全部」）。
-- `- [ ]` 若加纯 selector → `npm run test:console` PASS。
-- `- [ ]` commit（按页分组）：`feat(playground): project column + current/all toggle across studio pages per v7 mock`。
+- `- [x]` `console.ts` 加 `project_id` → `npm run build` 类型通过。
+- `- [x]` 各 studio 读页项目列 + 开关：`npm run lint && npm run build` PASS；手动核对样稿对应视图（项目列、本项目/全部切换、总览 KPI 联动、legacy 半透明行只在「全部」）。
+- `- [x]` 若加纯 selector → `npm run test:console` PASS。
+- `- [x]` commit（按页分组）：`feat(playground): project column + current/all toggle across studio pages per v7 mock`。
 
 ---
 
