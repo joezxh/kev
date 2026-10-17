@@ -97,6 +97,11 @@ DEFAULT_SCHEMAS: dict[str, list[dict]] = {
         {"key": "out", "label": "--out", "kind": "text", "default": "",
          "hint": "默认 <data 同目录>/examples.jsonl"},
     ],
+
+    "materialize": [
+        {"key": "note", "label": "备注", "kind": "textarea", "default": "",
+         "hint": "本次快照的说明（成员与 op 由 merge tab 管理，不在此表单）"},
+    ],
 }
 
 __all__ = ["DEFAULT_SCHEMAS"]

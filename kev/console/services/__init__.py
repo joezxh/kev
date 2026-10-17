@@ -32,6 +32,7 @@ _REGISTRY: dict[str, type] = {
     "data.precheck": DataService,
     "data.make_examples": DataService,
     "data.distill": DataService,
+    "data.materialize": DataService,
     "train.train": TrainService,
     "eval.baseline": EvalService,
     "eval.benchmark": EvalService,

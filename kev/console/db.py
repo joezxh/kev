@@ -579,6 +579,20 @@ def _artifact_version(row) -> dict:
     return out
 
 
+def _bundle(row) -> dict:
+    """bundles 行 → dict；freeze_checks 是 JSON 列表，其余列原样透出（nullable 保留 None）。"""
+    out = dict(row)
+    out["freeze_checks"] = _loads(out["freeze_checks"])
+    return out
+
+
+def _bundle_member(row) -> dict:
+    """bundle_members 行 → dict；drop_reasons 是 JSON 字典，其余列原样透出。"""
+    out = dict(row)
+    out["drop_reasons"] = _loads(out["drop_reasons"])
+    return out
+
+
 class Store:
     """每线程一个连接。WAL 让读不阻塞写，事件轮询与日志落库可以并发。"""
 
@@ -1006,6 +1020,138 @@ class Store:
             text("SELECT jobs.* FROM jobs JOIN artifact_versions ON artifact_versions.job_id = jobs.id"
                  " WHERE artifact_versions.id = :id"), {"id": version_id}).mappings().fetchone()
         return _job(row) if row else None
+
+    # ---- bundles（数据策展 / 冻结快照，PR C）--------------------------
+
+    def create_bundle(self, *, project_id, name, artifact_id, note="") -> dict:
+        """建一个 draft bundle。重名（同项目）由 UNIQUE(project_id, name) 拦，端点转 409。"""
+        bundle_id = uuid.uuid4().hex
+        now = _now()
+        self._conn().execute(
+            text("INSERT INTO bundles (id, project_id, name, artifact_id, status, freeze_checks,"
+                 " note, created_at, updated_at)"
+                 " VALUES (:id,:pid,:name,:aid,'draft','[]',:note,:created,:updated)"),
+            dict(id=bundle_id, pid=project_id, name=name, aid=artifact_id, note=note or "",
+                 created=now, updated=now))
+        return self.get_bundle(bundle_id)
+
+    def get_bundle(self, bundle_id) -> dict | None:
+        row = self._conn().execute(
+            text("SELECT * FROM bundles WHERE id = :id"), {"id": bundle_id}).mappings().fetchone()
+        return _bundle(row) if row else None
+
+    def get_bundle_by_name(self, project_id, name) -> dict | None:
+        row = self._conn().execute(
+            text("SELECT * FROM bundles WHERE project_id = :p AND name = :n"),
+            {"p": project_id, "n": name}).mappings().fetchone()
+        return _bundle(row) if row else None
+
+    def list_bundles(self, project_id) -> list[dict]:
+        rows = self._conn().execute(
+            text("SELECT * FROM bundles WHERE project_id = :p ORDER BY created_at"),
+            {"p": project_id}).mappings().fetchall()
+        return [_bundle(row) for row in rows]
+
+    def replace_bundle_members(self, bundle_id, members) -> None:
+        """全量替换成员（只在 draft 调用，端点已拦状态）。members: [{version_id, op, ord}]。"""
+        with self.tx() as conn:
+            conn.execute(text("DELETE FROM bundle_members WHERE bundle_id = :b"), {"b": bundle_id})
+            for m in members:
+                conn.execute(
+                    text("INSERT INTO bundle_members (bundle_id, version_id, op, ord,"
+                         " records_in, records_kept, records_dropped, drop_reasons)"
+                         " VALUES (:b,:v,:op,:ord,NULL,NULL,NULL,'{}')"),
+                    dict(b=bundle_id, v=m["version_id"], op=m["op"], ord=int(m["ord"])))
+
+    def get_bundle_members(self, bundle_id) -> list[dict]:
+        """成员（按 ord）+ join 版本拿到 artifact_id/path/records（物化与 diff 都靠它）。"""
+        rows = self._conn().execute(
+            text("SELECT bundle_members.*, artifact_versions.artifact_id AS source_artifact,"
+                 " artifact_versions.path AS source_path, artifact_versions.records AS version_records"
+                 " FROM bundle_members JOIN artifact_versions"
+                 " ON bundle_members.version_id = artifact_versions.id"
+                 " WHERE bundle_id = :b ORDER BY bundle_members.ord"),
+            {"b": bundle_id}).mappings().fetchall()
+        return [_bundle_member(row) for row in rows]
+
+    def set_bundle_members_stats(self, bundle_id, stats) -> None:
+        """逐成员写回 records_in/kept/dropped + drop_reasons（物化后调用）。"""
+        with self.tx() as conn:
+            for s in stats:
+                conn.execute(
+                    text("UPDATE bundle_members SET records_in=:ri, records_kept=:rk,"
+                         " records_dropped=:rd, drop_reasons=:dr WHERE bundle_id=:b AND version_id=:v"),
+                    dict(ri=s.get("records_in"), rk=s.get("records_kept"),
+                         rd=s.get("records_dropped"), dr=_dumps(s.get("drop_reasons") or {}),
+                         b=bundle_id, v=s["version_id"]))
+
+    def update_bundle_materialization(self, bundle_id, *, sha256, records, review_ratio,
+                                      reviewed_records, reviewed_native, reviewed_inherited,
+                                      manifest_path, manifest_sha256) -> None:
+        """物化成功：落 sha/records/复核比 + manifest 指针，状态推 materialized（幂等重跑允许）。"""
+        self._conn().execute(
+            text("UPDATE bundles SET status='materialized', sha256=:sha, records=:rec,"
+                 " review_ratio=:rr, reviewed_records=:rv, reviewed_native=:rn,"
+                 " reviewed_inherited=:ri, manifest_path=:mp, manifest_sha256=:ms,"
+                 " updated_at=:t WHERE id=:id"),
+            dict(sha=sha256, rec=records, rr=float(review_ratio), rv=reviewed_records,
+                 rn=reviewed_native, ri=reviewed_inherited, mp=manifest_path, ms=manifest_sha256,
+                 t=_now(), id=bundle_id))
+
+    def set_bundle_freeze_checks(self, bundle_id, freeze_checks) -> None:
+        """只写四条 freeze_checks（硬拒路径用：不冻结，但把判定留痕）。"""
+        self._conn().execute(
+            text("UPDATE bundles SET freeze_checks=:fc, updated_at=:t WHERE id=:id"),
+            dict(fc=_dumps(freeze_checks), t=_now(), id=bundle_id))
+
+    def freeze_bundle(self, bundle_id, freeze_checks) -> None:
+        """冻结：状态 → frozen、落 frozen_at + 四条 checks（软门槛不过也照冻，只带 warnings）。"""
+        now = _now()
+        self._conn().execute(
+            text("UPDATE bundles SET status='frozen', freeze_checks=:fc, frozen_at=:t,"
+                 " updated_at=:t WHERE id=:id"),
+            dict(fc=_dumps(freeze_checks), t=now, id=bundle_id))
+
+    # ---- record reviews 覆盖层（PR C 读 + 最简写；PR D 扩 history/queue/import）----
+
+    def upsert_record_review(self, *, scenario, origin_project_id, fingerprint, verdict,
+                             patch=None, labels=None, note="", reviewer="",
+                             record_id=None, source_version_id=None) -> str:
+        """按 UNIQUE(scenario, fingerprint) upsert 一条标注决定（覆盖保留 created_at，刷新 updated_at）。
+
+        PR C 只落最简写供 materialize overlay / freeze F4 读取；PR D 会在此加覆盖前归档
+        （record_review_history）+ fingerprint_after + 空场景 409 守卫。
+        """
+        now = _now()
+        conn = self._conn()
+        row = conn.execute(
+            text("SELECT id FROM record_reviews WHERE scenario=:s AND fingerprint=:f"),
+            {"s": scenario, "f": fingerprint}).mappings().fetchone()
+        payload = dict(o=origin_project_id, v=verdict, p=_dumps(patch) if patch is not None else None,
+                       l=_dumps(labels if labels is not None else []), n=note or "", r=reviewer or "",
+                       ri=record_id, sv=source_version_id, t=now)
+        if row:
+            conn.execute(
+                text("UPDATE record_reviews SET origin_project_id=:o, verdict=:v, patch=:p,"
+                     " labels=:l, note=:n, reviewer=:r, record_id=:ri, source_version_id=:sv,"
+                     " updated_at=:t WHERE id=:id"), {**payload, "id": row["id"]})
+            return row["id"]
+        review_id = uuid.uuid4().hex
+        conn.execute(
+            text("INSERT INTO record_reviews (id, scenario, origin_project_id, fingerprint, record_id,"
+                 " verdict, patch, labels, note, reviewer, source_version_id, created_at, updated_at)"
+                 " VALUES (:id,:s,:o,:f,:ri,:v,:p,:l,:n,:r,:sv,:t,:t)"),
+            {**payload, "id": review_id, "s": scenario, "f": fingerprint})
+        return review_id
+
+    def record_reviews_by_fingerprint(self, scenario) -> dict:
+        """场景作用域的覆盖层：{fingerprint -> {verdict, patch}}（跨轮继承靠它，D13）。"""
+        rows = self._conn().execute(
+            text("SELECT fingerprint, verdict, patch FROM record_reviews WHERE scenario=:s"),
+            {"s": scenario}).mappings().fetchall()
+        return {row["fingerprint"]: {"verdict": row["verdict"],
+                                     "patch": _loads(row["patch"]) if row["patch"] else None}
+                for row in rows}
 
     # ---- lineage ----------------------------------------------------------
 

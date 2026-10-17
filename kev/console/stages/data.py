@@ -419,10 +419,33 @@ def _make_examples(request: JobRequest) -> BuiltCommand:
 make_examples = StageSpec("make_examples", "data", "抽 few-shot 范例", _make_examples,
                           outcome="把产物路径填进 distill 的 --examples")
 
+
+# ---- materialize -----------------------------------------------------
+
+def _materialize(request: JobRequest) -> BuiltCommand:
+    """合成训练快照：成员由 merge tab 经 `PUT .../members` 管理，端点把 bundle 产物 id 与
+    成员源产物 id 传进 params（stage build 无 store、不查库）。真正的读成员 / 去重 / 回写
+    在 `services/data.py::materialize`（service 路径）里跑；本函数只组装 preview 的形状。
+    """
+    params = request.params
+    artifact_id = params.get("artifact_id")
+    if not artifact_id:
+        raise Invalid("materialize 需要 artifact_id（bundle 产物）", field="artifact_id")
+    member_artifacts = list(params.get("member_artifacts") or [])
+    argv = [_python(), "-m", "kev.console.services.data", "materialize", artifact_id]
+    return BuiltCommand(argv=argv, cwd=str(paths.ROOT),
+                        artifacts_in=member_artifacts, artifacts_out=[artifact_id])
+
+
+materialize = StageSpec("materialize", "data", "合成训练快照", _materialize,
+                        service="data.materialize",
+                        outcome="物化后 bundle 状态→materialized；随后 freeze（F1–F4）")
+
+
 DATA_STAGES = (plan_size, generate, distill, distill_daemon, goldset, goldset_audit,
-               split, precheck, make_examples)
+               split, precheck, make_examples, materialize)
 
 __all__ = ["SCENARIOS", "SPLITS", "DEFAULT_INIT", "PLANNED_RECORDS", "MAX_DISTILL_KEYS",
            "plan_size", "generate", "distill", "distill_daemon", "goldset", "goldset_audit",
-           "split", "precheck", "make_examples",
+           "split", "precheck", "make_examples", "materialize",
            "parse_plan_size", "check_name", "DATA_STAGES"]

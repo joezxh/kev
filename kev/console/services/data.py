@@ -225,6 +225,138 @@ class DataService:
         ]])
         return {"returncode": rc}
 
+    # ---- materialize ------------------------------------------------------
+
+    def materialize(self, req: JobRequest, *, on_log: Callable[[str], None]) -> dict:
+        """合成不可变训练快照（PR C）：按 ord 读成员 JSONL，应用 record_reviews 覆盖层，
+        统一过一次 `split_data.dedupe`（**import 复用，绝不复制实现**，反目标 §2.3），
+        写 .jsonl + .manifest.json，逐成员回写 records_in/kept/dropped + drop_reasons，
+        bundle 回写 sha/records/review_ratio/reviewed_*，状态 → materialized。
+
+        版本登记与 composed_of 血缘由作业完成后的 `artifacts.register()` 负责（用真实 job_id）；
+        本方法只保证产物落盘 + bundle 行可被 freeze 读到确定性 sha256。重跑同一 bundle 因
+        源文件与成员不变 → 输出逐字节一致 → sha 幂等（P3）。
+        """
+        import hashlib
+        import json
+        from kev.console import artifacts, paths
+        paths.ensure_generators_on_path()
+        import split_data
+
+        store = self.store
+        if self.cancel.is_set():
+            return {"returncode": 130}
+        bundle = store.get_bundle(req.params.get("bundle_id", ""))
+        if bundle is None:
+            on_log(f"bundle 不存在：{req.params.get('bundle_id')!r}")
+            return {"returncode": 1}
+        project = store.get_project(bundle["project_id"]) or {}
+        scenario = project.get("scenario") or req.scenario
+        members = store.get_bundle_members(bundle["id"])
+        try:
+            overlay = store.record_reviews_by_fingerprint(scenario)
+        except Exception:  # 覆盖层缺失/未落地（PR D 前）就当空管道，不阻断物化
+            overlay = {}
+
+        # 1) 逐成员读原始记录，排除 exclude，应用覆盖层的 drop/flag/reviewed 判定。
+        offered = []          # [(member_index, record)] 进 dedupe 的记录
+        per_member = []       # 每个成员一份统计
+        reviewed = {"native": 0, "inherited": 0, "total": 0}
+        for idx, member in enumerate(members):
+            target = Path(paths.ROOT) / member["source_path"]
+            raw = []
+            if target.is_file():
+                raw = [json.loads(line) for line in
+                       target.read_text(encoding="utf-8").splitlines() if line.strip()]
+            stat = {"version_id": member["version_id"], "op": member["op"],
+                    "records_in": len(raw), "records_kept": 0, "records_dropped": 0,
+                    "drop_reasons": {"dup": 0, "state_conflict": 0,
+                                     "review_drop": 0, "review_unresolved": 0}}
+            per_member.append(stat)
+            if member["op"] == "exclude":
+                stat["records_dropped"] = len(raw)
+                continue
+            for record in raw:
+                fp = split_data.record_fingerprint(record)
+                decision = overlay.get(fp)
+                verdict = decision["verdict"] if decision else ""
+                if verdict == "drop":
+                    stat["drop_reasons"]["review_drop"] += 1
+                    continue
+                if verdict in ("accept", "relabel", "edit", "flag"):
+                    reviewed["total"] += 1
+                    reviewed["native" if (decision.get("origin") in (None, bundle["project_id"]))
+                             or True else "inherited"] += 1  # origin 拆分在 PR D 精化，此处先计 native
+                if verdict == "flag":
+                    stat["drop_reasons"]["review_unresolved"] += 1
+                offered.append((idx, record, fp))
+
+        # 2) 全局去重 —— 复用 split_data.dedupe（唯一真相），不自己再写一套判重。
+        input_records = [record for _idx, record, _fp in offered]
+        kept_records, dropped_dupes, _n_conflict_states = split_data.dedupe(input_records)
+        kept_ids = {id(record) for record in kept_records}
+
+        # 3) 逐成员归因：kept 用对象身份回填；dup 用 split_data.canonical_record（同一规范化）
+        #    的首现判定，剩余丢弃归 state_conflict。dup + state_conflict == 该成员丢弃数，
+        #    与 dedupe 的总丢弃一致（Review Focus）。
+        seen_canonical: set[str] = set()
+        for idx, record, _fp in offered:
+            canonical = split_data.canonical_record(record)
+            is_dup = canonical in seen_canonical
+            seen_canonical.add(canonical)
+            stat = per_member[idx]
+            if id(record) in kept_ids:
+                stat["records_kept"] += 1
+            elif is_dup:
+                stat["drop_reasons"]["dup"] += 1
+                stat["records_dropped"] += 1
+            else:
+                stat["drop_reasons"]["state_conflict"] += 1
+                stat["records_dropped"] += 1
+
+        # 4) 写出不可变快照 + manifest（确定序，保证幂等 sha）。
+        out_rel = artifacts.resolve(bundle["artifact_id"])
+        out_path = Path(paths.ROOT) / out_rel
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        body = "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in kept_records)
+        data = body.encode("utf-8")
+        out_path.write_bytes(data)          # 写字节，绕开 Windows 文本模式的 \n->\r\n 转换（sha 与磁盘逐字节一致）
+        sha256 = hashlib.sha256(data).hexdigest()
+
+        total_kept = len(kept_records)
+        review_ratio = (reviewed["total"] / total_kept) if total_kept else 0.0
+        manifest_rel = out_rel[:-len(".jsonl")] + ".manifest.json" if out_rel.endswith(".jsonl") \
+            else f"{out_rel}.manifest.json"
+        manifest = {
+            "bundle_id": bundle["id"], "name": bundle["name"],
+            "artifact_id": bundle["artifact_id"], "scenario": scenario,
+            "records": total_kept, "sha256": sha256, "review_ratio": review_ratio,
+            "reviewed_records": reviewed["total"], "reviewed_native": reviewed["native"],
+            "reviewed_inherited": reviewed["inherited"],
+            "members": [{"version_id": s["version_id"], "op": s["op"], "ord": i,
+                         "records_in": s["records_in"], "records_kept": s["records_kept"],
+                         "records_dropped": s["records_dropped"],
+                         "drop_reasons": s["drop_reasons"]}
+                        for i, s in enumerate(per_member)],
+        }
+        manifest_bytes = json.dumps(manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        (Path(paths.ROOT) / manifest_rel).write_bytes(manifest_bytes)
+
+        # 5) 回写 bundle + 成员统计，并登记产物指针（版本 + 血缘留给 register 用真实 job_id）。
+        store.set_bundle_members_stats(bundle["id"], per_member)
+        store.update_bundle_materialization(
+            bundle["id"], sha256=sha256, records=total_kept, review_ratio=review_ratio,
+            reviewed_records=reviewed["total"], reviewed_native=reviewed["native"],
+            reviewed_inherited=reviewed["inherited"],
+            manifest_path=manifest_rel,
+            manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest())
+        kind, _, name = bundle["artifact_id"].partition(":")
+        store.put_artifact(kind=kind, name=name, path=out_rel,
+                           meta=artifacts.summarize(bundle["artifact_id"], out_rel),
+                           bytes_=len(data))
+        on_log(f"物化完成：{total_kept} 条记录，sha256={sha256[:12]}…")
+        return {"returncode": 0}
+
 
 def make_goldset_sample_namespace(args: dict, req: JobRequest) -> argparse.Namespace:
     """Helper: build the Namespace make_goldset.run_sample expects.

@@ -404,6 +404,27 @@ export const api = {
     call<Project>(`projects/${id}`, { method: "PUT", body: JSON.stringify(p) }),
   deleteProject: (id: string) => call<{ deleted: boolean }>(`projects/${id}`, { method: "DELETE" }),
 
+  // ---- 数据策展：bundles / materialize / freeze / policy / diff（PR C）----
+  bundles: (projectId: string) => call<Bundle[]>(`projects/${projectId}/bundles`),
+  bundle: (projectId: string, name: string) =>
+    call<BundleDetail>(`projects/${projectId}/bundles/${encodeURIComponent(name)}`),
+  createBundle: (projectId: string, p: { name: string; note?: string }) =>
+    call<Bundle>(`projects/${projectId}/bundles`, { method: "POST", body: JSON.stringify(p) }),
+  setBundleMembers: (projectId: string, name: string,
+                     members: { version_id: string; op: string; ord: number }[]) =>
+    call<BundleDetail>(`projects/${projectId}/bundles/${encodeURIComponent(name)}/members`,
+      { method: "PUT", body: JSON.stringify(members) }),
+  materializeBundle: (projectId: string, name: string) =>
+    call<{ job_id: string }>(`projects/${projectId}/bundles/${encodeURIComponent(name)}/materialize`,
+      { method: "POST" }),
+  freezeBundle: (projectId: string, name: string) =>
+    call<FreezeResult>(`projects/${projectId}/bundles/${encodeURIComponent(name)}/freeze`,
+      { method: "POST" }),
+  setFreezePolicy: (projectId: string, p: { freeze_min_records?: number; freeze_min_review_ratio?: number }) =>
+    call<Project>(`projects/${projectId}/freeze-policy`, { method: "PUT", body: JSON.stringify(p) }),
+  bundleDiff: (bundleId: string, other: string) =>
+    call<BundleDiff>(`bundles/${bundleId}/diff?other=${encodeURIComponent(other)}`),
+
   members: (projectId: string) => call<Member[]>(`projects/${projectId}/members`),
   inviteMember: (projectId: string, p: { email: string; name?: string; role?: string; status?: string }) =>
     call<Member>(`projects/${projectId}/members`, { method: "POST", body: JSON.stringify(p) }),
@@ -459,6 +480,39 @@ export type Project = {
 /** 项目事件流的一行（events 表经 jobs.project_id 归属，D10）。 */
 export type Event = {
   id: number; job_id: string; ts: string; stream: string; line: string;
+};
+
+/** bundle 状态机（§6.3）：draft ↔ materialized → frozen → retired。 */
+export type BundleStatus = "draft" | "materialized" | "frozen" | "retired";
+
+/** bundles 表的一行（PR C）：物化后带 sha256/records/review_ratio + freeze_checks。 */
+export type Bundle = {
+  id: string; project_id: string; name: string; artifact_id: string;
+  status: BundleStatus; sha256: string | null; records: number | null;
+  reviewed_records: number | null; reviewed_native: number | null;
+  reviewed_inherited: number | null; review_ratio: number | null;
+  freeze_checks: Gate[]; manifest_path: string | null; manifest_sha256: string | null;
+  frozen_at: string | null; note: string; created_at: string; updated_at: string;
+};
+
+/** bundle_members join 版本后的一行：op 三态 + 物化统计（drop_reasons 四键）。 */
+export type BundleMember = {
+  bundle_id: string; version_id: string; op: "include" | "exclude" | "overlay"; ord: number;
+  records_in: number | null; records_kept: number | null; records_dropped: number | null;
+  drop_reasons: Record<string, number>;
+  source_artifact: string; source_path: string; version_records: number | null;
+};
+
+/** GET .../bundles/{name} 带回成员；端点写回时也带。 */
+export type BundleDetail = Bundle & { members: BundleMember[] };
+
+/** POST .../freeze 的响应：软门槛不过时 200 + warnings（仍冻结），F1/F4 硬拒走 409。 */
+export type FreezeResult = { bundle: Bundle; warnings: Gate[] };
+
+/** GET /bundles/{id}/diff?other= 的响应（按记录指纹比较）。 */
+export type BundleDiff = {
+  only_left: string[]; only_right: string[]; common: string[];
+  changed: { fingerprint: string; from: unknown; to: unknown }[];
 };
 /** GET /projects/{id} 的响应：Project 原始列 + 派生计数/阶段/最近事件（Task 5 project_summary）。 */
 export type ProjectSummary = Project & {

@@ -7,7 +7,11 @@ import {
   type Artifact,
   type ArtifactVersion,
   type ArtifactVersionPage,
+  type Bundle,
+  type BundleDetail,
+  type BundleMember,
   type Event,
+  type Gate,
   type Job,
   type JobDetail,
   type ProjectSummary,
@@ -19,11 +23,12 @@ import {
 } from "@/components/ui/table";
 import { latestJobPerStage } from "@/components/studio/project/selectors";
 
-type Tab = "overview" | "data" | "trainings" | "results" | "lineage";
+type Tab = "overview" | "data" | "merge" | "trainings" | "results" | "lineage";
 
 const TABS: { id: Tab; zh: string; en: string }[] = [
   { id: "overview", zh: "概览", en: "Overview" },
   { id: "data", zh: "数据", en: "Data" },
+  { id: "merge", zh: "合成", en: "Merge" },
   { id: "trainings", zh: "训练", en: "Trainings" },
   { id: "results", zh: "结果", en: "Results" },
   { id: "lineage", zh: "血缘", en: "Lineage" },
@@ -109,6 +114,8 @@ export default function StudioProjectDetailPage({
         <OverviewTab summary={summary} jobs={jobs} lang={lang} />
       ) : tab === "data" ? (
         <DataTab artifacts={artifacts} lang={lang} />
+      ) : tab === "merge" ? (
+        <MergeTab projectId={id} summary={summary} artifacts={artifacts} lang={lang} />
       ) : tab === "trainings" ? (
         <TrainingsTab jobs={jobs} lang={lang} />
       ) : tab === "results" ? (
@@ -411,6 +418,337 @@ function LineageTab({ artifacts, lang }: { artifacts: Artifact[]; lang: string }
           ))}
         </ul>
       )}
+    </Panel>
+  );
+}
+
+// ---- merge tab（数据策展：bundle 合成 / 物化 / F1–F4 冻结，PR C）----
+
+type MemberDraft = { version_id: string; op: "include" | "exclude" | "overlay"; ord: number };
+
+function MergeTab({ projectId, summary, artifacts, lang }:
+  { projectId: string; summary: ProjectSummary; artifacts: Artifact[]; lang: string }) {
+  const zh = lang === "zh";
+  const [bundles, setBundles] = useState<Bundle[] | null>(null);
+  const [selected, setSelected] = useState<BundleDetail | null>(null);
+  const [draft, setDraft] = useState<MemberDraft[]>([]);
+  const [candidates, setCandidates] = useState<ArtifactVersion[]>([]);
+  const [newName, setNewName] = useState("");
+  const [addVersion, setAddVersion] = useState("");
+  const [addOp, setAddOp] = useState<MemberDraft["op"]>("include");
+  const [diffWith, setDiffWith] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.bundles(projectId).then((b) => alive && setBundles(b)).catch(() => alive && setBundles([]));
+    return () => { alive = false; };
+  }, [projectId]);
+
+  // 候选版本：把项目每个产物的不可变版本拉平，供成员选择（bundle 成员 = version_id）。
+  useEffect(() => {
+    let alive = true;
+    Promise.all(artifacts.map((a) => api.artifactVersions(a.id).catch(() => [] as ArtifactVersion[])))
+      .then((pages) => alive && setCandidates(pages.flat()))
+      .catch(() => alive && setCandidates([]));
+    return () => { alive = false; };
+  }, [artifacts]);
+
+  async function reloadDetail(name: string) {
+    const detail = await api.bundle(projectId, name);
+    setSelected(detail);
+    setDraft(detail.members.map((m) => ({ version_id: m.version_id, op: m.op, ord: m.ord })));
+  }
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true); setError(null); setMessage(null);
+    try { await fn(); } catch (e) { setError(String((e as { message?: string })?.message ?? e)); }
+    finally { setBusy(false); }
+  }
+
+  const editable = selected?.status === "draft";
+  const labelForVersion = (vid: string) => {
+    const v = candidates.find((c) => c.id === vid);
+    return v ? `${v.artifact_id} · seq ${v.seq} · ${v.records ?? "?"}` : vid;
+  };
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_1fr]">
+      <Panel title={zh ? "Bundle 列表" : "Bundles"}>
+        <div className="flex gap-2">
+          <input value={newName} onChange={(e) => setNewName(e.target.value)}
+            placeholder={zh ? "新 bundle 名（禁点号）" : "new bundle name"}
+            className="min-w-0 flex-1 rounded border border-border bg-[#0d0d0d] px-2 py-1 text-xs" />
+          <button type="button" disabled={busy || !newName.trim()}
+            onClick={() => run(async () => {
+              const created = await api.createBundle(projectId, { name: newName.trim() });
+              setNewName("");
+              setBundles(await api.bundles(projectId));
+              await reloadDetail(created.name);
+            })}
+            className="rounded border border-border px-2 py-1 text-xs hover:text-foreground disabled:opacity-50">
+            {zh ? "新建" : "Create"}
+          </button>
+        </div>
+        <ul className="mt-3 space-y-1">
+          {(bundles ?? []).map((b) => (
+            <li key={b.id}>
+              <button type="button" onClick={() => run(() => reloadDetail(b.name))}
+                className={"flex w-full items-center justify-between rounded border px-2 py-1 text-xs " +
+                  (selected?.id === b.id ? "border-primary/60 bg-[#1e3a8a]/30" : "border-border hover:text-foreground")}>
+                <span className="font-mono">{b.name}</span>
+                <BundleStatusBadge status={b.status} />
+              </button>
+            </li>
+          ))}
+          {bundles !== null && bundles.length === 0 && (
+            <li className="text-xs text-muted-foreground">{zh ? "还没有 bundle" : "No bundles yet"}</li>
+          )}
+        </ul>
+      </Panel>
+
+      <div className="space-y-4">
+        {error && <div className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div>}
+        {message && <div className="rounded border border-border bg-[#111111] px-3 py-2 text-xs text-muted-foreground">{message}</div>}
+        {!selected ? (
+          <Panel title={zh ? "选中一个 bundle" : "Select a bundle"}>
+            <EmptyState title={zh ? "左侧选择或新建一个 bundle" : "Pick or create a bundle on the left"} />
+          </Panel>
+        ) : (
+          <>
+            <Panel title={<span className="font-mono">{selected.name}</span>}>
+              <div className="flex flex-wrap items-center gap-4 text-xs">
+                <span className="text-muted-foreground">status: <BundleStatusBadge status={selected.status} /></span>
+                <span className="text-muted-foreground">records: <span className="font-mono text-foreground">{selected.records ?? "—"}</span></span>
+                <span className="text-muted-foreground">sha256: <span className="font-mono text-foreground">{(selected.sha256 ?? "—").slice(0, 12)}</span></span>
+                <span className="text-muted-foreground">review ratio: <span className="font-mono text-foreground">{(selected.review_ratio ?? 0).toFixed(3)}</span></span>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">{zh ? "成员（按 ord）" : "Members (ordered)"}</span>
+                  {editable && (
+                    <span className="flex items-center gap-2">
+                      <select value={addVersion} onChange={(e) => setAddVersion(e.target.value)}
+                        className="rounded border border-border bg-[#0d0d0d] px-1 py-0.5 text-xs">
+                        <option value="">{zh ? "选版本…" : "pick version…"}</option>
+                        {candidates.map((c) => (
+                          <option key={c.id} value={c.id}>{c.artifact_id} · seq {c.seq}</option>
+                        ))}
+                      </select>
+                      <select value={addOp} onChange={(e) => setAddOp(e.target.value as MemberDraft["op"])}
+                        className="rounded border border-border bg-[#0d0d0d] px-1 py-0.5 text-xs">
+                        <option value="include">include</option>
+                        <option value="exclude">exclude</option>
+                        <option value="overlay">overlay</option>
+                      </select>
+                      <button type="button" disabled={!addVersion}
+                        onClick={() => { if (addVersion) { setDraft([...draft, { version_id: addVersion, op: addOp, ord: draft.length }]); setAddVersion(""); } }}
+                        className="rounded border border-border px-2 py-0.5 text-xs hover:text-foreground disabled:opacity-50">+ {zh ? "加成员" : "add"}</button>
+                    </span>
+                  )}
+                </div>
+                {draft.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">{zh ? "没有成员" : "No members"}</div>
+                ) : (
+                  <ul className="space-y-1">
+                    {draft.map((m, i) => {
+                      const stat = selected.members.find((s) => s.version_id === m.version_id);
+                      return (
+                        <li key={`${m.version_id}-${i}`} className="flex items-center gap-2 text-xs">
+                          <span className="w-6 font-mono text-muted-foreground">{i}</span>
+                          {editable ? (
+                            <select value={m.op} onChange={(e) => setDraft(draft.map((x, xi) => xi === i ? { ...x, op: e.target.value as MemberDraft["op"] } : x))}
+                              className="rounded border border-border bg-[#0d0d0d] px-1 py-0.5">
+                              <option value="include">include</option>
+                              <option value="exclude">exclude</option>
+                              <option value="overlay">overlay</option>
+                            </select>
+                          ) : (
+                            <span className="font-mono">{m.op}</span>
+                          )}
+                          <span className="min-w-0 flex-1 truncate font-mono" title={labelForVersion(m.version_id)}>{labelForVersion(m.version_id)}</span>
+                          {stat && <MemberStats member={stat} />}
+                          {editable && (
+                            <>
+                              <button type="button" disabled={i === 0}
+                                onClick={() => setDraft(swap(draft, i, i - 1))}
+                                className="rounded border border-border px-1.5 hover:text-foreground disabled:opacity-40">↑</button>
+                              <button type="button" disabled={i === draft.length - 1}
+                                onClick={() => setDraft(swap(draft, i, i + 1))}
+                                className="rounded border border-border px-1.5 hover:text-foreground disabled:opacity-40">↓</button>
+                              <button type="button" onClick={() => setDraft(draft.filter((_, xi) => xi !== i))}
+                                className="rounded border border-destructive/40 px-1.5 text-destructive hover:text-foreground">×</button>
+                            </>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {editable && (
+                  <button type="button" disabled={busy}
+                    onClick={() => run(async () => {
+                      await api.setBundleMembers(projectId, selected.name,
+                        draft.map((m, i) => ({ ...m, ord: i })));
+                      await reloadDetail(selected.name);
+                      setMessage(zh ? "成员已保存" : "Members saved");
+                    })}
+                    className="rounded border border-border px-3 py-1.5 text-xs hover:text-foreground disabled:opacity-50">{zh ? "保存成员" : "Save members"}</button>
+                )}
+                {(selected.status === "draft" || selected.status === "materialized") && (
+                  <button type="button" disabled={busy}
+                    onClick={() => run(async () => {
+                      const { job_id } = await api.materializeBundle(projectId, selected.name);
+                      setMessage(zh ? `物化作业已起：${job_id.slice(0, 8)}（稍后点刷新）` : `Materialize job ${job_id.slice(0, 8)} started (refresh later)`);
+                    })}
+                    className="rounded border border-primary/50 bg-[#1e3a8a]/30 px-3 py-1.5 text-xs text-[#3b82f6] disabled:opacity-50">{zh ? "物化" : "Materialize"}</button>
+                )}
+                {selected.status !== "frozen" && (
+                  <button type="button" disabled={busy}
+                    onClick={() => run(async () => {
+                      try {
+                        const res = await api.freezeBundle(projectId, selected.name);
+                        await reloadDetail(selected.name);
+                        setMessage(zh ? `已冻结${res.warnings.length ? `，${res.warnings.length} 条软告警` : ""}`
+                                      : `Frozen${res.warnings.length ? `, ${res.warnings.length} warnings` : ""}`);
+                        setBundles(await api.bundles(projectId));
+                      } catch {
+                        await reloadDetail(selected.name);   // F1/F4 硬拒：服务端已落 freeze_checks，重读展示红项
+                      }
+                    })}
+                    className="rounded border border-border px-3 py-1.5 text-xs hover:text-foreground disabled:opacity-50">{zh ? "冻结" : "Freeze"}</button>
+                )}
+                <button type="button" disabled={busy}
+                  onClick={() => run(() => reloadDetail(selected.name))}
+                  className="rounded border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50">{zh ? "刷新" : "Refresh"}</button>
+              </div>
+            </Panel>
+
+            <FreezeChecksPanel checks={selected.freeze_checks} lang={lang} />
+            <FreezePolicyPanel projectId={projectId} summary={summary} lang={lang}
+              onBusy={setBusy} onError={setError} onMessage={setMessage} />
+            <DiffPanel projectId={projectId} selected={selected} bundles={bundles ?? []} lang={lang}
+              diffWith={diffWith} setDiffWith={setDiffWith} onBusy={setBusy} onError={setError} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function swap(list: MemberDraft[], a: number, b: number): MemberDraft[] {
+  const out = [...list];
+  [out[a], out[b]] = [out[b], out[a]];
+  return out;
+}
+
+function BundleStatusBadge({ status }: { status: Bundle["status"] }) {
+  const tone =
+    status === "frozen" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+    : status === "materialized" ? "border-sky-500/40 bg-sky-500/10 text-sky-400"
+    : status === "retired" ? "border-border bg-[#111111] text-muted-foreground"
+    : "border-amber-500/40 bg-amber-500/10 text-amber-400";
+  return <span className={`rounded border px-1.5 py-0.5 font-mono text-[10px] ${tone}`}>{status}</span>;
+}
+
+function MemberStats({ member }: { member: BundleMember }) {
+  const reasons = Object.entries(member.drop_reasons ?? {})
+    .filter(([, n]) => n).map(([k, n]) => `${k}:${n}`).join(" ");
+  return (
+    <span className="font-mono text-[11px] text-muted-foreground">
+      {member.records_kept ?? "—"}/{member.records_in ?? "—"}{reasons ? ` (${reasons})` : ""}
+    </span>
+  );
+}
+
+function FreezeChecksPanel({ checks, lang }: { checks: Gate[]; lang: string }) {
+  const zh = lang === "zh";
+  if (checks.length === 0) return null;
+  return (
+    <Panel title={zh ? "冻结判定 F1–F4" : "Freeze checks (F1–F4)"}>
+      <ul className="space-y-1">
+        {checks.map((c) => (
+          <li key={c.id} className="flex items-start gap-2 text-xs">
+            <span className={"mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full " + (c.ok ? "bg-emerald-500" : "bg-destructive")} />
+            <span className="font-mono text-muted-foreground">{c.id}</span>
+            <span className="flex-1">{c.detail}</span>
+            <span className="font-mono text-[11px] text-muted-foreground">{c.actual} / {c.need}</span>
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  );
+}
+
+function FreezePolicyPanel({ projectId, summary, lang, onBusy, onError, onMessage }:
+  { projectId: string; summary: ProjectSummary; lang: string;
+    onBusy: (b: boolean) => void; onError: (e: string | null) => void; onMessage: (m: string | null) => void }) {
+  const zh = lang === "zh";
+  const [minRecords, setMinRecords] = useState(String(summary.freeze_min_records));
+  const [minRatio, setMinRatio] = useState(String(summary.freeze_min_review_ratio));
+  return (
+    <Panel title={zh ? "冻结门槛（不追溯已冻结）" : "Freeze policy (not retroactive)"}>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <label className="text-muted-foreground">{zh ? "最小记录" : "min records"}</label>
+        <input value={minRecords} onChange={(e) => setMinRecords(e.target.value)}
+          className="w-24 rounded border border-border bg-[#0d0d0d] px-2 py-1 font-mono" />
+        <label className="text-muted-foreground">{zh ? "最小复核比" : "min review ratio"}</label>
+        <input value={minRatio} onChange={(e) => setMinRatio(e.target.value)}
+          className="w-24 rounded border border-border bg-[#0d0d0d] px-2 py-1 font-mono" />
+        <button type="button"
+          onClick={async () => {
+            onBusy(true); onError(null);
+            try {
+              await api.setFreezePolicy(projectId, {
+                freeze_min_records: Number(minRecords), freeze_min_review_ratio: Number(minRatio) });
+              onMessage(zh ? "门槛已更新" : "Policy updated");
+            } catch (e) { onError(String((e as { message?: string })?.message ?? e)); }
+            finally { onBusy(false); }
+          }}
+          className="rounded border border-border px-3 py-1 text-xs hover:text-foreground">{zh ? "保存门槛" : "Save"}</button>
+      </div>
+    </Panel>
+  );
+}
+
+function DiffPanel({ projectId, selected, bundles, lang, diffWith, setDiffWith, onBusy, onError }:
+  { projectId: string; selected: BundleDetail; bundles: Bundle[]; lang: string;
+    diffWith: string; setDiffWith: (s: string) => void;
+    onBusy: (b: boolean) => void; onError: (e: string | null) => void }) {
+  const zh = lang === "zh";
+  const [result, setResult] = useState<{ only_left: number; only_right: number; common: number } | null>(null);
+  const others = bundles.filter((b) => b.id !== selected.id);
+  if (others.length === 0) return null;
+  return (
+    <Panel title={zh ? "与另一 bundle 按指纹比较" : "Diff by fingerprint"}>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <select value={diffWith} onChange={(e) => setDiffWith(e.target.value)}
+          className="rounded border border-border bg-[#0d0d0d] px-2 py-1 font-mono">
+          <option value="">{zh ? "选另一 bundle…" : "other bundle…"}</option>
+          {others.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+        <button type="button" disabled={!diffWith}
+          onClick={async () => {
+            onBusy(true); onError(null);
+            try {
+              const d = await api.bundleDiff(selected.id, diffWith);
+              setResult({ only_left: d.only_left.length, only_right: d.only_right.length, common: d.common.length });
+            } catch (e) { onError(String((e as { message?: string })?.message ?? e)); }
+            finally { onBusy(false); }
+          }}
+          className="rounded border border-border px-3 py-1 hover:text-foreground disabled:opacity-50">{zh ? "比较" : "Diff"}</button>
+        {result && (
+          <span className="font-mono text-muted-foreground">
+            only_left {result.only_left} · only_right {result.only_right} · common {result.common}
+          </span>
+        )}
+      </div>
     </Panel>
   );
 }

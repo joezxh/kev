@@ -35,6 +35,8 @@ RELATION = {
     "calibrate": "calibrated_from", "image": "built_from", "deploy": "deployed_as",
     "smoke": "smoked", "plan_size": "planned_for", "modal": "deployed_as",
     "make_examples": "sampled_from",
+    # materialize 把成员产物「组成」bundle（PR C）：父 = 成员源产物，子 = bundle 产物。
+    "materialize": "composed_of",
 }
 
 
@@ -52,6 +54,10 @@ def resolve(artifact_id: str) -> str:
         if (Path(paths.ROOT) / DATA_DIR / f"{name}.jsonl").is_file():
             return f"{DATA_DIR}/{name}.jsonl"
         return f"{DATA_DIR}/{name}"                     # 数据集目录本身
+    if kind == "bundle":
+        # bundle:<slug>/<name> -> data/<slug>/bundles/<name>.jsonl（D4：bundle 是不可变产物）。
+        slug, _, bundle_name = name.partition("/")
+        return f"{DATA_DIR}/{slug}/bundles/{bundle_name}.jsonl"
     if kind == "precheck":
         return f"{CONSOLE_LOG_DIR}/precheck-" + name.replace("/", "-") + ".json"
     if kind == "plan":
@@ -106,6 +112,12 @@ def summarize(artifact_id: str, path: str) -> dict:
     if kind == "plan":
         payload = _load(path)
         return {} if payload is None else {"total_records": payload.get("total_records")}
+    if kind == "bundle":
+        # bundle 的 meta 走旁文件 manifest（记录数 / 复核比），不复制 jsonl 内容。
+        payload = _load(path[:-6] + ".manifest.json" if path.endswith(".jsonl") else
+                        f"{path}.manifest.json")
+        return {} if payload is None else {
+            key: payload[key] for key in ("records", "review_ratio") if key in payload}
     if kind in {"comparison", "regression"}:
         payload = _load(path)
         if payload is None:

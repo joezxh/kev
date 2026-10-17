@@ -28,7 +28,7 @@ from pathlib import Path
 import requests
 import sqlalchemy as sa
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import artifacts, paths, scenario_specs
@@ -1206,6 +1206,191 @@ def delete_project(project_id: str, store: Store = Depends(get_store)):
     if not store.delete_project(project_id):
         return _error("validation", f"未知项目 {project_id}", status=404)
     return {"deleted": True}
+
+
+# ---- bundles / materialize / freeze（数据策展，PR C §5、§6.2/§6.3、D4/D5/D11）----
+
+
+def _bundle_output_fingerprints(store: Store, bundle: dict) -> list[str]:
+    """读已物化 bundle 的产物 JSONL，逐记录算定长指纹（复用 artifacts._record_fingerprint，
+    与 materialize / diff / F4 同一规范化）。文件缺失返回空列表。"""
+    target = Path(paths.ROOT) / artifacts.resolve(bundle["artifact_id"])
+    if not target.is_file():
+        return []
+    out = []
+    for line in target.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            out.append(artifacts._record_fingerprint(json.loads(line)))
+    return out
+
+
+def _gate(gid: str, ok: bool, detail: str, actual: str = "", need: str = "") -> dict:
+    """一条冻结判定的 dict，形状与 gates.Gate 一致（{id,ok,detail,actual,need}），供落 bundles.freeze_checks。"""
+    return {"id": gid, "ok": bool(ok), "detail": detail, "actual": actual, "need": need}
+
+
+def _bundle_freeze_checks(store: Store, bundle: dict, project: dict) -> list[dict]:
+    """F1–F4 判定（D11），形状抄 gates.Gate：{id,ok,detail,actual,need}。
+
+    F1 materialized（sha 非空 + records 非空 + ≥1 个 include 成员）与 F4 no_unresolved
+    （产物无仍带 flag 的记录）是硬闸；F2 records >= freeze_min_records、F3 review_ratio
+    >= freeze_min_review_ratio 是软门槛（门槛 0 时与「不设门槛」逐字节一致，P8/字节测试）。"""
+    members = store.get_bundle_members(bundle["id"])
+    include_n = sum(1 for m in members if m["op"] == "include")
+    records = int(bundle.get("records") or 0)
+    sha = bundle.get("sha256") or ""
+    f1_ok = bool(sha) and records > 0 and include_n >= 1
+    f1 = _gate("F1", f1_ok,
+               "已物化：sha、记录数与 include 成员齐备" if f1_ok else
+               "未物化或缺 include 成员：先跑 materialize（bundle 需至少一个 include 成员且已写出快照）",
+               actual=f"sha={'1' if sha else '0'}/records={records}/include={include_n}", need="materialized")
+
+    min_records = int(project.get("freeze_min_records") or 0)
+    f2_ok = records >= min_records
+    f2 = _gate("F2", f2_ok,
+               "记录数达到冻结门槛" if f2_ok else f"记录数 {records} 低于门槛 {min_records}（软告警，仍可冻结）",
+               actual=str(records), need=str(min_records))
+
+    review_ratio = float(bundle.get("review_ratio") or 0.0)
+    min_ratio = float(project.get("freeze_min_review_ratio") or 0.0)
+    f3_ok = review_ratio >= min_ratio
+    f3 = _gate("F3", f3_ok,
+               "复核比例达到冻结门槛" if f3_ok else
+               f"复核比例 {review_ratio:.3f} 低于门槛 {min_ratio:.3f}（软告警，仍可冻结）",
+               actual=f"{review_ratio:.4f}", need=f"{min_ratio:.4f}")
+
+    overlay = store.record_reviews_by_fingerprint(project.get("scenario") or "")
+    flagged = [fp for fp in _bundle_output_fingerprints(store, bundle)
+               if (overlay.get(fp) or {}).get("verdict") == "flag"]
+    f4_ok = not flagged
+    f4 = _gate("F4", f4_ok,
+               "产物无未处理（flag）记录" if f4_ok else
+               f"{len(flagged)} 条仍被标 flag 的记录未处理（硬拒：先清覆盖层）",
+               actual=str(len(flagged)), need="0")
+    return [f1, f2, f3, f4]
+
+
+@console_router.get("/console/api/projects/{project_id}/bundles")
+def list_bundles(project_id: str, store: Store = Depends(get_store)):
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    return store.list_bundles(project_id)
+
+
+@console_router.get("/console/api/projects/{project_id}/bundles/{name}")
+def get_bundle(project_id: str, name: str, store: Store = Depends(get_store)):
+    bundle = store.get_bundle_by_name(project_id, name)
+    if bundle is None:
+        return _error("validation", f"未知 bundle {name}", status=404)
+    return {**bundle, "members": store.get_bundle_members(bundle["id"])}
+
+
+@console_router.post("/console/api/projects/{project_id}/bundles")
+def create_bundle(project_id: str, payload: dict, store: Store = Depends(get_store)):
+    project = store.get_project(project_id)
+    if project is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return _error("validation", "bundle 名必填", status=400, field="name")
+    try:
+        data_stages.check_name(name)               # 禁点号，与运行名同一规范（D4）
+    except SystemExit as error:
+        return _error("validation", str(error), status=400, field="name",
+                      hint="bundle 名只允许字母数字下划线连字符，禁点号")
+    if store.get_bundle_by_name(project_id, name) is not None:
+        return _error("conflict", f"bundle 名已存在：{name}", status=409, field="name")
+    artifact_id = f"bundle:{project['slug']}/{name}"
+    bundle = store.create_bundle(project_id=project_id, name=name, artifact_id=artifact_id,
+                                 note=(payload.get("note") or "").strip())
+    return JSONResponse(status_code=201, content=bundle)
+
+
+@console_router.put("/console/api/projects/{project_id}/bundles/{name}/members")
+def set_bundle_members(project_id: str, name: str, members: list = Body(...), store: Store = Depends(get_store)):
+    bundle = store.get_bundle_by_name(project_id, name)
+    if bundle is None:
+        return _error("validation", f"未知 bundle {name}", status=404)
+    if bundle["status"] != "draft":               # 物化/冻结后成员不可改（D4 不可变）
+        return _error("conflict", f"bundle 已 {bundle['status']}，成员不可改", status=409)
+    members = members or []
+    for m in members:
+        if m.get("op") not in ("include", "exclude", "overlay"):
+            return _error("validation", f"未知 op {m.get('op')!r}", status=400, field="op")
+        if store.get_artifact_version(m.get("version_id", "")) is None:
+            return _error("validation", f"未知版本 {m.get('version_id')}", status=404, field="version_id")
+    store.replace_bundle_members(bundle["id"], members)
+    return {**store.get_bundle(bundle["id"]), "members": store.get_bundle_members(bundle["id"])}
+
+
+@console_router.post("/console/api/projects/{project_id}/bundles/{name}/materialize")
+def materialize_bundle(project_id: str, name: str, request_: Request,
+                       store: Store = Depends(get_store),
+                       executor: LocalExecutor = Depends(get_executor)):
+    bundle = store.get_bundle_by_name(project_id, name)
+    if bundle is None:
+        return _error("validation", f"未知 bundle {name}", status=404)
+    if bundle["status"] == "frozen":
+        return _error("conflict", "bundle 已冻结，不可重物化", status=409)
+    if not store.get_bundle_members(bundle["id"]):
+        return _error("validation", "bundle 没有成员，先设置成员", status=400, field="members")
+    project = store.get_project(project_id)
+    members = store.get_bundle_members(bundle["id"])
+    prepared = _prepare(store, {
+        "kind": "materialize", "scenario": project["scenario"], "run_name": name,
+        "project_id": project_id,
+        "params": {"bundle_id": bundle["id"], "artifact_id": bundle["artifact_id"],
+                   "member_artifacts": [m["source_artifact"] for m in members]}})
+    if isinstance(prepared, JSONResponse):
+        return prepared
+    stage, request, built = prepared
+    job_id = _spawn(store, executor, stage, request, built, gpu_lock=request_.app.state.gpu_lock)
+    return JSONResponse(status_code=202, content={"job_id": job_id})
+
+
+@console_router.post("/console/api/projects/{project_id}/bundles/{name}/freeze")
+def freeze_bundle(project_id: str, name: str, store: Store = Depends(get_store)):
+    bundle = store.get_bundle_by_name(project_id, name)
+    if bundle is None:
+        return _error("validation", f"未知 bundle {name}", status=404)
+    if bundle["status"] == "frozen":
+        return _error("conflict", "bundle 已冻结", status=409)
+    project = store.get_project(project_id)
+    checks = _bundle_freeze_checks(store, bundle, project)
+    by_id = {c["id"]: c for c in checks}
+    hard_fail = not by_id["F1"]["ok"] or not by_id["F4"]["ok"]      # F1/F4 硬拒
+    if hard_fail:
+        store.set_bundle_freeze_checks(bundle["id"], checks)        # 留痕但不冻结、无 frozen_at
+        return JSONResponse(status_code=409, content={"error": {
+            "kind": "freeze", "message": "F1/F4 硬闸未通过", "field": "", "hint": "",
+            "stderr_tail": ""}, "freeze_checks": checks})
+    warnings = [c for c in checks if not c["ok"]]                    # 只剩 F2/F3 软告警
+    store.freeze_bundle(bundle["id"], checks)
+    return {"bundle": store.get_bundle(bundle["id"]), "warnings": warnings}
+
+
+@console_router.put("/console/api/projects/{project_id}/freeze-policy")
+def set_freeze_policy(project_id: str, payload: dict, store: Store = Depends(get_store)):
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    updated = store.update_project(project_id,
+                                   freeze_min_records=payload.get("freeze_min_records"),
+                                   freeze_min_review_ratio=payload.get("freeze_min_review_ratio"))
+    return updated or _error("validation", f"未知项目 {project_id}", status=404)
+
+
+@console_router.get("/console/api/bundles/{bundle_id}/diff")
+def bundle_diff(bundle_id: str, other: str = "", store: Store = Depends(get_store)):
+    """按记录指纹比较两个 bundle 产物：only_left / only_right（集合差）；changed 留待
+    PR D 覆盖层落地后按 label 比对填充（指纹是内容规范化，同 fp 即同内容，此处先给空）。"""
+    left = store.get_bundle(bundle_id)
+    right = store.get_bundle(other)
+    if left is None or right is None:
+        return _error("validation", "bundle 不存在（left 或 other）", status=404)
+    left_fps, right_fps = _bundle_output_fingerprints(store, left), _bundle_output_fingerprints(store, right)
+    lset, rset = set(left_fps), set(right_fps)
+    return {"only_left": sorted(lset - rset), "only_right": sorted(rset - lset),
+            "common": sorted(lset & rset), "changed": []}
 
 
 # ---- members -----------------------------------------------------------
