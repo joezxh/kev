@@ -11,6 +11,8 @@ export type Job = {
   scenario: string;
   title: string;
   status: JobStatus;
+  /** 归属项目（D1/D14）：'' 是具名 legacy 哨兵，只在「全部项目」视图出现，不进任何具体项目列表。 */
+  project_id: string;
   request: Record<string, unknown>;
   argv: string[];
   env_overlay: Record<string, string>;

@@ -7,6 +7,8 @@ import { api, type Job } from "@/lib/console";
 import { usePoll } from "@/components/console/usePoll";
 import { EmptyState, FilterChip, Kpi, Pager, SearchInput, StatusBadge, Toolbar } from "./primitives";
 import { FileViewerDialog, JobFilesStrip, type ViewerSpec } from "./JobFiles";
+import { useProjects } from "./ProjectSwitcher";
+import { useSelectedProject } from "@/lib/project-context";
 
 const DEFAULT_PAGE_SIZE = 10;
 const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
@@ -61,6 +63,16 @@ export function JobBoard({
   const { value: fetched, error } = usePoll<Job[]>(load, []);
   const jobs = jobsProp ?? fetched;
 
+  // 项目归属（D14）：选了项目就默认只看本项目，可切「全部项目」回到今天的全量；
+  // 未选项目时没有开关、列表天然是全量。legacy 行（project_id=''）只在「全部」出现。
+  const [projectId] = useSelectedProject();
+  const { projects } = useProjects();
+  const [scopeSel, setScopeSel] = useState<"current" | "all" | null>(null);
+  const scope = scopeSel ?? (projectId ? "current" : "all");
+  const projectName = (id: string): string | null => projects.find((p) => p.id === id)?.name ?? null;
+  const scoped =
+    scope === "current" && projectId ? jobs.filter((job) => job.project_id === projectId) : jobs;
+
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -68,7 +80,7 @@ export function JobBoard({
   // 文件查看弹窗的目标；null 即关闭。整张表共享一个弹窗实例。
   const [viewer, setViewer] = useState<ViewerSpec | null>(null);
 
-  const filtered = jobs.filter((job) => {
+  const filtered = scoped.filter((job) => {
     if (kinds && !kinds.includes(job.kind)) return false;
     if (statusFilter !== "all" && job.status !== statusFilter) return false;
     if (q) {
@@ -81,7 +93,7 @@ export function JobBoard({
 
   // 过滤 / 每页行数变化时回到第一页。用 React 官方的「渲染期调整状态」模式：
   // 效果等价于旧的 effect 写法，但少一次级联渲染，也不再触发 set-state-in-effect 报错。
-  const filterKey = `${q}|${statusFilter}|${pageSize}|${externalFilter?.key ?? ""}`;
+  const filterKey = `${q}|${statusFilter}|${pageSize}|${externalFilter?.key ?? ""}|${scope}|${projectId ?? ""}`;
   const [lastFilterKey, setLastFilterKey] = useState(filterKey);
   if (filterKey !== lastFilterKey) {
     setLastFilterKey(filterKey);
@@ -92,12 +104,12 @@ export function JobBoard({
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  const count = (s: string) => jobs.filter((j) => j.status === s).length;
+  const count = (s: string) => scoped.filter((j) => j.status === s).length;
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Kpi label={t("studio.board.kpi.total")} value={jobs.length} />
+        <Kpi label={t("studio.board.kpi.total")} value={scoped.length} />
         <Kpi
           label={t("studio.board.kpi.running")}
           value={<span className="text-[#3b82f6]">{count("running")}</span>}
@@ -114,6 +126,16 @@ export function JobBoard({
 
       <Toolbar>
         <SearchInput value={q} onChange={setQ} placeholder={t("studio.board.search")} />
+        {projectId && (
+          <span className="flex items-center gap-1">
+            <FilterChip active={scope === "current"} onClick={() => setScopeSel("current")}>
+              {t("studio.board.scopeCurrent")}
+            </FilterChip>
+            <FilterChip active={scope === "all"} onClick={() => setScopeSel("all")}>
+              {t("studio.board.scopeAll")}
+            </FilterChip>
+          </span>
+        )}
         {STATUS_FILTERS.map((s) => (
           <FilterChip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
             {s === "all" ? t("studio.board.all") : s}
@@ -150,6 +172,7 @@ export function JobBoard({
                 <th className="px-3 py-2">{t("studio.board.col.scenario")}</th>
                 <th className="px-3 py-2">{t("studio.board.col.run")}</th>
                 <th className="px-3 py-2">{t("studio.board.col.created")}</th>
+                <th className="px-3 py-2">{t("studio.board.col.project")}</th>
                 <th className="px-3 py-2 text-right">⏱</th>
               </tr>
             </thead>
@@ -167,11 +190,23 @@ export function JobBoard({
                     <td className="px-3 py-2">{job.scenario}</td>
                     <td className="px-3 py-2 font-mono text-xs">{job.title}</td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">{job.created_at.slice(0, 19)}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {job.project_id ? (
+                        <Link
+                          href={`/studio/projects/${job.project_id}`}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          {projectName(job.project_id) ?? job.project_id.slice(0, 6)}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground/60">{t("studio.board.legacy")}</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-right text-xs text-muted-foreground">{durationOf(job)}</td>
                   </tr>
                   {showFiles && (
                     <tr className="border-b border-border/60 bg-[#0d0d0d]">
-                      <td colSpan={7} className="px-3 py-2">
+                      <td colSpan={8} className="px-3 py-2">
                         <JobFilesStrip job={job} onOpen={setViewer} />
                       </td>
                     </tr>
