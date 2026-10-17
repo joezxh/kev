@@ -451,6 +451,14 @@ export const api = {
     call<ReviewImportResult>(`projects/${projectId}/reviews/import`,
       { method: "POST", body: JSON.stringify({ rows }) }),
 
+  // ---- 结论 / 血缘：releases + lineage（PR E）----
+  createRelease: (projectId: string, p: ReleaseCreatePayload) =>
+    call<Release>(`projects/${projectId}/releases`, { method: "POST", body: JSON.stringify(p) }),
+  projectReleases: (projectId: string) => call<Release[]>(`projects/${projectId}/releases`),
+  getRelease: (projectId: string, releaseId: string) =>
+    call<Release>(`projects/${projectId}/releases/${encodeURIComponent(releaseId)}`),
+  projectLineage: (projectId: string) => call<Lineage>(`projects/${projectId}/lineage`),
+
   members: (projectId: string) => call<Member[]>(`projects/${projectId}/members`),
   inviteMember: (projectId: string, p: { email: string; name?: string; role?: string; status?: string }) =>
     call<Member>(`projects/${projectId}/members`, { method: "POST", body: JSON.stringify(p) }),
@@ -568,6 +576,34 @@ export type ReviewImportResult = {
   imported: number;
   unmatched: { row: Record<string, unknown>; reason: string }[];
 };
+
+/** verdict 三态（PR E，D8 状态机）：candidate/accepted/rejected。 */
+export type ReleaseVerdict = "candidate" | "accepted" | "rejected";
+
+/** project_releases 的一行（PR E §4.5）：gates_snapshot/metrics 服务端现算落库，
+ * 产物指针可空；metrics 七键来自 eval/comparison 产物，snapshot 是落库时的闸判定形状。 */
+export type Release = {
+  id: string; project_id: string; name: string;
+  bundle_id: string | null; bundle_sha256: string | null; train_job_id: string | null;
+  run_artifact: string | null; eval_artifact: string | null; comparison_artifact: string | null;
+  regression_artifact: string | null; calibration_artifact: string | null;
+  metrics: { acc?: number | null; ece?: number | null; brier?: number | null; aurc?: number | null;
+    coverage?: number | null; ci95?: [number, number] | null; delta?: number | null };
+  gates_snapshot: Gate[]; verdict: ReleaseVerdict; note: string; created_at: string;
+};
+
+/** POST /projects/{id}/releases 的请求体：只引用产物，不提交数字（服务端现算）。 */
+export type ReleaseCreatePayload = {
+  name: string; bundle_id?: string; train_job_id?: string; run_artifact?: string;
+  eval_artifact?: string; comparison_artifact?: string; regression_artifact?: string;
+  calibration_artifact?: string; verdict?: ReleaseVerdict; note?: string;
+};
+
+/** GET /projects/{id}/lineage 的一项节点 / 一条边（PR E D10，前端只渲染）。 */
+export type LineageNode = { id: string; kind: string; version: number | null };
+export type LineageEdge = { parent: string; child: string; relation: string; job_id?: string | null };
+export type Lineage = { nodes: LineageNode[]; edges: LineageEdge[] };
+
 /** GET /projects/{id} 的响应：Project 原始列 + 派生计数/阶段/最近事件（Task 5 project_summary）。 */
 export type ProjectSummary = Project & {
   jobs: number; artifacts: number;

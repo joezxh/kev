@@ -1541,6 +1541,103 @@ def import_reviews(project_id: str, payload: dict, store: Store = Depends(get_st
     return {"imported": imported, "unmatched": unmatched}
 
 
+# ---- project releases + lineage（结论落库 / 回溯链，PR E §4.5、§5、D8、P5）----
+
+_RELEASE_VERDICTS = ("candidate", "accepted", "rejected")
+
+
+def _release_products(store: Store, payload: dict) -> dict:
+    """把 release 引用的产物读成 gates.evaluate 要的形状（服务端现算，不取客户端数字）。
+    缺产物/缺文件返回 None —— evaluate 会让对应闸判失败并说明缺什么，而不是抛异常。
+    eval 产物是目录，指标在其 report.json；comparison/regression/calibration 是单文件。"""
+    from kev.suite import read_json
+
+    def load(aid, *, report=False):
+        if not aid:
+            return None
+        art = store.get_artifact(aid)
+        if art is None:
+            return None
+        target = Path(paths.ROOT) / art["path"]
+        if report:
+            target = target / "report.json"
+        if not target.is_file():
+            return None
+        try:
+            return read_json(target)
+        except (OSError, ValueError):
+            return None
+
+    return {
+        "report": load(payload.get("eval_artifact"), report=True),
+        "comparison": load(payload.get("comparison_artifact")),
+        "comparison_public": load(payload.get("regression_artifact")),
+        "calibration": load(payload.get("calibration_artifact")),
+    }
+
+
+@console_router.post("/console/api/projects/{project_id}/releases")
+def create_project_release(project_id: str, payload: dict, store: Store = Depends(get_store)):
+    """落一行结论：gates_snapshot/metrics 服务端现算（客户端提交的数字被忽略）；bundle 的 sha 从库取。
+    重名（同项目）→ 409；未知 bundle / 不属于本项目 → 404。"""
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return _error("validation", "name 必填", status=400, field="name")
+    verdict = payload.get("verdict") or "candidate"
+    if verdict not in _RELEASE_VERDICTS:
+        return _error("validation", f"verdict 必须是 {list(_RELEASE_VERDICTS)}", status=400,
+                      field="verdict")
+    bundle_id = payload.get("bundle_id")
+    bundle_sha256 = None
+    if bundle_id:
+        bundle = store.get_bundle(bundle_id)
+        if bundle is None or bundle["project_id"] != project_id:
+            return _error("validation", f"未知或不属于本项目的 bundle {bundle_id}", status=404,
+                          field="bundle_id")
+        bundle_sha256 = bundle.get("sha256")
+    try:
+        release = store.create_release(
+            project_id=project_id, name=name, products=_release_products(store, payload),
+            bundle_id=bundle_id, bundle_sha256=bundle_sha256,
+            train_job_id=payload.get("train_job_id"), run_artifact=payload.get("run_artifact"),
+            eval_artifact=payload.get("eval_artifact"),
+            comparison_artifact=payload.get("comparison_artifact"),
+            regression_artifact=payload.get("regression_artifact"),
+            calibration_artifact=payload.get("calibration_artifact"),
+            verdict=verdict, note=payload.get("note") or "")
+    except sa.exc.IntegrityError:
+        return _error("conflict", f"同项目已有同名 release：{name}", status=409, field="name")
+    return JSONResponse(status_code=201, content=release)
+
+
+@console_router.get("/console/api/projects/{project_id}/releases")
+def list_project_releases(project_id: str, store: Store = Depends(get_store)) -> list:
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    return store.list_releases(project_id)
+
+
+@console_router.get("/console/api/projects/{project_id}/releases/{release_id}")
+def get_project_release(project_id: str, release_id: str, store: Store = Depends(get_store)):
+    """单条 release：含当时落库的 gates_snapshot + metrics + 回溯指针（产物文件删了也读得出）。"""
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    release = store.get_release(release_id)
+    if release is None or release["project_id"] != project_id:
+        return _error("validation", f"未知 release {release_id}", status=404)
+    return release
+
+
+@console_router.get("/console/api/projects/{project_id}/lineage")
+def get_project_lineage(project_id: str, store: Store = Depends(get_store)):
+    """项目血缘图：{nodes:[{id,kind,version}], edges:[{parent,child,relation,job_id}]}（D10）。"""
+    if store.get_project(project_id) is None:
+        return _error("validation", f"未知项目 {project_id}", status=404)
+    return store.project_lineage(project_id)
+
+
 # ---- members -----------------------------------------------------------
 
 _MEMBER_ROLES = ("owner", "admin", "member", "viewer")

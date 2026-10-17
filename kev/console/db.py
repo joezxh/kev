@@ -601,6 +601,15 @@ def _review(row) -> dict:
     return out
 
 
+def _release(row) -> dict:
+    """project_releases 行 → dict；metrics（JSON 字典）与 gates_snapshot（JSON 列表）解出，
+    其余列原样透出（nullable 产物指针保留 None）。snapshot 是落库时的判定快照，读时不再算。"""
+    out = dict(row)
+    out["metrics"] = _loads(out["metrics"]) if out.get("metrics") else {}
+    out["gates_snapshot"] = _loads(out["gates_snapshot"]) if out.get("gates_snapshot") else []
+    return out
+
+
 class Store:
     """每线程一个连接。WAL 让读不阻塞写，事件轮询与日志落库可以并发。"""
 
@@ -1263,6 +1272,57 @@ class Store:
         start = int(page) * int(page_size)
         return {"items": items[start:start + int(page_size)], "total": total}
 
+    # ---- project releases（结论落库，PR E §4.5、D8、P5）-----------------
+
+    def create_release(self, *, project_id, name, products=None, bundle_id=None,
+                       bundle_sha256=None, train_job_id=None, run_artifact=None,
+                       eval_artifact=None, comparison_artifact=None, regression_artifact=None,
+                       calibration_artifact=None, verdict="candidate", note="") -> dict:
+        """落一行结论：gates_snapshot 与 metrics 都在此服务端现算（调 gates.evaluate），
+        不接受客户端提交数字（P5：证据先于宣告）。products 是端点读好的产物 payload 字典
+        （report/comparison/comparison_public/calibration），缺的产物让对应闸判失败并说明缺什么。
+
+        同项目重名由 UNIQUE(project_id, name) 拦，抛 sa.exc.IntegrityError，端点转 409。
+        """
+        from . import gates
+        products = products or {}
+        snapshot = [{"id": g.id, "ok": bool(g.ok), "detail": g.detail,
+                     "actual": g.actual, "need": g.need}
+                    for g in (*gates.evaluate("train", **products),
+                              *gates.evaluate("deploy", **products))]
+        report = products.get("report") or {}
+        clean = report.get("clean") or {}
+        paired = ((products.get("comparison") or {}).get("paired") or {}).get("acc") or {}
+        metrics = {"acc": clean.get("acc"), "ece": clean.get("ece"), "brier": clean.get("brier"),
+                   "aurc": clean.get("aurc"), "coverage": clean.get("coverage_at_5pct_error"),
+                   "ci95": paired.get("ci95"), "delta": paired.get("macro_acc_delta")}
+        release_id = uuid.uuid4().hex
+        self._conn().execute(
+            text("INSERT INTO project_releases (id, project_id, name, bundle_id, bundle_sha256,"
+                 " train_job_id, run_artifact, eval_artifact, comparison_artifact,"
+                 " regression_artifact, calibration_artifact, metrics, gates_snapshot, verdict,"
+                 " note, created_at)"
+                 " VALUES (:id,:pid,:name,:bid,:bsha,:tj,:run,:ev,:cmp,:reg,:cal,:metrics,:gates,"
+                 ":verdict,:note,:created)"),
+            dict(id=release_id, pid=project_id, name=name, bid=bundle_id, bsha=bundle_sha256,
+                 tj=train_job_id, run=run_artifact, ev=eval_artifact, cmp=comparison_artifact,
+                 reg=regression_artifact, cal=calibration_artifact,
+                 metrics=_dumps(metrics), gates=_dumps(snapshot),
+                 verdict=verdict or "candidate", note=note or "", created=_now()))
+        return self.get_release(release_id)
+
+    def get_release(self, release_id) -> dict | None:
+        row = self._conn().execute(
+            text("SELECT * FROM project_releases WHERE id = :id"),
+            {"id": release_id}).mappings().fetchone()
+        return _release(row) if row else None
+
+    def list_releases(self, project_id) -> list[dict]:
+        rows = self._conn().execute(
+            text("SELECT * FROM project_releases WHERE project_id = :p ORDER BY created_at DESC"),
+            {"p": project_id}).mappings().fetchall()
+        return [_release(row) for row in rows]
+
     # ---- lineage ----------------------------------------------------------
 
     def add_lineage(self, parent, child, relation, job_id=None, *, commit: bool = True) -> None:
@@ -1278,6 +1338,55 @@ class Store:
         rows = self._conn().execute(
             text("SELECT * FROM lineage WHERE parent = :p"), {"p": artifact_id}).mappings().fetchall()
         return [dict(row) for row in rows]
+
+    def project_lineage(self, project_id) -> dict:
+        """项目的血缘图：{nodes:[{id,kind,version}], edges:[{parent,child,relation,job_id}]}。
+
+        D10：只 JOIN 既有 `lineage` 表（取父在本项目产物集内的出边）+ `bundle_members` 的
+        composed_of/overlay 边（父=成员源产物，子=bundle 产物），不新建表。version 取该产物
+        最新 seq（无版本则 None，兼容旧产物）；前端只渲染，不重算。"""
+        nodes: dict[str, dict] = {}
+
+        def add_node(aid: str, version=None) -> None:
+            if aid not in nodes:
+                nodes[aid] = {"id": aid, "kind": aid.partition(":")[0], "version": version}
+            elif version is not None and nodes[aid]["version"] is None:
+                nodes[aid]["version"] = version
+
+        def latest_seq(aid: str):
+            versions = self.list_artifact_versions(aid)
+            return versions[0]["seq"] if versions else None
+
+        for art in self.list_project_artifacts(project_id):
+            add_node(art["id"], latest_seq(art["id"]))
+        pset = set(nodes)
+
+        edges: list[dict] = []
+        seen: set[tuple] = set()
+
+        def add_edge(parent, child, relation, job_id=None) -> None:
+            key = (parent, child, relation)
+            if key in seen:
+                return
+            seen.add(key)
+            edges.append({"parent": parent, "child": child, "relation": relation, "job_id": job_id})
+
+        for aid in pset:
+            for edge in self.lineage_of(aid):
+                if edge["child"] in pset:
+                    add_edge(aid, edge["child"], edge["relation"], edge.get("job_id"))
+
+        for bundle in self.list_bundles(project_id):
+            bid = bundle["artifact_id"]
+            add_node(bid, latest_seq(bid))
+            for member in self.get_bundle_members(bundle["id"]):
+                parent = member["source_artifact"]
+                version = self.get_artifact_version(member["version_id"])
+                add_node(parent, version["seq"] if version else latest_seq(parent))
+                relation = "overlay" if member["op"] == "overlay" else "composed_of"
+                add_edge(parent, bid, relation, version["job_id"] if version else None)
+
+        return {"nodes": list(nodes.values()), "edges": edges}
 
     # ---- events -----------------------------------------------------------
 

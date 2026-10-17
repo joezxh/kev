@@ -13,8 +13,9 @@ import {
   type Event,
   type Gate,
   type Job,
-  type JobDetail,
+  type Lineage,
   type ProjectSummary,
+  type Release,
   type Review,
   type ReviewQueueItem,
   type ReviewVerdict,
@@ -125,9 +126,9 @@ export default function StudioProjectDetailPage({
       ) : tab === "trainings" ? (
         <TrainingsTab jobs={jobs} lang={lang} />
       ) : tab === "results" ? (
-        <ResultsTab jobs={jobs} lang={lang} />
+        <ResultsTab projectId={id} lang={lang} />
       ) : (
-        <LineageTab artifacts={artifacts} lang={lang} />
+        <LineageTab projectId={id} lang={lang} />
       )}
     </div>
   );
@@ -353,78 +354,183 @@ function TrainingsTab({ jobs, lang }: { jobs: Job[]; lang: string }) {
   );
 }
 
-function ResultsTab({ jobs, lang }: { jobs: Job[]; lang: string }) {
+function ResultsTab({ projectId, lang }: { projectId: string; lang: string }) {
   const zh = lang === "zh";
-  const done = jobs.filter((j) => j.stage === "train" && j.status === "succeeded");
-  const [details, setDetails] = useState<Record<string, JobDetail | null>>({});
+  const [releases, setReleases] = useState<Release[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const succeeded = jobs.filter((j) => j.stage === "train" && j.status === "succeeded");
     let alive = true;
-    Promise.all(
-      succeeded.map((j) => api.job(j.id).then((d) => [j.id, d] as const).catch(() => [j.id, null] as const)),
-    ).then((pairs) => alive && setDetails(Object.fromEntries(pairs)));
+    api.projectReleases(projectId)
+      .then((rows) => alive && setReleases(rows))
+      .catch((e) => alive && setError(String((e as { message?: string })?.message ?? e)));
     return () => {
       alive = false;
     };
-  }, [jobs]);
+  }, [projectId]);
 
-  if (done.length === 0) {
+  const num = (v: number | null | undefined, digits = 3) => (v == null ? "—" : v.toFixed(digits));
+
+  if (error) {
     return (
-      <Panel title={zh ? "结果" : "Results"}>
-        <EmptyState title={zh ? "还没有成功的训练可读结果" : "No succeeded training reads yet"} />
+      <Panel title={zh ? "结论" : "Results"}>
+        <div className="text-xs text-destructive">{error}</div>
+      </Panel>
+    );
+  }
+  if (releases === null) {
+    return (
+      <Panel title={zh ? "结论" : "Results"}>
+        <div className="text-xs text-muted-foreground">{zh ? "加载中…" : "Loading…"}</div>
+      </Panel>
+    );
+  }
+  if (releases.length === 0) {
+    return (
+      <Panel title={zh ? "结论" : "Results"}>
+        <EmptyState
+          title={zh ? "还没有落库的结论" : "No releases recorded yet"}
+          hint={zh ? "评测/对比完成后在此登记一行结论（gates 服务端现算）" : "record a release after eval/compare; gates are computed server-side"}
+        />
       </Panel>
     );
   }
   return (
-    <div className="space-y-4">
-      {done.map((j) => {
-        const detail = details[j.id];
-        const last = detail?.metrics?.[detail.metrics.length - 1];
-        return (
-          <Panel key={j.id} title={<Link href={`/studio/jobs/${j.id}`} className="hover:underline">{j.title || j.id}</Link>}>
-            {!detail ? (
-              <div className="text-xs text-muted-foreground">{zh ? "加载中…" : "Loading…"}</div>
-            ) : (
-              <div className="flex flex-wrap gap-6 text-xs">
-                <span className="text-muted-foreground">{zh ? "指标条数" : "metrics"}: <span className="text-foreground">{detail.metrics.length}</span></span>
-                {last && (
-                  <>
-                    <span className="text-muted-foreground">loss: <span className="font-mono text-foreground">{last.loss.toFixed(4)}</span></span>
-                    <span className="text-muted-foreground">kl: <span className="font-mono text-foreground">{last.kl.toFixed(4)}</span></span>
-                    <span className="text-muted-foreground">step: <span className="font-mono text-foreground">{last.step}/{last.total}</span></span>
-                  </>
-                )}
-                <span className="text-muted-foreground">{zh ? "产物" : "artifacts"}: <span className="text-foreground">{detail.artifacts.length}</span></span>
-              </div>
-            )}
-          </Panel>
-        );
-      })}
+    <Panel title={zh ? "结论（releases）" : "Results (releases)"}>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{zh ? "结论" : "Release"}</TableHead>
+            <TableHead>acc</TableHead>
+            <TableHead>ECE</TableHead>
+            <TableHead>Brier</TableHead>
+            <TableHead>AURC</TableHead>
+            <TableHead>{zh ? "覆盖" : "Coverage"}</TableHead>
+            <TableHead>Δ</TableHead>
+            <TableHead>Gates</TableHead>
+            <TableHead>{zh ? "判定" : "Verdict"}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {releases.map((rel) => (
+            <TableRow key={rel.id}>
+              <TableCell className="font-medium">{rel.name}</TableCell>
+              <TableCell className="font-mono">{num(rel.metrics.acc)}</TableCell>
+              <TableCell className="font-mono">{num(rel.metrics.ece)}</TableCell>
+              <TableCell className="font-mono">{num(rel.metrics.brier)}</TableCell>
+              <TableCell className="font-mono">{num(rel.metrics.aurc)}</TableCell>
+              <TableCell className="font-mono">{num(rel.metrics.coverage, 2)}</TableCell>
+              <TableCell className="font-mono">{num(rel.metrics.delta, 4)}</TableCell>
+              <TableCell><GateCell gates={rel.gates_snapshot} /></TableCell>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <ReleaseVerdictBadge verdict={rel.verdict} />
+                  {rel.bundle_sha256 && (
+                    <span className="font-mono text-[10px] text-muted-foreground">{rel.bundle_sha256.slice(0, 8)}</span>
+                  )}
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Panel>
+  );
+}
+
+function ReleaseVerdictBadge({ verdict }: { verdict: Release["verdict"] }) {
+  const tone =
+    verdict === "accepted" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+    : verdict === "rejected" ? "border-destructive/40 bg-destructive/10 text-destructive"
+    : "border-amber-500/40 bg-amber-500/10 text-amber-400";
+  return <span className={`rounded border px-1.5 py-0.5 font-mono text-[10px] ${tone}`}>{verdict}</span>;
+}
+
+function GateCell({ gates }: { gates: Gate[] }) {
+  if (gates.length === 0) return <span className="text-[10px] text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {gates.map((g) => (
+        <span
+          key={g.id}
+          title={g.detail}
+          className={`rounded border px-1 font-mono text-[10px] ${
+            g.ok ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                 : "border-destructive/40 bg-destructive/10 text-destructive"}`}
+        >
+          {g.id}
+        </span>
+      ))}
     </div>
   );
 }
 
-function LineageTab({ artifacts, lang }: { artifacts: Artifact[]; lang: string }) {
+function LineageTab({ projectId, lang }: { projectId: string; lang: string }) {
   const zh = lang === "zh";
-  const edges: { parent: string; child: string; relation: string }[] = [];
-  for (const a of artifacts) {
-    for (const e of a.lineage ?? []) edges.push(e);
+  const [data, setData] = useState<Lineage | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.projectLineage(projectId)
+      .then((d) => alive && setData(d))
+      .catch((e) => alive && setError(String((e as { message?: string })?.message ?? e)));
+    return () => {
+      alive = false;
+    };
+  }, [projectId]);
+
+  if (error) {
+    return <Panel title={zh ? "血缘" : "Lineage"}><div className="text-xs text-destructive">{error}</div></Panel>;
+  }
+  if (data === null) {
+    return <Panel title={zh ? "血缘" : "Lineage"}><div className="text-xs text-muted-foreground">{zh ? "加载中…" : "Loading…"}</div></Panel>;
+  }
+  if (data.nodes.length === 0) {
+    return <Panel title={zh ? "血缘" : "Lineage"}><EmptyState title={zh ? "暂无血缘节点" : "No lineage nodes"} /></Panel>;
   }
   return (
-    <Panel title={zh ? "产物血缘" : "Artifact lineage"}>
-      {edges.length === 0 ? (
-        <EmptyState title={zh ? "暂无血缘边" : "No lineage edges"} hint={zh ? "血缘执行属于后续计划" : "lineage execution is a follow-on plan"} />
-      ) : (
-        <ul className="space-y-1">
-          {edges.map((e, i) => (
-            <li key={i} className="font-mono text-[11px] text-muted-foreground">
-              <span className="text-foreground/70">{e.parent}</span> → <span className="text-foreground/70">{e.child}</span> ({e.relation})
-            </li>
-          ))}
-        </ul>
-      )}
-    </Panel>
+    <div className="space-y-4">
+      <Panel title={zh ? `节点（${data.nodes.length}）` : `Nodes (${data.nodes.length})`}>
+        <div className="flex flex-wrap gap-2">
+          {data.nodes.map((n) => <NodeChip key={n.id} node={n} />)}
+        </div>
+      </Panel>
+      <Panel title={zh ? `边（${data.edges.length}）` : `Edges (${data.edges.length})`}>
+        {data.edges.length === 0 ? (
+          <EmptyState title={zh ? "暂无血缘边" : "No lineage edges"} />
+        ) : (
+          <ul className="space-y-1">
+            {data.edges.map((e, i) => (
+              <li key={i} className="font-mono text-[11px] text-muted-foreground">
+                <span className="text-foreground/80">{e.parent}</span> →{" "}
+                <span className="text-foreground/80">{e.child}</span>{" "}
+                <span className="rounded border border-border bg-[#111111] px-1 text-[10px]">{e.relation}</span>
+                {e.job_id && <span className="ml-1 text-[10px]">job:{e.job_id.slice(0, 6)}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function NodeChip({ node }: { node: Lineage["nodes"][number] }) {
+  const tone: Record<string, string> = {
+    dataset: "border-sky-500/40 bg-sky-500/10 text-sky-400",
+    bundle: "border-violet-500/40 bg-violet-500/10 text-violet-400",
+    run: "border-emerald-500/40 bg-emerald-500/10 text-emerald-400",
+    eval: "border-amber-500/40 bg-amber-500/10 text-amber-400",
+    comparison: "border-rose-500/40 bg-rose-500/10 text-rose-400",
+    regression: "border-rose-500/40 bg-rose-500/10 text-rose-400",
+    calibration: "border-teal-500/40 bg-teal-500/10 text-teal-400",
+  };
+  const cls = tone[node.kind] ?? "border-border bg-[#111111] text-muted-foreground";
+  return (
+    <span className={`rounded border px-1.5 py-0.5 font-mono text-[10px] ${cls}`}>
+      {node.id}{node.version != null ? ` ·v${node.version}` : ""}
+    </span>
   );
 }
 
