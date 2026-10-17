@@ -1,10 +1,12 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { Fragment, use, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   api,
   type Artifact,
+  type ArtifactVersion,
+  type ArtifactVersionPage,
   type Event,
   type Job,
   type JobDetail,
@@ -172,38 +174,131 @@ function EventList({ events, lang }: { events: Event[]; lang: string }) {
   );
 }
 
-function ArtifactTable({ artifacts, lang }: { artifacts: Artifact[]; lang: string }) {
+function DataTab({ artifacts, lang }: { artifacts: Artifact[]; lang: string }) {
   const zh = lang === "zh";
-  if (artifacts.length === 0) return <EmptyState title={zh ? "暂无产物" : "No artifacts"} />;
+  if (artifacts.length === 0) {
+    return (
+      <Panel title={zh ? "项目产物版本" : "Project artifact versions"}>
+        <EmptyState title={zh ? "暂无产物" : "No artifacts"} />
+      </Panel>
+    );
+  }
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{zh ? "名称" : "name"}</TableHead>
-          <TableHead>kind</TableHead>
-          <TableHead className="text-right">{zh ? "字节" : "bytes"}</TableHead>
-          <TableHead className="text-right">created</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {artifacts.map((a) => (
-          <TableRow key={a.id}>
-            <TableCell className="text-sm">{a.name}</TableCell>
-            <TableCell className="font-mono text-xs">{a.kind}</TableCell>
-            <TableCell className="text-right font-mono text-xs">{a.bytes ?? "—"}</TableCell>
-            <TableCell className="text-right font-mono text-xs text-muted-foreground">{a.created_at.slice(0, 10)}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <div className="space-y-4">
+      {artifacts.map((a) => (
+        <ArtifactVersions key={a.id} artifact={a} lang={lang} />
+      ))}
+    </div>
   );
 }
 
-function DataTab({ artifacts, lang }: { artifacts: Artifact[]; lang: string }) {
+/** 单个产物的版本表：seq × records × sha256 × integrity × 来源作业，点行展开预览 50 条。 */
+function ArtifactVersions({ artifact, lang }: { artifact: Artifact; lang: string }) {
+  const zh = lang === "zh";
+  const [versions, setVersions] = useState<ArtifactVersion[] | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.artifactVersions(artifact.id)
+      .then((v) => alive && setVersions(v))
+      .catch(() => alive && setVersions([]));
+    return () => {
+      alive = false;
+    };
+  }, [artifact.id]);
+
   return (
-    <Panel title={lang === "zh" ? "项目产物" : "Project artifacts"}>
-      <ArtifactTable artifacts={artifacts} lang={lang} />
+    <Panel title={`${artifact.name} (${artifact.kind})`}>
+      {versions === null ? (
+        <div className="text-xs text-muted-foreground">{zh ? "加载中…" : "Loading…"}</div>
+      ) : versions.length === 0 ? (
+        <EmptyState title={zh ? "历史无版本" : "No versions registered"} />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>seq</TableHead>
+              <TableHead className="text-right">{zh ? "记录" : "records"}</TableHead>
+              <TableHead className="text-right">{zh ? "字节" : "bytes"}</TableHead>
+              <TableHead>sha256</TableHead>
+              <TableHead>integrity</TableHead>
+              <TableHead className="text-right">created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {versions.map((v) => (
+              <Fragment key={v.id}>
+                <TableRow className="cursor-pointer" onClick={() => setOpen(open === v.id ? null : v.id)}>
+                  <TableCell className="font-mono text-xs">{v.seq}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{v.records ?? "—"}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{v.bytes ?? "—"}</TableCell>
+                  <TableCell className="font-mono text-[11px] text-muted-foreground">{v.sha256.slice(0, 12)}</TableCell>
+                  <TableCell><IntegrityBadge value={v.integrity} /></TableCell>
+                  <TableCell className="text-right font-mono text-xs text-muted-foreground">{v.created_at.slice(0, 10)}</TableCell>
+                </TableRow>
+                {open === v.id && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="bg-[#0d0d0d]">
+                      <VersionPreview version={v} lang={lang} />
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            ))}
+          </TableBody>
+        </Table>
+      )}
     </Panel>
+  );
+}
+
+function IntegrityBadge({ value }: { value: ArtifactVersion["integrity"] }) {
+  const tone =
+    value === "ok" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+    : value === "drift" ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
+    : "border-destructive/40 bg-destructive/10 text-destructive";
+  return <span className={`rounded border px-1.5 py-0.5 font-mono text-[10px] ${tone}`}>{value}</span>;
+}
+
+/** 展开行的记录预览：分页拉 50 条，每行带指纹（与服务端 split_data 同一规范化）。 */
+function VersionPreview({ version, lang }: { version: ArtifactVersion; lang: string }) {
+  const zh = lang === "zh";
+  const [page, setPage] = useState<ArtifactVersionPage | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.artifactVersionRecords(version.id, { offset: 0, limit: 50 })
+      .then((p) => alive && setPage(p))
+      .catch((e) => alive && setError(String((e as { message?: string })?.message ?? e)));
+    return () => {
+      alive = false;
+    };
+  }, [version.id]);
+
+  if (error) return <div className="text-xs text-destructive">{error}</div>;
+  if (!page) return <div className="text-xs text-muted-foreground">{zh ? "加载中…" : "Loading…"}</div>;
+  if (page.records.length === 0)
+    return <div className="text-xs text-muted-foreground">{zh ? "无可预览记录（非 JSONL 或文件缺失）" : "No previewable records"}</div>;
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+        <span>{zh ? `共 ${page.total} 条，显示前 ${page.records.length} 条` : `${page.total} records, showing first ${page.records.length}`}</span>
+        <a href={api.artifactVersionExportUrl(version.id)} className="hover:text-foreground hover:underline">
+          {zh ? "导出" : "Export"}
+        </a>
+      </div>
+      <ul className="space-y-1">
+        {page.records.map((r) => (
+          <li key={r.line_no} className="flex gap-2 font-mono text-[11px]">
+            <span className="w-10 shrink-0 text-muted-foreground">#{r.line_no}</span>
+            <span className="text-muted-foreground/60">{r.fingerprint.slice(0, 10)}</span>
+            <span className="truncate text-foreground/70">{JSON.stringify(r.record)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

@@ -654,6 +654,41 @@ def export_dataset(artifact_id: str, store: Store = Depends(get_store)):
                                       f'attachment; filename="{artifact["name"].replace("/", "_")}.jsonl"'})
 
 
+# ---- artifact versions（不可变版本 / integrity / 预览 / 导出，PR B §4.2）----
+
+@console_router.get("/console/api/artifacts/{artifact_id:path}/versions")
+def get_artifact_versions(artifact_id: str, store: Store = Depends(get_store)):
+    """产物的版本列表（每项现算 integrity）；未知产物 404，历史无版本返回 []（不 500）。"""
+    if store.get_artifact(artifact_id) is None:
+        return _error("validation", f"未知产物 {artifact_id}", status=404)
+    return [{**v, "integrity": artifacts.integrity(v)} for v in store.list_artifact_versions(artifact_id)]
+
+
+@console_router.get("/console/api/artifact-versions/{version_id}/records")
+def get_artifact_version_records(version_id: str, offset: int = 0, limit: int = 100,
+                                 q: str = "", verdict: str = "", store: Store = Depends(get_store)):
+    """版本快照的 JSONL 分页预览，逐行带指纹；未知版本 404。"""
+    version = store.get_artifact_version(version_id)
+    if version is None:
+        return _error("validation", f"未知版本 {version_id}", status=404)
+    return artifacts.preview_records(version, offset=offset, limit=limit, q=q, verdict=verdict)
+
+
+@console_router.get("/console/api/artifact-versions/{version_id}/export")
+def export_artifact_version(version_id: str, store: Store = Depends(get_store)):
+    """导出版本快照指向的文件（文件名策略同 export_dataset）；未知版本或文件缺失 404。"""
+    version = store.get_artifact_version(version_id)
+    if version is None:
+        return _error("validation", f"未知版本 {version_id}", status=404)
+    target = Path(paths.ROOT) / version["path"]
+    if not target.is_file():
+        return _error("validation", f"版本文件不存在：{version['path']}", status=404)
+    filename = version["artifact_id"].replace(":", "_").replace("/", "_")
+    return StreamingResponse(iter([target.read_bytes()]), media_type="application/x-ndjson",
+                             headers={"Content-Disposition":
+                                      f'attachment; filename="{filename}.jsonl"'})
+
+
 # ---- stage param specs + plan + job templates -------------------------
 
 @console_router.get("/console/api/plan/{scenario}")

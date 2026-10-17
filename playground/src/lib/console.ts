@@ -112,6 +112,20 @@ export type ArtifactContent = {
   content: string; truncated: boolean;
 };
 
+/** artifact_versions 的一行（integrity 由服务端读时现算，PR B §4.2）。 */
+export type ArtifactVersion = {
+  id: string; artifact_id: string; seq: number; job_id: string; path: string;
+  sha256: string; records: number | null; bytes: number | null;
+  meta: Record<string, unknown>; spec_sha256: string | null; created_at: string;
+  integrity: "ok" | "drift" | "missing";
+};
+
+/** GET /artifact-versions/{vid}/records 的响应（分页预览，行带定长指纹）。 */
+export type ArtifactVersionPage = {
+  version_id: string; total: number;
+  records: { line_no: number; fingerprint: string; record: unknown }[];
+};
+
 /** GET /files/content 的响应：仓库相对文件（data/ 与 runs/ 下）的文本内容，
  *  用于查看那些不是注册产物、而是直接写路径的作业入参。 */
 export type FileContent = {
@@ -253,6 +267,21 @@ export const api = {
   artifacts: (kind?: string) => call<Artifact[]>(`artifacts${kind ? `?kind=${kind}` : ""}`),
   artifactContent: (id: string) =>
     call<ArtifactContent>(`artifacts/${encodeURIComponent(id)}/content`),
+  /** 产物的不可变版本列表（每项服务端现算 integrity）；未知产物 404，历史无版本返回 []。 */
+  artifactVersions: (id: string) =>
+    call<ArtifactVersion[]>(`artifacts/${encodeURIComponent(id)}/versions`),
+  /** 版本快照的 JSONL 分页预览（逐行带定长指纹）。 */
+  artifactVersionRecords: (vid: string, opts?: { offset?: number; limit?: number; q?: string; verdict?: string }) => {
+    const q = new URLSearchParams();
+    if (opts?.offset) q.set("offset", String(opts.offset));
+    if (opts?.limit) q.set("limit", String(opts.limit));
+    if (opts?.q) q.set("q", opts.q);
+    if (opts?.verdict) q.set("verdict", opts.verdict);
+    const qs = q.toString();
+    return call<ArtifactVersionPage>(`artifact-versions/${vid}/records${qs ? `?${qs}` : ""}`);
+  },
+  /** 版本导出走同源代理直链（不 fetch，交给浏览器下载）。 */
+  artifactVersionExportUrl: (vid: string) => `/api/console/artifact-versions/${vid}/export`,
   /** 只读白名单文件内容（data/ 与 runs/ 下的仓库相对路径）。 */
   fileContent: (path: string) =>
     call<FileContent>(`files/content?path=${encodeURIComponent(path)}`),

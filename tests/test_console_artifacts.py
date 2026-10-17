@@ -7,6 +7,8 @@ resolve() 是这件事的唯一真相源，阶段处理器与注册逻辑都调�
 
 Run: uv run python -m pytest tests/test_console_artifacts.py -q
 """
+import hashlib
+
 import pytest
 
 from kev.console import artifacts
@@ -91,6 +93,7 @@ def test_register_creates_out_artifacts_and_in_to_out_lineage(store, tmp_path, m
     # 恰好有这个文件（以及它恰好没坏、没 NaN），断言虽然不碰 meta，也已经是机器相关的了。
     monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
     job_id = store.create_job(
+        project_id="p1",
         kind="split", stage="data", scenario="critical-value", title="t",
         request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
         artifacts_in=["dataset:cv"],
@@ -110,6 +113,7 @@ def test_register_is_idempotent_across_a_retry(store, tmp_path, monkeypatch):
     monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
     for attempt in (1, 2):
         job_id = store.create_job(
+            project_id="p1",
             kind="split", stage="data", scenario="critical-value", title=f"t{attempt}",
             request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
             artifacts_in=[], artifacts_out=["dataset:cv/summary"])
@@ -125,6 +129,7 @@ def test_register_rolls_back_when_lineage_fails(store, tmp_path, monkeypatch):
     """
     monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
     job_id = store.create_job(
+        project_id="p1",
         kind="split", stage="data", scenario="critical-value", title="t",
         request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
         artifacts_in=["dataset:cv"],
@@ -146,3 +151,85 @@ def test_register_rolls_back_when_lineage_fails(store, tmp_path, monkeypatch):
     assert written == ["dataset:cv/train"]     # 第一条边确实写进去了
     assert store.list_artifacts("dataset") == []
     assert store.lineage_of("dataset:cv") == []
+
+
+# ---- PR B: artifact_versions 登记 / integrity / 预览 -------------------------
+
+_R1 = '{"state": "s one", "questions": {"q": {"type": "noul", "instructions": "i", "label": true}}}'
+_R2 = '{"state": "s two", "questions": {"q": {"type": "noul", "instructions": "i", "label": false}}}'
+
+
+def _register_dataset(store, tmp_path, monkeypatch, out, lines, *, project_id="p1", title="t"):
+    """写一个 dataset 文件并走一次 register，返回 (文件绝对路径, 仓库相对路径)。"""
+    monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
+    rel = artifacts.resolve(out)
+    target = tmp_path / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+    job_id = store.create_job(
+        project_id=project_id, kind="split", stage="data", scenario="critical-value", title=title,
+        request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+        artifacts_in=["dataset:cv"], artifacts_out=[out])
+    artifacts.register(store, store.get_job(job_id))
+    return target, rel
+
+
+def test_register_writes_version_with_hash(store, tmp_path, monkeypatch):
+    """登记即算 sha256/records，seq 从 1 起。"""
+    target, rel = _register_dataset(store, tmp_path, monkeypatch, "dataset:cv/train", [_R1, _R2])
+    versions = store.list_artifact_versions("dataset:cv/train")
+    assert len(versions) == 1 and versions[0]["seq"] == 1
+    assert versions[0]["sha256"] == hashlib.sha256(target.read_bytes()).hexdigest()
+    assert versions[0]["records"] == 2
+    assert versions[0]["path"] == rel
+
+
+def test_register_increments_seq(store, tmp_path, monkeypatch):
+    """同一 artifact 两次登记 → seq 2/1（DESC），seq 只增不改。"""
+    _register_dataset(store, tmp_path, monkeypatch, "dataset:cv/train", [_R1], title="a")
+    _register_dataset(store, tmp_path, monkeypatch, "dataset:cv/train", [_R1, _R2], title="b")
+    assert [v["seq"] for v in store.list_artifact_versions("dataset:cv/train")] == [2, 1]
+
+
+def test_history_artifact_without_file_has_no_versions(store, tmp_path, monkeypatch):
+    """登记时无单文件（dir 类产物或未落盘）→ 不写版本；读版本返回 [] 而非 500。"""
+    monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)   # data/cv/summary.json 不存在
+    job_id = store.create_job(
+        project_id="p1", kind="split", stage="data", scenario="critical-value", title="t",
+        request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+        artifacts_in=["dataset:cv"], artifacts_out=["dataset:cv/summary"])
+    artifacts.register(store, store.get_job(job_id))
+    assert store.get_artifact("dataset:cv/summary") is not None   # 产物本身已登记
+    assert store.list_artifact_versions("dataset:cv/summary") == []
+
+
+def test_integrity_ok_drift_missing(store, tmp_path, monkeypatch):
+    """读时复核：未改=ok、手改=drift、删文件=missing。"""
+    target, _ = _register_dataset(store, tmp_path, monkeypatch, "dataset:cv/train", [_R1])
+    version = store.list_artifact_versions("dataset:cv/train")[0]
+    assert artifacts.integrity(version) == "ok"
+    target.write_text(_R2 + "\n", encoding="utf-8")
+    assert artifacts.integrity(version) == "drift"
+    target.unlink()
+    assert artifacts.integrity(version) == "missing"
+
+
+def test_preview_records_pagination_and_fingerprint(store, tmp_path, monkeypatch):
+    """预览分页 + 每行带定长指纹（与 split_data.record_fingerprint 同一规范化）。"""
+    _register_dataset(store, tmp_path, monkeypatch, "dataset:cv/train", [_R1, _R2])
+    version = store.list_artifact_versions("dataset:cv/train")[0]
+    page = artifacts.preview_records(version, offset=0, limit=1, q="", verdict="")
+    assert page["total"] == 2
+    assert len(page["records"]) == 1
+    assert page["records"][0]["line_no"] == 1
+    assert len(page["records"][0]["fingerprint"]) == 64
+
+
+def test_get_artifact_version_and_job(store, tmp_path, monkeypatch):
+    """get_artifact_version 命中/未命中；artifact_version_job 经 job_id 归属项目。"""
+    _, _ = _register_dataset(store, tmp_path, monkeypatch, "dataset:cv/train", [_R1], project_id="p9")
+    version = store.list_artifact_versions("dataset:cv/train")[0]
+    assert store.get_artifact_version(version["id"])["seq"] == 1
+    assert store.get_artifact_version("nope") is None
+    job = store.artifact_version_job(version["id"])
+    assert job["project_id"] == "p9"

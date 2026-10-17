@@ -44,6 +44,17 @@ def state_key(state):
     return hashlib.sha256(normalized_state(state).encode()).hexdigest()
 
 
+def canonical_record(record):
+    """dedupe() 用来判完全重复的规范化身份串；也是标注覆盖层 fingerprint 的规范化基。"""
+    return json.dumps({"state": record["state"], "questions": record["questions"]},
+                      sort_keys=True, ensure_ascii=False)
+
+
+def record_fingerprint(record):
+    """canonical_record 的 sha256 —— 定长的逐记录指纹，标注覆盖层按它存决定（D7，与 dedupe 判重同一规范化）。"""
+    return hashlib.sha256(canonical_record(record).encode()).hexdigest()
+
+
 def label_key(q):
     """The label as the key Kev reports probabilities under (option name / "true"|"false" / level index as a string)."""
     if q["type"] == "noul": return str(bool(q["label"])).lower()
@@ -112,7 +123,7 @@ def dedupe(records):
     seen, by_state, conflicts = set(), defaultdict(dict), set()
     kept = []
     for r in records:
-        fingerprint = json.dumps({"state": r["state"], "questions": r["questions"]}, sort_keys=True, ensure_ascii=False)
+        fingerprint = canonical_record(r)
         if fingerprint in seen: continue
         seen.add(fingerprint)
         key = state_key(r["state"])

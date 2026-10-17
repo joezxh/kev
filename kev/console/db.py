@@ -572,6 +572,13 @@ def _job(row) -> dict:
     return out
 
 
+def _artifact_version(row) -> dict:
+    """artifact_versions 行 → dict；只有 meta 是 JSON，其余列原样透出（nullable 列保留 None）。"""
+    out = dict(row)
+    out["meta"] = _loads(out["meta"])
+    return out
+
+
 class Store:
     """每线程一个连接。WAL 让读不阻塞写，事件轮询与日志落库可以并发。"""
 
@@ -955,6 +962,50 @@ class Store:
             item["meta"] = _loads(item["meta"])
             out.append(item)
         return out
+
+    # ---- artifact versions（不可变快照，PR B）--------------------------
+
+    def record_artifact_version(self, *, artifact_id, job_id, path, sha256, records,
+                                bytes=None, meta=None, spec_sha256=None) -> str:
+        """登记产物的一个不可变版本：seq = 该 artifact 现有 MAX(seq)+1，只增不改（V3）。
+
+        必须在调用方的 `store.tx()` 里执行：seq 的「读-改-写」要落在同一 BEGIN IMMEDIATE 事务内
+        串行化，两个并发注册才不会撞 UNIQUE(artifact_id, seq)。这里不自行 commit，事务由调用方收尾
+        （照 `_Conn` 的真实语义，见 §4.6-1：是否留事务由 in_tx 决定，而非某个 commit 形参）。
+        """
+        version_id = uuid.uuid4().hex
+        conn = self._conn()
+        nxt = conn.execute(
+            text("SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM artifact_versions WHERE artifact_id = :a"),
+            {"a": artifact_id}).mappings().fetchone()["next"]
+        conn.execute(
+            text("INSERT INTO artifact_versions (id, artifact_id, seq, job_id, path, sha256, records,"
+                 " bytes, meta, spec_sha256, created_at)"
+                 " VALUES (:id,:artifact_id,:seq,:job_id,:path,:sha256,:records,:bytes,:meta,:spec_sha256,:created_at)"),
+            dict(id=version_id, artifact_id=artifact_id, seq=int(nxt), job_id=job_id, path=str(path),
+                 sha256=sha256, records=records, bytes=bytes, meta=_dumps(meta or {}),
+                 spec_sha256=spec_sha256, created_at=_now()),
+        )
+        return version_id
+
+    def list_artifact_versions(self, artifact_id) -> list[dict]:
+        """某产物的版本列表，seq 从新到旧；历史无版本（旧产物）返回空列表而非报错。"""
+        rows = self._conn().execute(
+            text("SELECT * FROM artifact_versions WHERE artifact_id = :a ORDER BY seq DESC"),
+            {"a": artifact_id}).mappings().fetchall()
+        return [_artifact_version(row) for row in rows]
+
+    def get_artifact_version(self, version_id) -> dict | None:
+        row = self._conn().execute(
+            text("SELECT * FROM artifact_versions WHERE id = :id"), {"id": version_id}).mappings().fetchone()
+        return _artifact_version(row) if row else None
+
+    def artifact_version_job(self, version_id) -> dict | None:
+        """版本 → 产出它的作业（项目归属经 versions.job_id → jobs.project_id join，D2 不给 artifacts 加列）。"""
+        row = self._conn().execute(
+            text("SELECT jobs.* FROM jobs JOIN artifact_versions ON artifact_versions.job_id = jobs.id"
+                 " WHERE artifact_versions.id = :id"), {"id": version_id}).mappings().fetchone()
+        return _job(row) if row else None
 
     # ---- lineage ----------------------------------------------------------
 

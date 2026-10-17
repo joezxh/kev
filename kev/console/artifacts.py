@@ -10,6 +10,8 @@ meta 只放「UI 直接要用的少量字段」，不复制 report.json 的全�
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 from kev.suite import read_json
@@ -139,8 +141,11 @@ def register(store, job: dict) -> list[str]:
     Task 3 的 on_finished 是 except Exception: pass，半成品会被完全静默 —— 作业显示 succeeded，
     产物列表里却有一条没有来路的产物。N 次 commit 也因此降为 1 次。
 
+    单文件产物在同事务里额外登记一条 artifact_versions（不可变版本，登记即算 sha256/records）；
+    目录类产物或未落盘的文件不写版本（历史无版本读列表返回空，PR B Review Focus）。
+
     可重复调用：重试会产生第二个作业写同一个产物，put_artifact 是 upsert、add_lineage 是
-    INSERT OR IGNORE，所以这里不需要额外的去重逻辑。
+    INSERT OR IGNORE，所以这里不需要额外的去重逻辑；版本则每次注册递增一个 seq。
     """
     relation = RELATION.get(job["kind"], "produced_by")
     registered = []
@@ -154,7 +159,78 @@ def register(store, job: dict) -> list[str]:
                 size = target.stat().st_size
             store.put_artifact(kind=artifact_id.partition(":")[0], name=artifact_id.partition(":")[2],
                                path=relative, meta=meta, bytes_=size, commit=False)
+            if target.is_file():
+                sha256, records = _hash_and_count(target)
+                store.record_artifact_version(artifact_id=artifact_id, job_id=job["id"],
+                                              path=relative, sha256=sha256, records=records,
+                                              bytes=size, meta=meta)
             for parent in job["artifacts_in"]:
                 store.add_lineage(parent, artifact_id, relation, job_id=job["id"], commit=False)
             registered.append(artifact_id)
     return registered
+
+
+def _hash_and_count(target: Path) -> tuple[str, int | None]:
+    """单文件产物的 (sha256, records)：sha256 是整份字节的摘要，records 仅对 .jsonl 逐非空行计数。"""
+    data = target.read_bytes()
+    sha256 = hashlib.sha256(data).hexdigest()
+    records = None
+    if target.suffix == ".jsonl":
+        records = sum(1 for line in data.decode("utf-8", "replace").splitlines() if line.strip())
+    return sha256, records
+
+
+def integrity(version: dict) -> str:
+    """读时复核登记版本指向的文件：未改=ok、内容变了=drift、文件没了=missing（PR B V3 三态）。"""
+    target = Path(paths.ROOT) / version["path"]
+    if not target.is_file():
+        return "missing"
+    current = hashlib.sha256(target.read_bytes()).hexdigest()
+    return "ok" if current == version["sha256"] else "drift"
+
+
+def _record_fingerprint(record) -> str:
+    """逐记录定长指纹 —— 复用 split_data.record_fingerprint（与 dedupe 判重同一规范化，D7），绝不复制实现。"""
+    paths.ensure_generators_on_path()
+    import split_data
+    return split_data.record_fingerprint(record)
+
+
+def preview_records(version: dict, *, offset=0, limit=100, q="", verdict="") -> dict:
+    """分页读取版本快照指向的 JSONL，逐行带 1-based 行号与定长指纹；文件缺失返回空页。
+
+    q 是对整行原文的大小写无关子串过滤；verdict 命中任一问题的 label（PR D 落覆盖层后可换成按决定过滤）。
+    过滤后才分页，所以 total 是「匹配行数」而非文件行数。limit 上限 500（同 read_events）。
+    """
+    limit = max(0, min(int(limit), 500))
+    target = Path(paths.ROOT) / version["path"]
+    if not target.is_file():
+        return {"version_id": version["id"], "total": 0, "records": []}
+    needle = (q or "").casefold()
+    matched = []
+    for line_no, line in enumerate((ln for ln in target.read_text(encoding="utf-8").splitlines() if ln.strip()), 1):
+        if needle and needle not in line.casefold():
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if verdict and not _verdict_matches(record, verdict):
+            continue
+        matched.append({"line_no": line_no, "fingerprint": _record_fingerprint(record), "record": record})
+    return {"version_id": version["id"], "total": len(matched),
+            "records": matched[offset:offset + limit]}
+
+
+def _verdict_matches(record, verdict: str) -> bool:
+    """记录的任一问题 label 是否等于 verdict（choice/score 用字符串值，noul 用 true/false）。"""
+    questions = record.get("questions") if isinstance(record, dict) else None
+    if not isinstance(questions, dict):
+        return False
+    for q in questions.values():
+        if isinstance(q, dict) and "label" in q:
+            label = q["label"]
+            key = str(bool(label)).lower() if isinstance(label, bool) else str(label)
+            if key == str(verdict):
+                return True
+    return False

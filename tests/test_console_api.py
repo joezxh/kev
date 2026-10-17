@@ -455,3 +455,53 @@ def test_dataset_detail_carries_lineage_and_404s_when_unknown(client):
     detail = body(client.get("/console/api/datasets/dataset:cv"))
     assert detail["lineage"][0]["child"] == "dataset:cv/train"
     assert client.get("/console/api/datasets/dataset:没有").status_code == 404
+
+
+# ---- PR B: artifact versions 端点 -----------------------------------------
+
+def _seed_version(client, tmp_path, monkeypatch, *, artifact="dataset:cv/train", lines=(
+        '{"state": "s", "questions": {"q": {"type": "noul", "instructions": "i", "label": true}}}',)):
+    """经 register 落一条真实版本（写文件 + 建项目/作业），返回 (version_id, artifact_id)。"""
+    from kev.console import artifacts
+    monkeypatch.setattr(artifacts.paths, "ROOT", tmp_path)
+    store = client.app.state.store
+    rel = artifacts.resolve(artifact)
+    target = tmp_path / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+    project_id = store.create_project("vproj", "V", scenario="triage")
+    job_id = store.create_job(
+        project_id=project_id, kind="split", stage="data", scenario="triage", title="v",
+        request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+        artifacts_in=[], artifacts_out=[artifact])
+    artifacts.register(store, store.get_job(job_id))
+    version = store.list_artifact_versions(artifact)[0]
+    return version["id"], artifact
+
+
+def test_versions_endpoint_ok_drift_and_unknown(client, tmp_path, monkeypatch):
+    vid, artifact = _seed_version(client, tmp_path, monkeypatch)
+    rows = body(client.get(f"/console/api/artifacts/{artifact}/versions"))
+    assert len(rows) == 1 and rows[0]["id"] == vid and rows[0]["integrity"] == "ok"
+    # 手改快照指向的文件 → 读时复核判为 drift
+    (tmp_path / "data" / "cv" / "train.jsonl").write_text('{"changed": true}\n', encoding="utf-8")
+    assert body(client.get(f"/console/api/artifacts/{artifact}/versions"))[0]["integrity"] == "drift"
+    assert client.get("/console/api/artifacts/dataset:没有/versions").status_code == 404
+
+
+def test_versions_history_without_versions_returns_empty_not_500(client):
+    store = client.app.state.store
+    store.put_artifact(kind="dataset", name="cv/legacy", path="data/cv/legacy.jsonl", meta={})
+    rows = body(client.get("/console/api/artifacts/dataset:cv/legacy/versions"))
+    assert rows == []
+
+
+def test_version_records_and_export_endpoints(client, tmp_path, monkeypatch):
+    vid, _ = _seed_version(client, tmp_path, monkeypatch)
+    page = body(client.get(f"/console/api/artifact-versions/{vid}/records?limit=1"))
+    assert page["total"] == 1 and len(page["records"]) == 1
+    assert len(page["records"][0]["fingerprint"]) == 64
+    assert client.get(f"/console/api/artifact-versions/nope/records").status_code == 404
+    exported = client.get(f"/console/api/artifact-versions/{vid}/export")
+    assert exported.status_code == 200 and exported.text.strip().count("\n") + 1 == 1
+    assert client.get(f"/console/api/artifact-versions/nope/export").status_code == 404
