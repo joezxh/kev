@@ -249,7 +249,7 @@ def _resolve_service_callable(stage, request: JobRequest, store, cancel,
 
 
 def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, built,
-          *, attempt=1, parent_id=None, gpu_lock=None, template_id=None) -> str:
+          *, attempt=1, parent_id=None, gpu_lock=None, template_id=None, bundle_id="") -> str:
     log_path = paths.JOB_LOGS / f"{uuid.uuid4().hex}.log"
     service_binding = _resolve_service_callable(stage, request, store, executor.cancel,
                                                 gpu_lock=gpu_lock, executor=executor)
@@ -262,7 +262,7 @@ def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, bu
             argv=[label], env_overlay=built.env,
             cwd=str(paths.ROOT), log_path=str(log_path),
             artifacts_in=built.artifacts_in, artifacts_out=built.artifacts_out,
-            attempt=attempt, parent_id=parent_id, template_id=template_id)
+            attempt=attempt, parent_id=parent_id, template_id=template_id, bundle_id=bundle_id)
         executor.spawn_callable(job_id, fn, label=label, log_path=str(log_path),
                                 env_overlay=built.env)
         if stage.persist == "start":
@@ -282,7 +282,7 @@ def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, bu
             cwd=built.cwd or str(paths.ROOT), log_path=str(log_path),
             artifacts_in=built.artifacts_in, artifacts_out=built.artifacts_out,
             attempt=attempt, parent_id=parent_id, daemon_id=built.daemon_id,
-            template_id=template_id)
+            template_id=template_id, bundle_id=bundle_id)
         # Backfill placeholder argv values that _distill_daemon left as __placeholder__.
         for i, part in enumerate(argv):
             if part == "__placeholder__":
@@ -300,7 +300,7 @@ def _spawn(store: Store, executor: LocalExecutor, stage, request: JobRequest, bu
             argv=argv, env_overlay=built.env,
             cwd=built.cwd or str(paths.ROOT), log_path=str(log_path),
             artifacts_in=built.artifacts_in, artifacts_out=built.artifacts_out,
-            attempt=attempt, parent_id=parent_id, template_id=template_id)
+            attempt=attempt, parent_id=parent_id, template_id=template_id, bundle_id=bundle_id)
     executor.spawn(job_id, argv, cwd=built.cwd or str(paths.ROOT),
                    log_path=str(log_path), env_overlay=built.env, secrets=built.secrets)
     if stage.persist == "start":
@@ -873,6 +873,18 @@ def submit_job(payload: dict, request_: Request, store: Store = Depends(get_stor
         return _error("conflict", f"作业场景 {request.scenario} 与项目场景 {project['scenario']} 不一致",
                       status=409)
 
+    # bundle 归属（D3）：提交那一次的显式声明，缺省/空串 = ''。给了就必须真实存在且
+    # 属于同一个项目 —— 归属是记账，但记错了比不记更坑（事后反查会把作业读成别的项目的一轮）。
+    bundle_id = (payload.get("bundle_id") or "").strip()
+    if bundle_id:
+        bundle = store.get_bundle(bundle_id)
+        if bundle is None:
+            return _error("validation", f"未知 bundle {bundle_id}", status=404)
+        if bundle["project_id"] != project_id:
+            return _error("validation",
+                          f"bundle {bundle['name']} 属于项目 {bundle['project_id']}，不是 {project_id}",
+                          status=400, field="bundle_id")
+
     if stage.kind == "train":
         # 单 GPU 闸。kev.experiment 在 Windows 上不可 import（experiment.py:14
         # 直接 import fcntl），所以这道闸必须自己实现。
@@ -902,14 +914,17 @@ def submit_job(payload: dict, request_: Request, store: Store = Depends(get_stor
     return JSONResponse(status_code=201, content=store.get_job(
         _spawn(store, executor, stage, request, built,
                gpu_lock=request_.app.state.gpu_lock,
-               template_id=payload.get("template_id") or None)))
+               template_id=payload.get("template_id") or None, bundle_id=bundle_id)))
 
 
 @console_router.get("/console/api/jobs")
 def get_jobs(status: str | None = None, stage: str | None = None,
              scenario: str | None = None, project: str | None = None,
+             bundle: str | None = None,
              store: Store = Depends(get_store)) -> list:
-    return store.list_jobs(status=status, stage=stage, scenario=scenario, project=project)
+    # bundle=<id>：从 bundle 反查为它跑过的作业（与现有 status/stage/scenario/project 同一路子）。
+    return store.list_jobs(status=status, stage=stage, scenario=scenario, project=project,
+                           bundle=bundle)
 
 
 @console_router.get("/console/api/jobs/{job_id}")
@@ -967,12 +982,30 @@ def retry_job(job_id: str, request_: Request, store: Store = Depends(get_store),
         _spawn(store, executor, stage, request, built,
                attempt=attempt, parent_id=job_id,
                gpu_lock=request_.app.state.gpu_lock,
-               template_id=job.get("template_id"))))
+               # 重试是同一件事的第二次尝试（与 template_id 同理），归属跟着走。
+               template_id=job.get("template_id"), bundle_id=job["bundle_id"])))
 
 
 @console_router.get("/console/api/jobs/{job_id}/events")
 def get_events(job_id: str, after_id: int = 0, store: Store = Depends(get_store)) -> dict:
     return {"events": store.read_events(job_id, after_id=after_id)}
+
+
+@console_router.delete("/console/api/jobs/{job_id}")
+def delete_job_endpoint(job_id: str, purge: bool = True, store: Store = Depends(get_store)):
+    """删作业并级联删它产生的数据（事件/版本/血缘/登记行 + data/、runs/ 白名单内的文件与日志）。
+
+    进行中（pending/queued/running）拒 409：先取消。版本进了 bundle 成员同样 409 —— bundle
+    是冻结证据链。purge=false 只删数据库足迹、磁盘文件原地保留（审计场景）。
+    级联细节与保守边界见 Store.delete_job 的 docstring。
+    """
+    try:
+        result = store.delete_job(job_id, purge_files=purge)
+    except Conflict as error:
+        return _error("conflict", error.message, status=409, hint=error.hint)
+    if result is None:
+        return _error("validation", f"未知作业 {job_id}", status=404)
+    return result
 
 
 @console_router.get("/console/api/jobs/{job_id}/stream")
@@ -1237,6 +1270,12 @@ def get_project_events(project_id: str, after_id: int = 0, store: Store = Depend
 def update_project(project_id: str, payload: dict, store: Store = Depends(get_store)):
     if store.get_project(project_id) is None:
         return _error("validation", f"未知项目 {project_id}", status=404)
+    # D1：改场景时与新建同标准 —— 传了非空 scenario 就必须已存在，否则落库的
+    # 场景能绕过 scenario_known，标注/冻结按场景作用域就会指向空场景。
+    scenario = payload.get("scenario")
+    if scenario is not None and str(scenario).strip() and not store.scenario_known(str(scenario).strip()):
+        return _error("validation", f"未知场景 {scenario}", status=400, field="scenario",
+                      hint="场景必须已存在")
     try:
         proj = store.update_project(project_id, name=payload.get("name"), slug=payload.get("slug"),
                                     description=payload.get("description"),

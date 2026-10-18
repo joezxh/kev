@@ -26,6 +26,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { latestJobPerStage } from "@/components/studio/project/selectors";
+import { CONSOLE_STRINGS } from "@/components/console/strings";
 
 // 6 tab（收掉 overview，其内容并入常驻页头 ProjectMasthead，对齐样稿目标态）。
 type Tab = "data" | "merge" | "review" | "trainings" | "results" | "lineage";
@@ -127,7 +128,7 @@ export default function StudioProjectDetailPage({
       ) : tab === "data" ? (
         <DataTab artifacts={artifacts} lang={lang} />
       ) : tab === "merge" ? (
-        <MergeTab projectId={id} summary={summary} artifacts={artifacts} lang={lang} />
+        <MergeTab projectId={id} summary={summary} artifacts={artifacts} jobs={jobs} lang={lang} />
       ) : tab === "review" ? (
         <ReviewTab projectId={id} summary={summary} lang={lang} />
       ) : tab === "trainings" ? (
@@ -567,8 +568,8 @@ function NodeChip({ node }: { node: Lineage["nodes"][number] }) {
 
 type MemberDraft = { version_id: string; op: "include" | "exclude" | "overlay"; ord: number };
 
-function MergeTab({ projectId, summary, artifacts, lang }:
-  { projectId: string; summary: ProjectSummary; artifacts: Artifact[]; lang: string }) {
+function MergeTab({ projectId, summary, artifacts, jobs, lang }:
+  { projectId: string; summary: ProjectSummary; artifacts: Artifact[]; jobs: Job[]; lang: string }) {
   const zh = lang === "zh";
   const [bundles, setBundles] = useState<Bundle[] | null>(null);
   const [selected, setSelected] = useState<BundleDetail | null>(null);
@@ -773,12 +774,59 @@ function MergeTab({ projectId, summary, artifacts, lang }:
 
             <FreezePolicyPanel projectId={projectId} summary={summary} lang={lang}
               onBusy={setBusy} onError={setError} onMessage={setMessage} />
+            <BundleProvenanceCard bundle={selected} jobs={jobs} lang={lang} />
             <DiffPanel projectId={projectId} selected={selected} bundles={bundles ?? []} lang={lang}
               diffWith={diffWith} setDiffWith={setDiffWith} onBusy={setBusy} onError={setError} />
           </>
         )}
       </div>
     </div>
+  );
+}
+
+/** bundle 卡的「审」视图（D4）：一屏看全为它跑过的作业（按 bundle_id 前端过滤，
+ *  不新开端点）与它名下的数据集（成员 source_artifact 去重）。阶段中文名与作业表
+ *  共用 console.data.kind.* 那一份键表，不另拼一套。 */
+function BundleProvenanceCard({ bundle, jobs, lang }:
+  { bundle: BundleDetail; jobs: Job[]; lang: string }) {
+  const zh = lang === "zh";
+  const kindName = (kind: string) =>
+    (CONSOLE_STRINGS as Record<string, { en: string; zh: string } | undefined>)[`console.data.kind.${kind}`]?.[zh ? "zh" : "en"] ?? kind;
+  const ranFor = jobs.filter((j) => j.bundle_id === bundle.id);
+  const datasets = [...new Set(bundle.members.map((m) => m.source_artifact).filter(Boolean))];
+  return (
+    <Panel title={zh ? "归属反查（审）" : "Provenance (review)"}>
+      <div className="space-y-1">
+        <div className="text-xs text-muted-foreground">
+          {zh ? `为它跑过的作业（${ranFor.length}）` : `Jobs run for it (${ranFor.length})`}
+        </div>
+        {ranFor.length === 0 && (
+          <div className="text-xs text-muted-foreground">{zh ? "还没有作业声明归属这个 bundle" : "No jobs declare this bundle"}</div>
+        )}
+        <ul className="space-y-1">
+          {ranFor.map((j) => (
+            <li key={j.id} className="flex items-center gap-2 text-xs">
+              <Link href={`/studio/jobs/${j.id}`} className="font-mono text-primary hover:underline">{j.id.slice(0, 8)}</Link>
+              <span className="text-xs">{kindName(j.kind)} <span className="font-mono text-muted-foreground">{j.kind}</span></span>
+              <StatusBadge status={j.status} />
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="mt-4 space-y-1">
+        <div className="text-xs text-muted-foreground">
+          {zh ? `它名下的数据集（${datasets.length}）` : `Datasets under it (${datasets.length})`}
+        </div>
+        {datasets.length === 0 && (
+          <div className="text-xs text-muted-foreground">{zh ? "成员里暂无数据集" : "No member datasets"}</div>
+        )}
+        <ul className="space-y-0.5">
+          {datasets.map((d) => (
+            <li key={d} className="font-mono text-[11px] text-muted-foreground">{d}</li>
+          ))}
+        </ul>
+      </div>
+    </Panel>
   );
 }
 

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button as UiButton } from "@/components/ui/button";
 import { useLang } from "@/lib/i18n";
-import { api, type Project, type ProjectSummary } from "@/lib/console";
+import { api, type Project, type ProjectSummary, type ScenarioTree } from "@/lib/console";
 import { useProjects } from "@/components/studio/ProjectSwitcher";
 import { PageHead, Panel, Drawer, FormGrid, Field, EmptyState, StatusBadge } from "@/components/studio/primitives";
 
@@ -17,12 +17,23 @@ export default function StudioProjectsPage() {
   const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  // D1：一个项目绑定一个已知场景，创建时必填（后端校验 scenario_known）。
+  // D1：一个项目绑定一个已知场景。场景由「域 → 场景」两级下拉联动选出（域是
+  // scenario_domains，场景是其下 scenarios），新建与编辑都可改；保存写入 scenario slug。
   const [scenario, setScenario] = useState("");
-  const [scenarioSlugs, setScenarioSlugs] = useState<string[]>([]);
+  const [tree, setTree] = useState<ScenarioTree[]>([]);
+  const [domainSlug, setDomainSlug] = useState("");
   useEffect(() => {
-    api.scenarios().then((list) => setScenarioSlugs(list.map((s) => s.name))).catch(() => setScenarioSlugs([]));
-  }, []);
+    api.scenarioDomains(lang).then(setTree).catch(() => setTree([]));
+  }, [lang]);
+  // 当前场景所属域（打开编辑或场景被外部改掉时，把域下拉同步到高亮的那一项）。
+  useEffect(() => {
+    const owner = tree.find((d) => d.scenarios.some((s) => s.slug === scenario));
+    if (owner) setDomainSlug(owner.slug);
+  }, [tree, scenario]);
+  const domainScenarios = useMemo(
+    () => tree.find((d) => d.slug === domainSlug)?.scenarios ?? [],
+    [tree, domainSlug],
+  );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -49,6 +60,7 @@ export default function StudioProjectsPage() {
     setName("");
     setDescription("");
     setScenario("");
+    setDomainSlug(tree[0]?.slug ?? "");
     setErr(null);
     setOpen(true);
   }
@@ -66,7 +78,7 @@ export default function StudioProjectsPage() {
     setErr(null);
     try {
       if (editing) {
-        await api.updateProject(editing.id, { slug, name, description });
+        await api.updateProject(editing.id, { slug, name, description, scenario });
       } else {
         await api.createProject({ slug, name, description, scenario });
       }
@@ -166,13 +178,31 @@ export default function StudioProjectsPage() {
             <Field label="name">
               <input value={name} onChange={(e) => setName(e.target.value)} className="rounded border border-border bg-[#111111] px-2 py-1.5 text-sm outline-none focus:border-primary" />
             </Field>
-            <Field label={lang === "zh" ? "场景" : "scenario"} full
-                   hint={lang === "zh" ? "一个项目绑定一个已知场景，创建后不可改" : "one known scenario per project (D1); fixed at creation"}>
-              <select value={scenario} disabled={!!editing}
+            <Field label={lang === "zh" ? "域" : "domain"}
+                   hint={lang === "zh" ? "先选域，再在其下选场景" : "pick a domain, then a scenario under it"}>
+              <select value={domainSlug}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setDomainSlug(next);
+                        const first = tree.find((d) => d.slug === next)?.scenarios[0];
+                        setScenario(first ? first.slug : "");
+                      }}
+                      className="w-full rounded border border-border bg-[#111111] px-2 py-1.5 text-sm outline-none focus:border-primary">
+                {tree.length === 0 && <option value="" disabled>{lang === "zh" ? "选择域" : "Select domain"}</option>}
+                {tree.map((d) => (
+                  <option key={d.slug} value={d.slug}>{d.label_zh}【{d.label_en}】</option>
+                ))}
+              </select>
+            </Field>
+            <Field label={lang === "zh" ? "场景" : "scenario"}
+                   hint={lang === "zh" ? "一个项目绑定一个已知场景（D1）" : "one known scenario per project (D1)"}>
+              <select value={scenario}
                       onChange={(e) => setScenario(e.target.value)}
-                      className="w-full rounded border border-border bg-[#111111] px-2 py-1.5 text-sm outline-none focus:border-primary disabled:opacity-60">
+                      className="w-full rounded border border-border bg-[#111111] px-2 py-1.5 text-sm outline-none focus:border-primary">
                 <option value="" disabled>{lang === "zh" ? "选择场景" : "Select scenario"}</option>
-                {scenarioSlugs.map((s) => (<option key={s} value={s}>{s}</option>))}
+                {domainScenarios.map((s) => (
+                  <option key={s.slug} value={s.slug}>{s.label_zh}【{s.label_en}】</option>
+                ))}
               </select>
             </Field>
           </FormGrid>

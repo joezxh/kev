@@ -13,6 +13,10 @@ export type Job = {
   status: JobStatus;
   /** 归属项目（D1/D14）：'' 是具名 legacy 哨兵，只在「全部项目」视图出现，不进任何具体项目列表。 */
   project_id: string;
+  /** 归属 bundle（D3，schema v11）：提交那一刻显式声明它为哪个 bundle 而跑；'' 是未归属。 */
+  bundle_id: string;
+  /** 读侧 LEFT JOIN bundles 带出的可读名字；无归属或未连上时为 null。 */
+  bundle_name: string | null;
   request: Record<string, unknown>;
   argv: string[];
   env_overlay: Record<string, string>;
@@ -219,7 +223,7 @@ export const api = {
     call<Artifact & { lineage: unknown[] }>(`datasets/${encodeURIComponent(id)}`),
   exportUrl: (id: string) => `/api/console/datasets/${encodeURIComponent(id)}/export`,
 
-  jobs: (filter?: { status?: JobStatus; stage?: string; scenario?: string; project?: string }) => {
+  jobs: (filter?: { status?: JobStatus; stage?: string; scenario?: string; project?: string; bundle?: string }) => {
     const query = new URLSearchParams(
       Object.entries(filter ?? {}).filter(([, value]) => value) as [string, string][],
     ).toString();
@@ -233,7 +237,7 @@ export const api = {
       method: "POST", body: JSON.stringify(payload),
     }),
   submit: (payload: { kind: string; scenario: string; run_name: string; project_id: string;
-                      params: Record<string, unknown>; template_id?: string }) =>
+                      params: Record<string, unknown>; template_id?: string; bundle_id?: string }) =>
     call<Job>("jobs", { method: "POST", body: JSON.stringify(payload) }),
 
   // ---- stage param specs + plan 回填 + 作业模板 -------------------
@@ -265,6 +269,11 @@ export const api = {
     call<{ deleted: boolean }>(`job-templates/${id}`, { method: "DELETE" }),
   cancel: (id: string) => call<{ canceled: boolean }>(`jobs/${id}/cancel`, { method: "POST" }),
   retry: (id: string) => call<Job>(`jobs/${id}/retry`, { method: "POST" }),
+  /** 删作业并级联删它产生的数据；purge=false 只删数据库足迹、保留磁盘文件。返回各级联计数。 */
+  deleteJob: (id: string, purge = true) =>
+    call<{ deleted: boolean; job_id: string; events: number; distill_usage: number;
+           lineage: number; versions: number; artifacts: number; files: number; bytes: number }>(
+      `jobs/${id}?purge=${purge}`, { method: "DELETE" }),
 
   artifacts: (kind?: string) => call<Artifact[]>(`artifacts${kind ? `?kind=${kind}` : ""}`),
   artifactContent: (id: string) =>
@@ -410,7 +419,7 @@ export const api = {
   projectArtifacts: (id: string) => call<Artifact[]>(`projects/${id}/artifacts`),
   projectEvents: (id: string, afterId?: number) =>
     call<Event[]>(`projects/${id}/events${afterId ? `?after_id=${afterId}` : ""}`),
-  updateProject: (id: string, p: { name?: string; slug?: string; description?: string }) =>
+  updateProject: (id: string, p: { name?: string; slug?: string; description?: string; scenario?: string }) =>
     call<Project>(`projects/${id}`, { method: "PUT", body: JSON.stringify(p) }),
   deleteProject: (id: string) => call<{ deleted: boolean }>(`projects/${id}`, { method: "DELETE" }),
 

@@ -54,7 +54,7 @@ export default function StudioJobPage({ params }: { params: Promise<{ id: string
       <div className="flex justify-end">
         <ProjectBadge jobId={id} />
       </div>
-      <JobDetailPanel jobId={id} />
+      <JobDetailPanel jobId={id} onDeleted={back} />
     </div>
   );
 }

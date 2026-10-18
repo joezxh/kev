@@ -10,9 +10,10 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ApiError, api, type JobTemplate } from "@/lib/console";
+import { ApiError, api, type Bundle, type JobTemplate } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
 import { useSelectedProject } from "@/lib/project-context";
+import { useProjects } from "@/components/studio/ProjectSwitcher";
 import { ArgvPreview } from "./ArgvPreview";
 import { GatePanel } from "./GatePanel";
 import { ScenarioCascade } from "./ScenarioCascade";
@@ -72,9 +73,22 @@ export function JobStagePage({
   submitInFormColumn?: boolean;
 }) {
   const router = useRouter();
-  const { lang } = useLang();
+  const { lang, t } = useLang();
   // /console 是唯一写入口，每个作业必须归属一个项目（D12/D14）；未选项目时禁止提交。
-  const [projectId] = useSelectedProject();
+  // 项目下拉写穿同一个 setter（writeSelectedProject），会广播 kev:project-changed，
+  // 顶栏切换器与各页范围随之联动，不另造状态（D6）。
+  const [projectId, setSelectedProject] = useSelectedProject();
+  const { projects } = useProjects();
+  // bundle 归属（D3）：项目变更即重取列表并清空已选；空串 = 不归属。
+  const [bundleId, setBundleId] = useState("");
+  const [bundles, setBundles] = useState<Bundle[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const load = projectId ? api.bundles(projectId) : Promise.resolve([] as Bundle[]);
+    const done = (b: Bundle[]) => { if (alive) { setBundles(b); setBundleId(""); } };
+    load.then(done).catch(() => done([]));
+    return () => { alive = false; };
+  }, [projectId]);
   const [values, setValues] = useState<Record<string, string>>(() => {
     // 默认值优先级：schema.default（单一真相源）> 调用方 initial > 下拉首个选项 / 空串。
     // 既兼容其余 4 个阶段页（字段无 default、用 initial），也让 datasets 的默认值可配置。
@@ -193,6 +207,7 @@ export function JobStagePage({
       const job = await api.submit({
         kind, scenario: values.scenario, run_name: values.run_name, params,
         project_id: projectId ?? "",
+        ...(bundleId ? { bundle_id: bundleId } : {}),
         ...(enableTemplates && activeTemplateId ? { template_id: activeTemplateId } : {}),
       });
       const goTo = jobHref ?? ((id: string) => `/console/jobs/${id}`);
@@ -240,6 +255,36 @@ export function JobStagePage({
 
   const formColumn = (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="f-project">{t("console.submit.project")}</Label>
+        <select
+          id="f-project"
+          value={projectId ?? ""}
+          onChange={(event) => setSelectedProject(event.target.value)}
+          className="w-full rounded border border-border bg-[#111111] px-2 py-1.5 text-sm outline-none focus:border-primary"
+        >
+          <option value="" disabled>{lang === "zh" ? "选择项目" : "Select project"}</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>{p.name} ({p.slug})</option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="f-bundle">{t("console.submit.bundle")}</Label>
+        <select
+          id="f-bundle"
+          value={bundleId}
+          disabled={!projectId}
+          onChange={(event) => setBundleId(event.target.value)}
+          className="w-full rounded border border-border bg-[#111111] px-2 py-1.5 text-sm outline-none focus:border-primary disabled:opacity-50"
+        >
+          <option value="">{t("console.submit.bundleNone")}</option>
+          {bundles.map((b) => (
+            <option key={b.id} value={b.id}>{`${b.name} · ${b.status}`}</option>
+          ))}
+        </select>
+      </div>
+
       {!hideScenario && (
         <div className="space-y-2">
           <Label htmlFor="f-scenario">{lang === "zh" ? "场景" : "Scenario"}</Label>

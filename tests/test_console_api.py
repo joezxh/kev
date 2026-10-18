@@ -37,6 +37,12 @@ def _mk_project(client, slug=None, name="P", scenario="triage"):
     return r.json()["id"]
 
 
+def _mk_bundle(client, project_id, name="snap"):
+    """经 Store 建一个 draft bundle（归属它的项目），返回其 id。"""
+    return client.app.state.store.create_bundle(
+        project_id=project_id, name=name, artifact_id=f"bundle:cv/{name}")["id"]
+
+
 def submit(client, kind, **params):
     scenario = params.pop("scenario", "triage")
     run_name = params.pop("run_name", "cv-8b-v1")
@@ -214,6 +220,168 @@ def test_submit_lists_by_project(client):
     assert r.status_code == 201
     listed = client.get(f"/console/api/jobs?project={pid}").json()
     assert [j["id"] for j in listed] == [r.json()["id"]]
+
+
+# ---- bundle 归属（D3 / D4，schema v11）-----------------------------------
+
+def test_submit_declares_bundle_and_reads_back_its_name(client):
+    pid = _mk_project(client)
+    bundle_id = _mk_bundle(client, pid)
+    r = client.post("/console/api/jobs", json={"kind": "plan_size", "scenario": "triage",
+        "run_name": "cv-1", "params": {}, "project_id": pid, "bundle_id": bundle_id})
+    assert r.status_code == 201, r.text
+    created = r.json()
+    assert created["bundle_id"] == bundle_id
+    assert created["bundle_name"] == "snap"          # 读侧直接带名字（§4.3），前端不必再查
+    single = body(client.get(f"/console/api/jobs/{created['id']}"))
+    assert single["bundle_id"] == bundle_id and single["bundle_name"] == "snap"
+
+
+def test_submit_without_bundle_stays_unassigned(client):
+    """不带 bundle_id 的提交与今天一致：'' 是未归属，不是某个 bundle。"""
+    r = submit(client, "plan_size")
+    assert r.status_code == 201, r.text
+    assert r.json()["bundle_id"] == ""
+    assert r.json()["bundle_name"] is None
+
+
+def test_submit_rejects_unknown_bundle(client):
+    r = client.post("/console/api/jobs", json={"kind": "plan_size", "scenario": "triage",
+        "run_name": "cv-1", "params": {}, "project_id": _mk_project(client),
+        "bundle_id": "nope"})
+    assert r.status_code == 404
+
+
+def test_submit_rejects_bundle_of_another_project(client):
+    other = _mk_project(client, slug="other")
+    bundle_id = _mk_bundle(client, other)
+    r = client.post("/console/api/jobs", json={"kind": "plan_size", "scenario": "triage",
+        "run_name": "cv-1", "params": {}, "project_id": _mk_project(client, slug="mine"),
+        "bundle_id": bundle_id})
+    assert r.status_code == 400 and r.json()["error"]["field"] == "bundle_id"
+
+
+def test_jobs_can_be_filtered_by_bundle(client):
+    """一个 bundle 多个作业（含同一阶段的多个）都能反查回来（D3 多对一 / D4 快查）。"""
+    pid = _mk_project(client)
+    bundle_id = _mk_bundle(client, pid)
+
+    def post(name):
+        r = client.post("/console/api/jobs", json={"kind": "plan_size", "scenario": "triage",
+            "run_name": name, "params": {}, "project_id": pid, "bundle_id": bundle_id})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    mine = {post("cv-1"), post("cv-2")}          # 同一阶段（plan_size）的两个作业
+    unassigned = submit(client, "plan_size", project_id=pid).json()["id"]
+
+    rows = body(client.get(f"/console/api/jobs?bundle={bundle_id}"))
+    assert {row["id"] for row in rows} == mine
+    assert all(row["bundle_name"] == "snap" for row in rows)
+    # 不归属任何 bundle 的作业不会出现在任何一个 bundle 的反查里
+    assert unassigned not in {row["id"] for row in rows}
+
+
+def test_retry_carries_the_bundle_over(client):
+    """重试是同一件事的第二次尝试（与 template_id 同理），归属跟着走。"""
+    store = client.app.state.store
+    pid = store.create_project("retry-b", "Retry B", scenario="triage")
+    bundle_id = _mk_bundle(client, pid, name="round1")
+    first_id = store.create_job(project_id=pid, kind="plan_size", stage="plan",
+        scenario="triage", title="t", request={}, argv=["x"], env_overlay={}, cwd=".",
+        log_path="l.log", artifacts_in=[], artifacts_out=[], bundle_id=bundle_id)
+    store.transition(first_id, "failed", exit_code=1)
+    second = body(client.post(f"/console/api/jobs/{first_id}/retry"))
+    assert second["attempt"] == 2
+    assert second["bundle_id"] == bundle_id and second["bundle_name"] == "round1"
+
+
+def test_delete_job_cascades_its_data(client, tmp_path, monkeypatch):
+    """删作业 = 连同它的日志事件、产物版本与登记行、白名单内的磁盘文件一起删。"""
+    from kev.console import paths
+
+    monkeypatch.setattr(paths, "ROOT", tmp_path)
+    store = client.app.state.store
+    job_id = make_job(store, kind="split", status="succeeded")
+    store.append_events(job_id, [("stdout", "line one")])
+    target = tmp_path / "data" / "fx-out.jsonl"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('{"id": 1}\n', encoding="utf-8")
+    with store.tx():
+        store.put_artifact(kind="dataset", name="fx/out", path="data/fx-out.jsonl",
+                           meta={}, bytes_=9, commit=False)
+        store.record_artifact_version(artifact_id="dataset:fx/out", job_id=job_id,
+                                      path="data/fx-out.jsonl", sha256="x", records=1, bytes=9)
+
+    r = client.delete(f"/console/api/jobs/{job_id}")
+    assert r.status_code == 200, r.text
+    summary = r.json()
+    assert (summary["events"], summary["versions"], summary["artifacts"]) == (1, 1, 1)
+    assert (summary["files"], summary["bytes"]) == (1, 9)
+    assert store.get_job(job_id) is None
+    assert store.read_events(job_id) == []
+    assert store.get_artifact("dataset:fx/out") is None
+    assert store.list_artifact_versions("dataset:fx/out") == []
+    assert not target.exists()
+    assert client.delete("/console/api/jobs/nope").status_code == 404
+
+
+def test_delete_refuses_a_live_job(client):
+    """进行中的作业不许删：先取消、等进终态，否则子进程还在往已被级联的行里写。"""
+    job_id = make_job(client.app.state.store, status="running")
+    r = client.delete(f"/console/api/jobs/{job_id}")
+    assert r.status_code == 409 and body(r)["error"]["kind"] == "conflict"
+    assert client.app.state.store.get_job(job_id) is not None
+
+
+def test_delete_refuses_when_versions_are_bundle_members(client):
+    """bundle 是冻结证据链：成员版本被引用时删作业必须硬拒，不许悄悄拆散它。"""
+    store = client.app.state.store
+    pid = store.create_project("bnd", "Bnd", scenario="triage")
+    job_id = make_job(store, status="succeeded")
+    with store.tx():
+        vid = store.record_artifact_version(artifact_id="dataset:fx/out", job_id=job_id,
+                                            path="data/fx-out.jsonl", sha256="x", records=1, bytes=1)
+    store.replace_bundle_members(_mk_bundle(client, pid), [{"version_id": vid, "op": "add", "ord": 0}])
+    r = client.delete(f"/console/api/jobs/{job_id}")
+    assert r.status_code == 409 and "bundle" in body(r)["error"]["message"]
+    assert store.get_job(job_id) is not None
+
+
+def test_delete_keeps_data_still_referenced_by_other_jobs(client, tmp_path, monkeypatch):
+    """另一作业仍引用同一产物时，登记行与文件原地保留（只会误留，不会误删）。"""
+    from kev.console import paths
+
+    monkeypatch.setattr(paths, "ROOT", tmp_path)
+    store = client.app.state.store
+    pid = store.create_project("shr", "Shr", scenario="triage")
+
+    def mk() -> str:
+        jid = store.create_job(project_id=pid, kind="split", stage="data", scenario="triage",
+            title="t", request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+            artifacts_in=[], artifacts_out=["dataset:fx/out"])
+        store.transition(jid, "queued")
+        store.transition(jid, "running")
+        store.transition(jid, "succeeded", exit_code=0)
+        return jid
+
+    first, second = mk(), mk()
+    target = tmp_path / "data" / "fx-out.jsonl"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('{"id": 1}\n', encoding="utf-8")
+    with store.tx():
+        store.put_artifact(kind="dataset", name="fx/out", path="data/fx-out.jsonl",
+                           meta={}, bytes_=9, commit=False)
+        store.record_artifact_version(artifact_id="dataset:fx/out", job_id=first,
+                                      path="data/fx-out.jsonl", sha256="x", records=1, bytes=9)
+
+    r = client.delete(f"/console/api/jobs/{first}")
+    assert r.status_code == 200, r.text
+    summary = r.json()
+    assert summary["versions"] == 1 and summary["artifacts"] == 0 and summary["files"] == 0
+    assert store.get_job(second) is not None
+    assert store.get_artifact("dataset:fx/out") is not None
+    assert target.exists()
 
 
 def test_create_project_requires_known_scenario(client):

@@ -1,0 +1,133 @@
+<h2>数据集「按 bundle 聚起来」用哪种形态？</h2>
+<p class="subtitle">上面是作业表加两列后的样子（这是已定的部分，不用选）。下面三种是数据集列表的分组形态，点一个。</p>
+
+<div class="section">
+  <div class="label">先看：作业标签页加列之后（已定，仅供参照）</div>
+  <div class="mockup">
+    <div class="mockup-header">数据集页 → 「作业」标签</div>
+    <div class="mockup-body" style="padding:0">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+          <tr style="border-bottom:1px solid #333;text-align:left;color:#888;font-size:10px;text-transform:uppercase">
+            <th style="padding:8px 10px">状态</th>
+            <th style="padding:8px 10px">阶段</th>
+            <th style="padding:8px 10px">项目</th>
+            <th style="padding:8px 10px">bundle</th>
+            <th style="padding:8px 10px">场景</th>
+            <th style="padding:8px 10px">运行名</th>
+            <th style="padding:8px 10px">创建</th>
+          </tr>
+        </thead>
+        <tbody style="font-family:ui-monospace,monospace">
+          <tr style="border-bottom:1px solid #262626">
+            <td style="padding:8px 10px"><span style="color:#3b82f6">● 运行中</span></td>
+            <td style="padding:8px 10px"><span style="color:#e5e5e5">蒸馏守护</span> <span style="color:#666">distill_daemon</span></td>
+            <td style="padding:8px 10px"><span style="color:#9ecbff">医疗分诊 v2</span></td>
+            <td style="padding:8px 10px"><span style="color:#9ecbff">triage-r3</span> <span style="color:#666">draft</span></td>
+            <td style="padding:8px 10px">triage</td>
+            <td style="padding:8px 10px">triage-8b-0017</td>
+            <td style="padding:8px 10px;color:#888">10-17 09:12</td>
+          </tr>
+          <tr style="border-bottom:1px solid #262626">
+            <td style="padding:8px 10px"><span style="color:#22c55e">● 成功</span></td>
+            <td style="padding:8px 10px"><span style="color:#e5e5e5">生成数据</span> <span style="color:#666">generate</span></td>
+            <td style="padding:8px 10px"><span style="color:#9ecbff">医疗分诊 v2</span></td>
+            <td style="padding:8px 10px"><span style="color:#9ecbff">triage-r3</span> <span style="color:#666">draft</span></td>
+            <td style="padding:8px 10px">triage</td>
+            <td style="padding:8px 10px">triage-8b-0016</td>
+            <td style="padding:8px 10px;color:#888">10-17 08:40</td>
+          </tr>
+          <tr style="border-bottom:1px solid #262626">
+            <td style="padding:8px 10px"><span style="color:#22c55e">● 成功</span></td>
+            <td style="padding:8px 10px"><span style="color:#e5e5e5">划分</span> <span style="color:#666">split</span></td>
+            <td style="padding:8px 10px"><span style="color:#9ecbff">危重值 v1</span></td>
+            <td style="padding:8px 10px;color:#555">—</td>
+            <td style="padding:8px 10px">critical-value</td>
+            <td style="padding:8px 10px">cv-8b-lora-v1</td>
+            <td style="padding:8px 10px;color:#888">10-16 22:03</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 10px"><span style="color:#ef4444">● 失败</span></td>
+            <td style="padding:8px 10px"><span style="color:#e5e5e5">蒸馏</span> <span style="color:#666">distill</span></td>
+            <td style="padding:8px 10px;color:#666">旧作业</td>
+            <td style="padding:8px 10px;color:#555">—</td>
+            <td style="padding:8px 10px">critical-value</td>
+            <td style="padding:8px 10px">cv-distill-04</td>
+            <td style="padding:8px 10px;color:#888">10-14 11:27</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="padding:8px 10px;font-size:11px;color:#888;font-family:inherit">
+        阶段 = 中文名 + kind 原文并排（同一个作业类型可能有多种叫法，原文留着方便搜索和贴工单）；bundle 为空就是「—」，存量作业全在这里。
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="label">现在选：数据集标签页怎么按 bundle 聚</div>
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>分组行折叠（bundle 是分组，数据集缩进在下面）</h3>
+      <p>一张表，bundle 各占一行组头（名字 + 状态 + 条数），点开是它名下的数据集。没声明 bundle 的落到最后一个「未归属」组。</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-body" style="padding:10px;font-family:ui-monospace,monospace;font-size:12px;line-height:1.9">
+          <div style="color:#9ecbff">▾ triage-r3 <span style="color:#666">draft · 3 个数据集</span></div>
+          <div style="padding-left:22px;color:#bbb">triage/train.jsonl <span style="color:#666">生成数据</span> 1,240</div>
+          <div style="padding-left:22px;color:#bbb">triage/distill-0017.jsonl <span style="color:#666">蒸馏守护</span> 780</div>
+          <div style="padding-left:22px;color:#bbb">triage/split-train.jsonl <span style="color:#666">划分</span> 1,188</div>
+          <div style="color:#9ecbff">▸ cv-round2 <span style="color:#666">frozen · 2 个数据集</span></div>
+          <div style="color:#666">▸ 未归属 <span style="color:#555">41 个数据集</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>平铺加一列 + bundle 筛选条</h3>
+      <p>列表还是今天这样一条一条排，只是多一列 bundle；顶部一排 bundle 芯片，点谁只看谁。想横向对比不同 bundle 的数据集时更顺手。</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-body" style="padding:10px;font-size:12px">
+          <div style="margin-bottom:8px">
+            <span style="border:1px solid #3b82f6;color:#3b82f6;border-radius:4px;padding:2px 8px;font-size:11px">triage-r3</span>
+            <span style="border:1px solid #333;color:#888;border-radius:4px;padding:2px 8px;font-size:11px;margin-left:4px">cv-round2</span>
+            <span style="border:1px solid #333;color:#888;border-radius:4px;padding:2px 8px;font-size:11px;margin-left:4px">全部</span>
+          </div>
+          <div style="font-family:ui-monospace,monospace;line-height:1.9;color:#bbb">
+            <div>triage/train.jsonl <span style="float:right;color:#9ecbff">triage-r3</span></div>
+            <div>triage/distill-0017.jsonl <span style="float:right;color:#9ecbff">triage-r3</span></div>
+            <div>cv/split-train.jsonl <span style="float:right;color:#555">—</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>主从两栏（左 bundle 列表，右它的数据集）</h3>
+      <p>左边一列 bundle（带状态点、条数），点一个右边出它的成员和为它跑过的作业。信息容量最大，但一次只看一个 bundle，而且这是数据集页新长出来的一块结构。</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-body" style="padding:0;display:flex;font-size:12px;font-family:ui-monospace,monospace">
+          <div style="width:38%;border-right:1px solid #333;padding:10px;line-height:2">
+            <div style="background:#1e3a8a;color:#3b82f6;border-radius:4px;padding:2px 6px">triage-r3 · draft · 3</div>
+            <div style="color:#bbb;padding:2px 6px">cv-round2 · frozen · 2</div>
+            <div style="color:#bbb;padding:2px 6px">cv-round1 · retired · 5</div>
+          </div>
+          <div style="flex:1;padding:10px;line-height:1.9;color:#bbb">
+            <div style="color:#888;font-size:10px;text-transform:uppercase">成员</div>
+            <div>train.jsonl 1,240</div>
+            <div>distill-0017.jsonl 780</div>
+            <div style="color:#888;font-size:10px;text-transform:uppercase;margin-top:8px">为它跑过的作业</div>
+            <div>蒸馏守护 · 运行中</div>
+            <div>生成数据 · 成功</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

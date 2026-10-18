@@ -128,7 +128,7 @@ def test_migrate_v8_from_legacy_shape(tmp_path):
 
     migrated = Store(path)          # 建表跳过（已存在），_migrate 补列 + 重新播种
     try:
-        assert migrated.schema_version() == 10  # 迁移收敛到当前 SCHEMA_VERSION（v10 起含 distill_yaml_content）
+        assert migrated.schema_version() == 11  # 迁移收敛到当前 SCHEMA_VERSION（v10 起含 distill_yaml_content，v11 起含 jobs.bundle_id）
         tree = {d["slug"]: d for d in migrated.list_scenario_tree()}
         # 认领旧行而不是新建一条同义域（不插重复域也不重命名用户的 slug）
         assert "research" in tree and "science" not in tree

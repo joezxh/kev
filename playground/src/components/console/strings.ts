@@ -93,15 +93,34 @@ export const CONSOLE_STRINGS = {
     zh: "检测到可能的患者标识。未做任何改写 —— 脱敏在进入生成器之前完成，不在这里。",
   },
 
-  // 数据作业种类（顶部切换菜单）：英文沿用代码标识，中文给出中文名。
+  // 阶段名字表：覆盖 REGISTRY 的全部 20 种作业（kev/console/stages/__init__.py）。
+  // 数据轨 8 个沿用既有用词，其余 12 个取注册表 title —— 数据集页流程图、作业表
+  // 阶段列、数据集表阶段列共用这一份，不许各处各拼一份（spec §5.2 反目标）。
   "console.data.kind.plan_size": { en: "plan_size", zh: "计划规模" },
   "console.data.kind.generate": { en: "generate", zh: "生成数据" },
   "console.data.kind.distill": { en: "distill", zh: "蒸馏" },
   "console.data.kind.distill_daemon": { en: "distill_daemon", zh: "蒸馏守护" },
   "console.data.kind.goldset": { en: "goldset", zh: "金标集" },
+  "console.data.kind.goldset_audit": { en: "goldset_audit", zh: "金标分歧审计" },
   "console.data.kind.split": { en: "split", zh: "划分" },
   "console.data.kind.precheck": { en: "precheck", zh: "预检" },
   "console.data.kind.make_examples": { en: "make_examples", zh: "生成范例" },
+  "console.data.kind.materialize": { en: "materialize", zh: "合成训练快照" },
+  "console.data.kind.train": { en: "train", zh: "SFT 训练" },
+  "console.data.kind.baseline": { en: "baseline", zh: "基线打分（零样本对照）" },
+  "console.data.kind.benchmark": { en: "benchmark", zh: "开发集打分" },
+  "console.data.kind.compare": { en: "compare", zh: "配对 bootstrap 对比" },
+  "console.data.kind.calibrate": { en: "calibrate", zh: "温度拟合" },
+  "console.data.kind.image": { en: "image", zh: "构建部署镜像" },
+  "console.data.kind.deploy": { en: "deploy", zh: "启动 System One 端点" },
+  "console.data.kind.smoke": { en: "smoke", zh: "冒烟测试" },
+  "console.data.kind.publish": { en: "publish", zh: "发布到 Hub" },
+  "console.data.kind.modal": { en: "modal", zh: "Modal 部署" },
+
+  // 提交表单的项目/bundle 下拉（D6：项目初值跟随顶栏，改选写穿共享 key）。
+  "console.submit.project": { en: "Project", zh: "项目" },
+  "console.submit.bundle": { en: "Bundle", zh: "归属 bundle" },
+  "console.submit.bundleNone": { en: "(no bundle)", zh: "（不归属任何 bundle）" },
 
   "console.eval.gates": { en: "Acceptance gates", zh: "验收门槛" },
   "console.eval.allPass": { en: "all pass", zh: "全部通过" },
@@ -136,6 +155,11 @@ export const CONSOLE_STRINGS = {
 
   "console.jobs.cancel": { en: "Cancel", zh: "取消" },
   "console.jobs.retry": { en: "Retry under a new name", zh: "换名重试" },
+  "console.jobs.delete": { en: "Delete", zh: "删除作业" },
+  "console.jobs.deleteConfirm": {
+    en: "Delete this job and everything it produced — log events, artifact versions and their files under data/ and runs/, and lineage? This cannot be undone.",
+    zh: "删除该作业及其产生的全部数据——日志事件、产物版本及其在 data/ 与 runs/ 下的文件、血缘？此操作不可撤销。",
+  },
   "console.jobs.detail": { en: "Detail", zh: "详情" },
   "console.jobs.artifacts": { en: "Artifacts and lineage", zh: "产物与血缘" },
   "console.jobs.interrupted": {
@@ -336,6 +360,15 @@ export const CONSOLE_STRINGS = {
     zh: "该场景无蒸馏配置（非蒸馏轨）。",
   },
 
+  // ---- 场景行快捷入口 + 配置弹窗（结构化 / YAML / 原始文本 三 tab）----
+  "console.scenarios.openConfig": { en: "Config", zh: "配置" },
+  "console.scenarios.openYaml": { en: "Distill YAML", zh: "蒸馏 YAML" },
+  "console.scenarios.configDialog.title": { en: "Scenario config", zh: "场景配置" },
+  "console.scenarios.configDialog.tab.spec": { en: "Structured", zh: "结构化" },
+  "console.scenarios.configDialog.tab.yaml": { en: "Distill YAML", zh: "蒸馏 YAML" },
+  "console.scenarios.configDialog.tab.raw": { en: "Raw text", zh: "原始文本" },
+  "console.scenarios.configDialog.loading": { en: "Loading…", zh: "加载中…" },
+
   // ---- studio (Wave C of the studio rollout plan) ----
   // The studio module is a parallel shell that mirrors the existing /console
   // pages but groups navigation by lifecycle (data / train-eval-deploy /
@@ -443,6 +476,13 @@ export const CONSOLE_STRINGS = {
   "studio.board.prev": { en: "Prev", zh: "上一页" },
   "studio.board.next": { en: "Next", zh: "下一页" },
   "studio.board.pageOf": { en: "Page {page} / {total}", zh: "第 {page} / {total} 页" },
+  // v11：阶段列（取代旧的“类型”列）与 bundle 列/芯片（D3/D4 快查）。
+  "studio.board.col.stage": { en: "Stage", zh: "阶段" },
+  "studio.board.col.bundle": { en: "bundle", zh: "bundle" },
+  "studio.board.col.actions": { en: "Actions", zh: "操作" },
+  "studio.board.bundleLabel": { en: "bundle", zh: "bundle" },
+  "studio.board.bundleAll": { en: "All", zh: "全部" },
+  "studio.board.bundleNone": { en: "—", zh: "—" },
 
   // ---- 作业详情条与文件查看弹窗（JobFiles，datasets  jobs 栏用）----
   "studio.jobfiles.outputs": { en: "Outputs", zh: "输出产物" },

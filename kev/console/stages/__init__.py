@@ -1,6 +1,6 @@
 """作业类型注册表：kind -> StageSpec。
 
-14 种作业。`StageSpec.build` 只组装 argv，不含业务逻辑。
+20 种作业。`StageSpec.build` 只组装 argv，不含业务逻辑。
 `persist` 决定产物何时注册（见 base.Persist）：绝大多数是进程自然退出后，
 只有 deploy 是长驻进程、必须在 spawn 后立刻注册。
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Braces, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,8 +13,10 @@ import {
 import { LangToggle } from "@/components/lang-toggle";
 import { api, type Scenario, type ScenarioTree } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
+import { TrackBadge } from "@/components/console/TrackBadge";
 import { SpecEditor } from "./SpecEditor";
 import { DistillYamlEditor } from "./DistillYamlEditor";
+import { ScenarioConfigDialog, type ConfigTarget } from "./ScenarioConfigDialog";
 
 type Selection =
   | { type: "domain"; id: string }
@@ -48,6 +51,8 @@ export default function ScenariosPage() {
   const [specRev, setSpecRev] = useState(0);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
+  // 场景行「配置」/「YAML」按钮打开的弹窗目标（null = 关闭）。
+  const [configTarget, setConfigTarget] = useState<ConfigTarget | null>(null);
 
   const load = useCallback(() => {
     api.scenarioDomains(lang).then(setTree).catch(() => toast.error(t("console.scenarios.specLoadFailed")));
@@ -90,16 +95,11 @@ export default function ScenariosPage() {
     setSpecContent(""); setSpecDirty(false); setSpecError(null);
   };
 
-  const selectScenario = (domainSlug: string, scenario: Scenario) => {
-    setSelected({ type: "scenario", id: scenario.id, slug: scenario.slug });
-    const domain = tree.find((d) => d.slug === domainSlug);
-    setScenarioDraft({
-      id: scenario.id, domain_id: domain?.id ?? "", slug: scenario.slug, label_zh: scenario.label_zh,
-      label_en: scenario.label_en, spec_path: scenario.spec_path, category: scenario.category, sort: scenario.sort,
-    });
+  // 载入某场景的 spec（选中场景 + 弹窗保存后刷新共用）。
+  const loadSpec = useCallback((slug: string) => {
     setBusy(true);
     setSpecContent(""); setSpecObj(null);
-    api.scenarioSpec(scenario.slug)
+    api.scenarioSpec(slug)
       .then((res) => {
         setSpecContent(res.content); setSpecDirty(false); setSpecError(null);
         try {
@@ -111,8 +111,23 @@ export default function ScenariosPage() {
       })
       .catch(() => { setSpecContent(""); setSpecError(t("console.scenarios.specLoadFailed")); setSpecObj(null); setSpecRev((r) => r + 1); })
       .finally(() => setBusy(false));
-    api.specHistory(scenario.slug).then(setSpecHistory).catch(() => setSpecHistory([]));
+    api.specHistory(slug).then(setSpecHistory).catch(() => setSpecHistory([]));
+  }, [t]);
+
+  const selectScenario = (domainSlug: string, scenario: Scenario) => {
+    setSelected({ type: "scenario", id: scenario.id, slug: scenario.slug });
+    const domain = tree.find((d) => d.slug === domainSlug);
+    setScenarioDraft({
+      id: scenario.id, domain_id: domain?.id ?? "", slug: scenario.slug, label_zh: scenario.label_zh,
+      label_en: scenario.label_en, spec_path: scenario.spec_path, category: scenario.category, sort: scenario.sort,
+    });
+    loadSpec(scenario.slug);
   };
+
+  // 弹窗保存后：若保存的正是当前选中场景，刷新右侧面板保持两处一致。
+  const handleConfigSaved = useCallback((slug: string) => {
+    if (selected?.type === "scenario" && selected.slug === slug) loadSpec(slug);
+  }, [selected, loadSpec]);
 
   const newDomain = () => {
     setSelected({ type: "domain", id: "__new__" });
@@ -276,28 +291,58 @@ export default function ScenariosPage() {
                   <span className="font-mono text-[10px] text-muted-foreground">{domain.slug}</span>
                 </button>
                 <div className="ml-4 border-l border-border pl-2">
-                  {domain.scenarios.map((scenario) => (
-                    <button
-                      key={scenario.id}
-                      type="button"
-                      onClick={() => selectScenario(domain.slug, scenario)}
-                      className={`flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted ${
-                        selected?.type === "scenario" && selected.id === scenario.id ? "bg-muted font-medium" : ""}`}
-                    >
-                      <span className="flex w-full items-center gap-1.5">
-                        <span className="flex-1 truncate text-sm">{scenario.label}</span>
-                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${scenario.exists ? "bg-emerald-500" : "bg-amber-500"}`}
-                              title={scenario.exists ? t("console.scenarios.exists") : t("console.scenarios.missing")} />
-                      </span>
-                      <span className="flex w-full items-center gap-1">
-                        <TrackBadge track={scenario.track} label={t("console.scenarios.track")} />
-                        {scenario.generator_kind && (
-                          <GenBadge kind={scenario.generator_kind} label={t("console.scenarios.generatorKind")} />
-                        )}
-                        <span className="ml-auto truncate font-mono text-[10px] text-muted-foreground">{scenario.slug}</span>
-                      </span>
-                    </button>
-                  ))}
+                  {domain.scenarios.map((scenario) => {
+                    const active = selected?.type === "scenario" && selected.id === scenario.id;
+                    const distill = scenario.track === "distill" || scenario.track === "both" || !!scenario.distill_yaml;
+                    return (
+                      <div
+                        key={scenario.id}
+                        className={`flex w-full items-stretch gap-0.5 rounded-md pr-0.5 transition-colors hover:bg-muted ${active ? "bg-muted" : ""}`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => selectScenario(domain.slug, scenario)}
+                          className={`flex min-w-0 flex-1 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left ${active ? "font-medium" : ""}`}
+                        >
+                          <span className="flex w-full items-center gap-1.5">
+                            <span className="flex-1 truncate text-sm">{scenario.label}</span>
+                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${scenario.exists ? "bg-emerald-500" : "bg-amber-500"}`}
+                                  title={scenario.exists ? t("console.scenarios.exists") : t("console.scenarios.missing")} />
+                          </span>
+                          <span className="flex w-full items-center gap-1">
+                            <TrackBadge track={scenario.track} label={t("console.scenarios.track")} />
+                            {scenario.generator_kind && (
+                              <GenBadge kind={scenario.generator_kind} label={t("console.scenarios.generatorKind")} />
+                            )}
+                            <span className="ml-auto truncate font-mono text-[10px] text-muted-foreground">{scenario.slug}</span>
+                          </span>
+                        </button>
+                        {/* 最右侧快捷入口：配置(所有场景) / YAML(仅蒸馏场景)，各自打开配置弹窗并定位到对应 tab。 */}
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          <Button
+                            variant="ghost" size="icon-xs"
+                            className="text-muted-foreground hover:text-foreground"
+                            title={t("console.scenarios.openConfig")}
+                            aria-label={t("console.scenarios.openConfig")}
+                            onClick={() => setConfigTarget({ scenario, tab: "spec" })}
+                          >
+                            <Settings2 />
+                          </Button>
+                          {distill && (
+                            <Button
+                              variant="ghost" size="icon-xs"
+                              className="text-muted-foreground hover:text-foreground"
+                              title={t("console.scenarios.openYaml")}
+                              aria-label={t("console.scenarios.openYaml")}
+                              onClick={() => setConfigTarget({ scenario, tab: "yaml" })}
+                            >
+                              <Braces />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -467,6 +512,12 @@ export default function ScenariosPage() {
           )}
         </section>
       </div>
+
+      <ScenarioConfigDialog
+        target={configTarget}
+        onClose={() => setConfigTarget(null)}
+        onSaved={handleConfigSaved}
+      />
     </div>
   );
 }
@@ -478,28 +529,6 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {children}
       {hint && <p className="text-[11px] leading-relaxed text-muted-foreground/80">{hint}</p>}
     </div>
-  );
-}
-
-// 轨制徽标的颜色映射（track = rule|distill|both|llm，其余归为未判定）。
-const TRACK_STYLE: Record<string, string> = {
-  rule: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-  distill: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
-  both: "bg-teal-500/15 text-teal-600 dark:text-teal-400",
-  llm: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-};
-const TRACK_KEYS = ["rule", "distill", "both", "llm"];
-
-function TrackBadge({ track, label }: { track: string; label: string }) {
-  const { t } = useLang();
-  const key = TRACK_KEYS.includes(track) ? track : "unknown";
-  const style = TRACK_STYLE[track] ?? "bg-muted text-muted-foreground";
-  const text = t(`console.scenarios.track.${key}`);
-  return (
-    <span title={`${label}: ${text}`}
-          className={`inline-flex shrink-0 items-center rounded px-1 py-px text-[9px] font-medium leading-tight ${style}`}>
-      {text}
-    </span>
   );
 }
 

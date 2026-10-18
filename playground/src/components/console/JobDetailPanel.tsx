@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ const TONE: Record<JobStatus, "default" | "secondary" | "destructive" | "outline
   pending: "outline", queued: "secondary", running: "secondary",
   succeeded: "default", failed: "destructive", canceled: "outline", interrupted: "outline",
 };
+
+const TERMINAL_STATUSES: JobStatus[] = ["succeeded", "failed", "canceled", "interrupted"];
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -31,11 +33,15 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
  *
  * 实时日志与损失曲线交给 JobMonitor（订阅 SSE，终态作业也会首屏回填历史事件），
  * 这里只负责作业元信息、命令预览、产物与失败信息 —— 两处的展示逻辑因此不分裂成两套。
+ *
+ * 删除只在终态开放（服务端同样拒 LIVE），确认文案说清会级联删它产生的数据；
+ * 宿主页面可传 onDeleted 接住删除成功（返回列表），缺省退回浏览器历史。
  */
-export function JobDetailPanel({ jobId }: { jobId: string }) {
+export function JobDetailPanel({ jobId, onDeleted }: { jobId: string; onDeleted?: () => void }) {
   const { t, lang } = useLang();
   const load = useCallback(() => api.job(jobId).catch(() => null), [jobId]);
   const { value: job, refresh } = usePoll<JobDetail | null>(load, null);
+  const [deleteError, setDeleteError] = useState("");
 
   if (!job) {
     return <p className="text-sm text-muted-foreground">{t("console.jobs.loading")}</p>;
@@ -47,6 +53,18 @@ export function JobDetailPanel({ jobId }: { jobId: string }) {
     void refresh();
   };
 
+  const remove = async () => {
+    if (!window.confirm(t("console.jobs.deleteConfirm"))) return;
+    try {
+      await api.deleteJob(jobId);
+      if (onDeleted) onDeleted();
+      else if (typeof window !== "undefined" && window.history.length > 1) window.history.back();
+    } catch (e) {
+      // 409（版本进了 bundle 等）的拒删理由就排在按钮旁边。
+      setDeleteError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -56,7 +74,12 @@ export function JobDetailPanel({ jobId }: { jobId: string }) {
         <span className="text-sm text-muted-foreground">
           {STAGE_LABELS[job.stage]?.[lang] ?? job.stage}
         </span>
-        <span className="font-mono text-xs text-muted-foreground">{job.kind}</span>
+        <span className="font-mono text-xs text-muted-foreground">{t(`console.data.kind.${job.kind}`)} {job.kind}</span>
+        {job.bundle_id && (
+          <span className="font-mono text-xs text-muted-foreground">
+            · {t("console.submit.bundle")}: {job.bundle_name ?? job.bundle_id.slice(0, 6)}
+          </span>
+        )}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -126,7 +149,13 @@ export function JobDetailPanel({ jobId }: { jobId: string }) {
             {t("console.jobs.retry")}
           </Button>
         )}
+        {TERMINAL_STATUSES.includes(job.status) && (
+          <Button size="sm" variant="ghost" className="text-[#ef4444]" onClick={() => void remove()}>
+            {t("console.jobs.delete")}
+          </Button>
+        )}
       </div>
+      {deleteError && <p className="text-xs text-[#ef4444]">{deleteError}</p>}
     </div>
   );
 }

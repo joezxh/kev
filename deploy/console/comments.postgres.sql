@@ -37,6 +37,7 @@ COMMENT ON COLUMN jobs.attempt       IS '第几次尝试：重试由调用方递
 COMMENT ON COLUMN jobs.daemon_id     IS '仅 distill_daemon 阶段填的循环守护 id（uuid4().hex，32 字符），供 cancel 端点设回环取消标志；其它阶段为 NULL。';
 COMMENT ON COLUMN jobs.template_id   IS '作业若由命名模板发起则记录其 id 以便追溯（job_templates.id），可空。';
 COMMENT ON COLUMN jobs.project_id    IS '所属项目 id；空串是具名 legacy 哨兵（D14），永不出现在具体项目列表。';
+COMMENT ON COLUMN jobs.bundle_id     IS '作业在提交那一刻显式声明它为哪个 bundle 而跑（bundles.id，D3）；空串 = 未归属。纯记账：不参与闸门、不参与冻结检查、不选训练数据。';
 COMMENT ON COLUMN jobs.exit_code     IS '进程退出码，未结束时为 NULL。';
 COMMENT ON COLUMN jobs.error         IS '失败时的错误信息，可为 NULL。';
 COMMENT ON COLUMN jobs.created_at    IS '创建时间（UTC ISO8601，秒精度）。';

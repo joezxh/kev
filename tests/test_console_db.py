@@ -356,7 +356,8 @@ def test_schema_version_is_stamped(store):
     # (Project Hub v7 实现计划 PR A，设计稿 §4.2-§4.5)。
     # v10 adds scenarios.distill_yaml_content: the editable distill YAML body
     # (DB is the editing source of truth; falls back to the repo file).
-    assert store.schema_version() == 10
+    # v11 adds jobs.bundle_id: the bundle a job was submitted for (D3, bookkeeping only).
+    assert store.schema_version() == 11
 
 
 def test_schema_v7_adds_project_columns(store):
@@ -371,7 +372,7 @@ def test_store_reopens_idempotently(tmp_path):
     first = Store(path)
     version = first.schema_version()
     second = Store(path)
-    assert second.schema_version() == version == 10
+    assert second.schema_version() == version == 11
 
 
 # ---- schema v9：数据策展新表（Project Hub PR A） ---------------------------
@@ -381,7 +382,7 @@ V9_TABLES = ("artifact_versions", "bundles", "bundle_members",
 
 
 def test_schema_v9_adds_curation_tables(store):
-    assert store.schema_version() == 10
+    assert store.schema_version() == 11
     for table in V9_TABLES:
         assert store._table_exists(table)
 
@@ -390,17 +391,108 @@ def test_idempotent_v9(tmp_path):
     # v9 全是新表（无列可 ALTER）：同一库跑两次 Store() 无变化，fresh 与升级收敛到同一形状。
     path = tmp_path / "kev-console.db"
     first = Store(path)
-    assert first.schema_version() == 10
+    assert first.schema_version() == 11
     second = Store(path)
-    assert second.schema_version() == 10
+    assert second.schema_version() == 11
     for table in V9_TABLES:
         assert second._table_exists(table)
 
 
 def test_schema_v10_adds_distill_yaml_content(store):
     # v10 给 scenarios 加可编辑的 distill yaml 内容列（DB 为编辑真相源，回退读仓库文件）。
-    assert store.schema_version() == 10
+    assert store.schema_version() == 11
     assert store._column_exists("scenarios", "distill_yaml_content")
+
+
+# ---- schema v11：作业的 bundle 归属（设计稿 §4.1）---------------------------
+
+def _index_exists(store, name) -> bool:
+    from sqlalchemy import text
+    if store.backend == "sqlite":
+        row = store._conn().execute(
+            text("SELECT 1 FROM sqlite_master WHERE type='index' AND name=:n"),
+            {"n": name}).fetchone()
+    else:
+        row = store._conn().execute(
+            text("SELECT 1 FROM pg_indexes WHERE indexname=:n"), {"n": name}).fetchone()
+    return row is not None
+
+
+def _job(store, project_id, **kwargs):
+    return store.create_job(
+        project_id=project_id, kind="generate", stage="data", scenario="triage",
+        title="t", request={}, argv=["x"], env_overlay={}, cwd=".", log_path="l.log",
+        artifacts_in=[], artifacts_out=[], **kwargs)
+
+
+def test_schema_v11_adds_bundle_id(store):
+    # v11 给 jobs 加 bundle 归属（D3）：'' 是未归属，纯记账。
+    assert store.schema_version() == 11
+    assert store._column_exists("jobs", "bundle_id")
+    assert _index_exists(store, "jobs_bundle_idx")
+
+
+def test_create_job_records_bundle_and_reads_its_name(store, project_id):
+    bundle = store.create_bundle(project_id=project_id, name="snap",
+                                 artifact_id="bundle:cv/snap")
+    tagged = _job(store, project_id, bundle_id=bundle["id"])
+    also = _job(store, project_id, bundle_id=bundle["id"])   # 同阶段多个作业（D3 多对一）
+    plain = _job(store, project_id)
+
+    assert store.get_job(tagged)["bundle_id"] == bundle["id"]
+    assert store.get_job(tagged)["bundle_name"] == "snap"    # 读侧直接带名字（§4.3）
+    assert store.get_job(plain)["bundle_id"] == ""
+    assert store.get_job(plain)["bundle_name"] is None
+    assert {row["id"] for row in store.list_jobs(bundle=bundle["id"])} == {tagged, also}
+    assert plain not in [row["id"] for row in store.list_jobs(bundle=bundle["id"])]
+
+
+def test_legacy_database_boots_and_gets_bundle_id(tmp_path):
+    """验收 7：schema_version < 11 的存量库能开机，并补出列与两个索引。
+
+    钉住的不只是 v11。v7 把 jobs_project_idx 写进建表脚本，而 Store.__init__ 先跑
+    整份 DDL 再 _migrate，所以 jobs 还没有 project_id 列的旧库（本机那份 v6）在
+    Store() 启动时就撞 no such column。索引现在由 _ensure_indexes 在迁移之后幂等补上。
+    """
+    import sqlite3
+
+    path = tmp_path / "legacy.db"
+    first = Store(path)
+    old_job = _job(first, first.create_project("fx", "Fx"))
+    first.engine.dispose()
+
+    con = sqlite3.connect(path)
+    con.executescript("""
+      DROP INDEX IF EXISTS jobs_bundle_idx;
+      DROP INDEX IF EXISTS jobs_project_idx;
+      ALTER TABLE jobs DROP COLUMN bundle_id;
+      ALTER TABLE jobs DROP COLUMN project_id;
+      UPDATE console_meta SET value='6' WHERE key='schema_version';
+    """)
+    con.commit()
+    con.close()
+
+    upgraded = Store(path)
+    try:
+        assert upgraded.schema_version() == 11
+        assert upgraded._column_exists("jobs", "bundle_id")
+        assert upgraded._column_exists("jobs", "project_id")
+        assert _index_exists(upgraded, "jobs_bundle_idx")
+        assert _index_exists(upgraded, "jobs_project_idx")
+        # 存量行升级后全为 ''（未归属），不会被误读成某个 bundle 的一轮
+        assert upgraded.get_job(old_job)["bundle_id"] == ""
+        assert upgraded.get_job(old_job)["bundle_name"] is None
+    finally:
+        upgraded.engine.dispose()
+
+
+def test_store_reopen_is_idempotent_for_v11(tmp_path):
+    path = tmp_path / "kev-console.db"
+    for _ in range(2):
+        store = Store(path)
+        assert store.schema_version() == 11
+        assert _index_exists(store, "jobs_bundle_idx")
+        store.engine.dispose()
 
 
 def _insert_v9_rows(store, pid):

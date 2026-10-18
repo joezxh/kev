@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   daemon_id     TEXT,
   template_id   TEXT,
   project_id    TEXT NOT NULL DEFAULT '',
+  bundle_id     TEXT NOT NULL DEFAULT '',
   exit_code     INTEGER,
   error         TEXT,
   created_at    TEXT NOT NULL,
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS jobs_status_idx   ON jobs(status);
 CREATE INDEX IF NOT EXISTS jobs_scenario_idx ON jobs(scenario, created_at DESC);
 CREATE INDEX IF NOT EXISTS jobs_project_idx  ON jobs(project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS jobs_bundle_idx   ON jobs(bundle_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS artifacts (
   id         TEXT PRIMARY KEY,
@@ -138,7 +140,8 @@ CREATE TABLE IF NOT EXISTS scenarios (
   -- 轨制与派生事实（kev/console/scenario_specs.derive_track）：track = rule|distill|both|llm，
   -- generator_kind = engine（spec.generator 九件套）|script（legacy gen_<场景>.py）|''，
   -- distill_yaml = 该场景的 EasyDistill 配置（仓库相对路径）或 ''，
-  -- distill_yaml_content = 该 yaml 的可编辑内容（DB 为编辑真相源；空 = 未导入/未编辑），
+  -- distill_yaml_content = 该 yaml 的可编辑内容（DB 为编辑真相源；空 = 未导入/未编辑，
+  --   read_distill_yaml 回退读 distill_yaml 路径文件），
   -- origin = 'domains' 表示行由 docs/domains 的种子导入维护（'' = 手工建）。
   track           TEXT NOT NULL DEFAULT '',
   generator_kind  TEXT NOT NULL DEFAULT '',
@@ -256,7 +259,10 @@ CREATE TABLE IF NOT EXISTS invoices (
 );
 CREATE INDEX IF NOT EXISTS invoices_project_idx ON invoices(project_id, period DESC);
 
--- ---- v9 数据策展（Project Hub PR A，与 kev/console/db.py::_ddl 逐列一致）----
+-- 数据策展（Project Hub v7 PR A，设计稿 §4.2-§4.5）：产物版本、冻结快照、
+-- 逐条标注与结论发布。全是新表，fresh 与升级库都由这里的 CREATE IF NOT EXISTS 收敛到同一形状。
+-- artifact_versions —— 产物的不可变版本快照（登记即算 sha256/records）。artifacts 是可变
+-- 指针（D2），故 artifact_id 不建指向 artifacts 的 FK；job_id 记录是哪个作业产出的这一版。
 CREATE TABLE IF NOT EXISTS artifact_versions (
   id          TEXT PRIMARY KEY,
   artifact_id TEXT NOT NULL,
@@ -309,7 +315,9 @@ CREATE TABLE IF NOT EXISTS bundle_members (
 );
 CREATE INDEX IF NOT EXISTS bundle_members_ord_idx ON bundle_members(bundle_id, ord);
 
--- origin_project_id 不建 FK：删项目时只清成 ''（D13），同 jobs.project_id 的 '' 哨兵（D14）。
+-- record_reviews —— 逐条标注。origin_project_id 有意不建 FK：删项目时按 D13 只把它清成 ''
+-- （「来源已删」）而保留标注行（作用域是场景，供下一轮继承），FK 会阻止这次改写；这与
+-- jobs.project_id 的 '' legacy 哨兵同理（D14）。
 CREATE TABLE IF NOT EXISTS record_reviews (
   id                TEXT PRIMARY KEY,
   scenario          TEXT NOT NULL,
@@ -330,6 +338,7 @@ CREATE TABLE IF NOT EXISTS record_reviews (
 CREATE INDEX IF NOT EXISTS record_reviews_scenario_idx ON record_reviews(scenario, fingerprint);
 CREATE INDEX IF NOT EXISTS record_reviews_project_idx ON record_reviews(origin_project_id);
 
+-- 覆盖前归档（同 scenario_spec_history 的写法，限流在 PR D 的 record_review 里做）。
 CREATE TABLE IF NOT EXISTS record_review_history (
   id         TEXT PRIMARY KEY,
   review_id  TEXT NOT NULL REFERENCES record_reviews(id),
@@ -363,7 +372,7 @@ CREATE TABLE IF NOT EXISTS project_releases (
 );
 
 -- ---- 初始数据（领域与场景登记；spec 内容由 scripts/import_domain_specs.py 或控制台启动时的 seed_scenarios 落库）----
-INSERT OR IGNORE INTO console_meta (key, value) VALUES ('schema_version', '9');
+INSERT OR IGNORE INTO console_meta (key, value) VALUES ('schema_version', '11');
 INSERT OR IGNORE INTO scenario_domains (id, slug, label_zh, label_en, sort, spec_dir, created_at) VALUES ('medical', 'medical', '医疗', 'Medical', 0, 'medical', '2026-01-01T00:00:00+00:00');
 INSERT OR IGNORE INTO scenario_domains (id, slug, label_zh, label_en, sort, spec_dir, created_at) VALUES ('finance', 'finance', '金融', 'Finance', 10, 'finance', '2026-01-01T00:00:00+00:00');
 INSERT OR IGNORE INTO scenario_domains (id, slug, label_zh, label_en, sort, spec_dir, created_at) VALUES ('education', 'education', '教育', 'Education', 20, 'education', '2026-01-01T00:00:00+00:00');

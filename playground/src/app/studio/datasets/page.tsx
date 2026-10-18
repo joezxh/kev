@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { api, type Artifact, type Job, type StageParams } from "@/lib/console";
+import { api, type Artifact, type Bundle, type Job, type StageParams } from "@/lib/console";
 import { useLang } from "@/lib/i18n";
 import { JobStagePage, type FieldSpec } from "@/components/console/JobStagePage";
 import { usePoll } from "@/components/console/usePoll";
@@ -188,6 +188,7 @@ export default function StudioDatasetsPage() {
           kinds={Object.keys(KINDS)}
           hrefFor={(id) => `/studio/jobs/${id}`}
           jobsProp={jobs.value ?? []}
+          onDeleted={() => void jobs.refresh()}
           defaultPageSize={5}
           externalFilter={jobFilter}
           onClearExternal={() => setJobFilter(null)}
@@ -224,11 +225,22 @@ function DatasetTable({
   const scope = scopeSel ?? (projectId ? "current" : "all");
   const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? id.slice(0, 6);
 
+  // bundle 快查：只看为该 bundle 跑出的数据集（D4，与作业表同一套芯片）。
+  const [bundleSel, setBundleSel] = useState<string | null>(null);
+  const [projectBundles, setProjectBundles] = useState<Bundle[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const load = projectId ? api.bundles(projectId) : Promise.resolve([] as Bundle[]);
+    load.then((b) => alive && setProjectBundles(b)).catch(() => alive && setProjectBundles([]));
+    return () => { alive = false; };
+  }, [projectId]);
+
   const filtered = datasets.filter((artifact) => {
     if (scope === "current" && projectId) {
       const pid = artifactToJob[artifact.id]?.project_id ?? "";
       if (pid !== projectId) return false;
     }
+    if (bundleSel && (artifactToJob[artifact.id]?.bundle_id ?? "") !== bundleSel) return false;
     if (!q) return true;
     const hay = `${artifact.id} ${artifact.path}`.toLowerCase();
     return hay.includes(q.toLowerCase());
@@ -248,6 +260,20 @@ function DatasetTable({
           <FilterChip active={scope === "all"} onClick={() => setScopeSel("all")}>
             {t("studio.board.scopeAll")}
           </FilterChip>
+        </div>
+      )}
+      {projectId && scope === "current" && projectBundles.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-xs text-muted-foreground">{t("studio.board.bundleLabel")}:</span>
+          <FilterChip active={bundleSel === null} onClick={() => setBundleSel(null)}>
+            {t("studio.board.bundleAll")}
+          </FilterChip>
+          {projectBundles.map((b) => (
+            <FilterChip key={b.id} active={bundleSel === b.id}
+                        onClick={() => setBundleSel(bundleSel === b.id ? null : b.id)}>
+              {b.name}
+            </FilterChip>
+          ))}
         </div>
       )}
 
@@ -273,6 +299,8 @@ function DatasetTable({
                 <th className="px-3 py-2 text-right">{t("studio.datasets.col.invalid")}</th>
                 <th className="px-3 py-2">{t("studio.datasets.col.path")}</th>
                 <th className="px-3 py-2">{t("studio.datasets.col.job")}</th>
+                <th className="px-3 py-2">{t("studio.board.col.stage")}</th>
+                <th className="px-3 py-2">{t("studio.board.col.bundle")}</th>
                 <th className="px-3 py-2 text-right">JSONL</th>
               </tr>
             </thead>
@@ -332,6 +360,26 @@ function DatasetTable({
                         </Link>
                       ) : (
                         <span className="text-muted-foreground">{t("studio.datasets.col.noJob")}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {genJob ? (
+                        <span>{t(`console.data.kind.${genJob.kind}`)}</span>
+                      ) : (
+                        <span className="text-muted-foreground/60">{t("studio.board.bundleNone")}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {genJob?.bundle_id ? (
+                        <button
+                          type="button"
+                          onClick={() => setBundleSel(genJob.bundle_id)}
+                          className="text-muted-foreground hover:text-foreground hover:underline"
+                        >
+                          {genJob.bundle_name ?? genJob.bundle_id.slice(0, 6)}
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground/60">{t("studio.board.bundleNone")}</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">

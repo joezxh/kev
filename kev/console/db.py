@@ -14,6 +14,8 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
+import shutil
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -25,7 +27,7 @@ from sqlalchemy import text
 
 from . import paths
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 # 运行时共享的编排库单例：create_app 启动时写入，stage 模块（data.py 等）借此解析
 # 场景 spec_path。未初始化时返回 None，调用方应回退到 docs/domains/medical/specs 目录。
@@ -129,6 +131,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   daemon_id     TEXT,
   template_id   TEXT,
   project_id    TEXT NOT NULL DEFAULT '',
+  bundle_id     TEXT NOT NULL DEFAULT '',
   exit_code     INTEGER,
   error         TEXT,
   created_at    TEXT NOT NULL,
@@ -138,6 +141,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS jobs_status_idx   ON jobs(status);
 CREATE INDEX IF NOT EXISTS jobs_scenario_idx ON jobs(scenario, created_at DESC);
 CREATE INDEX IF NOT EXISTS jobs_project_idx  ON jobs(project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS jobs_bundle_idx   ON jobs(bundle_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS artifacts (
   id         TEXT PRIMARY KEY,
@@ -478,11 +482,18 @@ CREATE TABLE IF NOT EXISTS project_releases (
 """
 
 
+# _ddl 里的 CREATE INDEX 语句。Store 不在建表阶段跑它们，而是在迁移之后幂等补上
+# （见 _init_schema 摘出 + _ensure_indexes 执行）：存量库跑这份 DDL 时，v7 的
+# project_id 与 v11 的 bundle_id 都还是后来才 ALTER 出来的列，建索引会先撞上
+# no such column。建表脚本文本本身保持完整，所以 initdb 直连 schema.*.sql 的库也带齐索引。
+_INDEX_STATEMENT = re.compile(r"^[ \t]*CREATE\s+(?:UNIQUE\s+)?INDEX[^;]*;", re.MULTILINE | re.IGNORECASE)
+
+
 _JSON_COLUMNS = frozenset({"request", "env_overlay", "artifacts_in", "artifacts_out"})
 _ROW_COLUMNS = (
     "id", "kind", "stage", "scenario", "title", "status", "request", "argv",
     "env_overlay", "cwd", "log_path", "artifacts_in", "artifacts_out",
-    "parent_id", "attempt", "daemon_id", "template_id", "project_id",
+    "parent_id", "attempt", "daemon_id", "template_id", "project_id", "bundle_id",
     "exit_code", "error", "created_at", "started_at", "finished_at",
 )
 
@@ -573,6 +584,9 @@ def _job(row) -> dict:
     for column in _JSON_COLUMNS:
         out[column] = _loads(out[column])
     out["argv"] = _loads(out["argv"])
+    # 读侧 LEFT JOIN bundles 带出的可读名字（§4.3）；写侧与没有这一列的旧读取不碰它。
+    if "bundle_name" in row.keys():
+        out["bundle_name"] = row["bundle_name"]
     return out
 
 
@@ -633,6 +647,7 @@ class Store:
         self._in_tx = False
         self._init_schema()
         self._migrate()
+        self._ensure_indexes()
         # 幂等播种：把 docs/domains 五个领域的全量 spec 登记为域 + 场景（按 slug INSERT OR IGNORE，
         # 不覆盖用户后续编辑）。建库即播种，保证 fresh DB 也能开箱即用。
         # seed=False 跳过（scripts/import_domain_specs.py 自己按 --force/--domain 决定何时播种）。
@@ -722,8 +737,11 @@ class Store:
         return int(row["value"]) if row else 0
 
     def _init_schema(self) -> None:
+        # 索引不在这里跑：它们索引的列可能是本次迁移才 ALTER 出来的（v7 project_id、
+        # v11 bundle_id），在建表阶段跑会让存量库先撞上 no such column。摘出来交给
+        # _ensure_indexes（_migrate 之后）；脚本文本不变，所以 deploy/console 的建库 SQL 依旧完整。
         with self.engine.begin() as conn:
-            for stmt in _ddl(self.backend).split(";"):
+            for stmt in _INDEX_STATEMENT.sub("", _ddl(self.backend)).split(";"):
                 stripped = stmt.strip()
                 if stripped:
                     conn.execute(text(stripped))
@@ -790,8 +808,6 @@ class Store:
             if not self._column_exists("jobs", "project_id"):
                 with self.engine.begin() as conn:
                     conn.execute(text("ALTER TABLE jobs ADD COLUMN project_id TEXT NOT NULL DEFAULT ''"))
-            with self.engine.begin() as conn:
-                conn.execute(text("CREATE INDEX IF NOT EXISTS jobs_project_idx ON jobs(project_id, created_at DESC)"))
             project_columns = {
                 "status": "TEXT NOT NULL DEFAULT 'active'",
                 "scenario": "TEXT NOT NULL DEFAULT ''",
@@ -824,6 +840,13 @@ class Store:
                 with self.engine.begin() as conn:
                     conn.execute(text("ALTER TABLE scenarios ADD COLUMN distill_yaml_content TEXT"))
             self._backfill_distill_yaml()
+        # v11: jobs.bundle_id —— 作业在提交那一刻显式声明它为哪个 bundle 而跑（D3）。
+        # 纯记账：不参与闸门、不参与冻结检查、不选训练数据。'' 是未归属（存量行的语义）。
+        # 索引不在这里建，也不在 _ddl 的建表阶段跑，理由见 _ensure_indexes。
+        if version < 11:
+            if not self._column_exists("jobs", "bundle_id"):
+                with self.engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE jobs ADD COLUMN bundle_id TEXT NOT NULL DEFAULT ''"))
         # v9: 数据策展新表（artifact_versions / bundles / bundle_members /
         # record_reviews / record_review_history / project_releases）——全是新表，无列可 ALTER，
         # 由 _init_schema 的 CREATE TABLE IF NOT EXISTS 建出（fresh 与升级库同一形状），
@@ -837,9 +860,23 @@ class Store:
 
     # ---- jobs -------------------------------------------------------------
 
+    def _ensure_indexes(self) -> None:
+        """把 _ddl 里的每一条 CREATE INDEX 幂等补上，与 schema 版本无关。
+
+        为什么不能在 _ddl 阶段跟建表一起跑：`__init__` 先跑完整 _ddl 再 _migrate，所以
+        存量库在建表阶段还没有后来才加的列（v7 的 project_id、v11 的 bundle_id），
+        CREATE INDEX 会先撞上 no such column（v7 的 jobs_project_idx 已经坑过本机一份 v6 库）。
+        为什么不能只写进 _migrate 的版本分支：initdb 直接执行 schema.*.sql 建出的新库，
+        console_meta 里天生就是当前版本，`version >= SCHEMA_VERSION` 一早退就永远没有这个索引。
+        建在列齐了之后、与版本无关的这一步，sqlite 与 postgres、新库与旧库都是同一形状。
+        """
+        with self.engine.begin() as conn:
+            for match in _INDEX_STATEMENT.finditer(_ddl(self.backend)):
+                conn.execute(text(match.group().rstrip().rstrip(";")))
+
     def create_job(self, *, project_id, kind, stage, scenario, title, request, argv, env_overlay,
                    cwd, log_path, artifacts_in, artifacts_out, parent_id=None,
-                   attempt=1, daemon_id=None, template_id=None) -> str:
+                   attempt=1, daemon_id=None, template_id=None, bundle_id="") -> str:
         """每个作业归属一个项目（D14）：project_id 是强制的关键字参数，无默认值。
 
         缺参数 → TypeError（签名没有默认值）；传空/None → ValueError（空串是具名 legacy
@@ -853,38 +890,52 @@ class Store:
         取消标志；其他阶段留 None。
 
         template_id：作业若由某个命名模板发起，记录其 id 以便追溯（可空）。
+
+        bundle_id：作业为哪个 bundle 而跑（D3，'' = 未归属）。调用方必须在传之前验过
+        这个 bundle 存在且属于同一项目（app.py 的提交端点）；这里只如实记账。
         """
         if not project_id:
             raise ValueError("project_id 必填")
         job_id = uuid.uuid4().hex
         self._conn().execute(
             text("INSERT INTO jobs (id, project_id, kind, stage, scenario, title, status, request, argv, env_overlay, cwd,"
-                 " log_path, artifacts_in, artifacts_out, parent_id, attempt, daemon_id, template_id, created_at)"
+                 " log_path, artifacts_in, artifacts_out, parent_id, attempt, daemon_id, template_id, bundle_id, created_at)"
                  " VALUES (:id,:project_id,:kind,:stage,:scenario,:title,'pending',:request,:argv,:env_overlay,:cwd,"
-                 " :log_path,:artifacts_in,:artifacts_out,:parent_id,:attempt,:daemon_id,:template_id,:created_at)"),
+                 " :log_path,:artifacts_in,:artifacts_out,:parent_id,:attempt,:daemon_id,:template_id,:bundle_id,:created_at)"),
             dict(id=job_id, project_id=project_id, kind=kind, stage=stage, scenario=scenario, title=title,
                  request=_dumps(request), argv=_dumps(argv), env_overlay=_dumps(env_overlay),
                  cwd=str(cwd), log_path=str(log_path), artifacts_in=_dumps(artifacts_in),
                  artifacts_out=_dumps(artifacts_out), parent_id=parent_id, attempt=int(attempt),
-                 daemon_id=daemon_id, template_id=template_id, created_at=_now()),
+                 daemon_id=daemon_id, template_id=template_id, bundle_id=bundle_id or "",
+                 created_at=_now()),
         )
         return job_id
 
     def get_job(self, job_id) -> dict | None:
-        row = self._conn().execute(text("SELECT * FROM jobs WHERE id = :id"), {"id": job_id}).mappings().fetchone()
+        # 读侧左连 bundles：作业行自带 bundle 可读名（§4.3），前端不必再查一遍。
+        row = self._conn().execute(
+            text("SELECT jobs.*, bundles.name AS bundle_name FROM jobs"
+                 " LEFT JOIN bundles ON bundles.id = jobs.bundle_id"
+                 " WHERE jobs.id = :id"), {"id": job_id}).mappings().fetchone()
         return _job(row) if row else None
 
-    def list_jobs(self, *, status=None, stage=None, scenario=None, project=None, limit=200) -> list[dict]:
+    def list_jobs(self, *, status=None, stage=None, scenario=None, project=None,
+                  bundle=None, limit=200) -> list[dict]:
         clauses, params = [], {}
         for column, value in (("status", status), ("stage", stage), ("scenario", scenario)):
             if value is not None:
-                clauses.append(f"{column} = :{column}")
+                clauses.append(f"jobs.{column} = :{column}")
                 params[column] = value
         # project=legacy 落在空哨兵 '' 上；具体项目 id 只返回归属它的作业，
         # legacy 行永远不出现在某个具体项目的列表里（Review Focus：legacy invisibility）。
+        # bundles 也有 project_id 列，所以 join 之后每个谓词都要限定 jobs.，否则歧义。
         if project is not None:
-            clauses.append("project_id = :project")
+            clauses.append("jobs.project_id = :project")
             params["project"] = "" if project == "legacy" else project
+        # bundle=<id> 反查为这个 bundle 跑过的作业（D4 的「快查」入口）。
+        if bundle is not None:
+            clauses.append("jobs.bundle_id = :bundle")
+            params["bundle"] = bundle
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         # limit=None 取全部（项目汇总要跨全部作业统计阶段/产物）；sqlite/postgres 都不接受
         # 把 NULL 绑进 LIMIT，所以无上限时干脆不写 LIMIT 子句。
@@ -893,8 +944,11 @@ class Store:
             params["limit"] = limit
             tail = " LIMIT :limit"
         # Postgres 没有 SQLite 的 rowid 伪列；jobs 表有 id 主键，用它做二级排序（确定性）。
+        # bundles 里同样有 created_at，排序也得限定表名。
         rows = self._conn().execute(
-            text(f"SELECT * FROM jobs{where} ORDER BY created_at DESC, id DESC{tail}"), params
+            text(f"SELECT jobs.*, bundles.name AS bundle_name FROM jobs"
+                 f" LEFT JOIN bundles ON bundles.id = jobs.bundle_id"
+                 f"{where} ORDER BY jobs.created_at DESC, jobs.id DESC{tail}"), params
         ).mappings().fetchall()
         return [_job(row) for row in rows]
 
@@ -968,6 +1022,124 @@ class Store:
             {"err": "编排服务重启", "fin": _now(), **params},
         )
         return cursor.rowcount
+
+    def delete_job(self, job_id, *, purge_files: bool = True) -> dict | None:
+        """删除作业并级联删除它产生的数据（DELETE /console/api/jobs/{id} 的存储层）。
+
+        级联照 delete_project 的手工事务（表没有 ON DELETE CASCADE，外键一致性不能指望
+        数据库代删）。守卫两条：LIVE 状态一律拒删（先取消，等进终态）；本作业产出的版本
+        只要进了 bundle_members 就硬拒 —— bundle 是冻结证据链，删除不许悄悄拆散它。
+        引用解除：重试子作业的 parent_id 与 project_releases.train_job_id 置 NULL，
+        record_reviews.source_version_id 置 NULL（与 D13 同思路，标注行本身保留只清来源）。
+        作业自身足迹按 FK 序删 events / distill_usage / lineage / artifact_versions / jobs；
+        distill_usage 行是 (provider, key, day) 的日聚合 tokens，删行会让当日聚合变小 ——
+        用量跟着作业走，删一起删。
+        artifacts 登记行只在「该产物已无剩余版本，且血缘与其他作业的 artifacts_out/artifacts_in
+        都不再引用它」时才删（LIKE 粗匹配只会误留、不会误删）。
+        purge_files 物理删除：作业日志 + 被删行指向的路径 —— 同路径仍被剩余版本/登记行引用
+        则不动，且只删 data/ 与 runs/ 白名单内、仓库内的普通文件与 runs/ 目录（data/ 下的
+        目录不递归，免得顺手清掉下载来的源数据集；跳出 ROOT 的路径一律拒绝）。
+        存储配额按实际删掉的版本行登记字节用 add_usage 负增量回冲（与 register 的记账对称）。
+        """
+        job = self.get_job(job_id)
+        if job is None:
+            return None
+        # 延迟 import 避开 db → stages 包的循环导入（与 update_project 的 D9 守卫同款）。
+        from .stages.base import Conflict
+        if job["status"] in LIVE:
+            raise Conflict(f"{job['status']} 的作业不能删除", hint="先取消，等它进入终态再删")
+        conn0 = self._conn()
+        versions = conn0.execute(
+            text("SELECT id, artifact_id, path, bytes FROM artifact_versions WHERE job_id=:j"),
+            {"j": job_id}).mappings().fetchall()
+        version_ids = [row["id"] for row in versions]
+        placeholders = ""
+        bound: dict = {}
+        if version_ids:
+            placeholders = ", ".join(f":v{i}" for i in range(len(version_ids)))
+            bound = {f"v{i}": vid for i, vid in enumerate(version_ids)}
+            if conn0.execute(
+                    text(f"SELECT 1 FROM bundle_members WHERE version_id IN ({placeholders}) LIMIT 1"),
+                    bound).fetchone() is not None:
+                raise Conflict("该作业的版本已进入 bundle 成员，不能删除",
+                               hint="bundle 是冻结证据链；要先处理引用这些版本的 bundle")
+        artifact_ids = sorted({row["artifact_id"] for row in versions} | set(job["artifacts_out"]))
+
+        with self.tx() as conn:
+            conn.execute(text("UPDATE jobs SET parent_id = NULL WHERE parent_id = :j"), {"j": job_id})
+            conn.execute(text("UPDATE project_releases SET train_job_id = NULL WHERE train_job_id = :j"),
+                         {"j": job_id})
+            if version_ids:
+                conn.execute(
+                    text(f"UPDATE record_reviews SET source_version_id = NULL"
+                         f" WHERE source_version_id IN ({placeholders})"), bound)
+            events = conn.execute(text("DELETE FROM events WHERE job_id = :j"), {"j": job_id}).rowcount
+            usage = conn.execute(text("DELETE FROM distill_usage WHERE job_id = :j"), {"j": job_id}).rowcount
+            lineage = conn.execute(text("DELETE FROM lineage WHERE job_id = :j"), {"j": job_id}).rowcount
+            version_rows = conn.execute(
+                text("DELETE FROM artifact_versions WHERE job_id = :j"), {"j": job_id}).rowcount
+            if not conn.execute(text("DELETE FROM jobs WHERE id = :j"), {"j": job_id}).rowcount:
+                raise KeyError(job_id)   # 事务内没人动过这行；走到这里说明状态被外部破坏
+            # 孤儿产物登记行。本作业的 lineage 已在上面删掉，剩下的引用都来自别人。
+            removed_artifact_paths = []
+            for aid in artifact_ids:
+                referenced = conn.execute(
+                    text("SELECT 1 FROM artifact_versions WHERE artifact_id = :a"
+                         " UNION SELECT 1 FROM lineage WHERE parent = :a OR child = :a"
+                         " UNION SELECT 1 FROM jobs WHERE id <> :j"
+                         " AND (artifacts_out LIKE :pat OR artifacts_in LIKE :pat) LIMIT 1"),
+                    {"a": aid, "j": job_id, "pat": f"%{aid}%"}).fetchone()
+                if referenced is None:
+                    row = conn.execute(text("SELECT path FROM artifacts WHERE id = :a"),
+                                       {"a": aid}).mappings().fetchone()
+                    if row is not None:
+                        conn.execute(text("DELETE FROM artifacts WHERE id = :a"), {"a": aid})
+                        removed_artifact_paths.append(row["path"])
+
+        # 磁盘清理在事务之外：文件系统故障不许把记账回滚成半成品。
+        removed_files = 0
+        released_bytes = 0
+        if purge_files:
+            # resolve：与下面 (root / rel).resolve() 同一基准比较，Windows 的短路径/软链不会把白名单判漏。
+            root = Path(paths.ROOT).resolve()
+            candidates = {row["path"]: int(row["bytes"] or 0) for row in versions}
+            for path in removed_artifact_paths:
+                candidates.setdefault(path, 0)
+            for rel, size in sorted(candidates.items()):
+                # 同路径仍被剩余版本行或登记行引用就原地留下。
+                still = self._conn().execute(
+                    text("SELECT 1 FROM artifact_versions WHERE path = :p"
+                         " UNION SELECT 1 FROM artifacts WHERE path = :p LIMIT 1"),
+                    {"p": rel}).fetchone()
+                if still is not None:
+                    continue
+                target = (root / rel).resolve()
+                top = str(rel).replace("\\", "/").split("/", 1)[0]
+                if (not target.is_relative_to(root) or target == root
+                        or top not in {paths.DATA_REL, paths.RUNS_REL}):
+                    continue
+                try:
+                    if target.is_file():
+                        target.unlink()
+                        removed_files += 1
+                        released_bytes += size
+                    elif target.is_dir() and top == paths.RUNS_REL:
+                        shutil.rmtree(target)
+                        removed_files += 1
+                except OSError:
+                    pass   # 删不掉的文件保留；配额只按真正删掉的字节回冲
+            log = Path(job["log_path"])
+            if log.is_file() and log.parent == Path(paths.JOB_LOGS):
+                try:
+                    log.unlink()
+                    removed_files += 1
+                except OSError:
+                    pass
+        if job["project_id"] and released_bytes:
+            self.add_usage(job["project_id"], storage_bytes=-released_bytes)
+        return {"deleted": True, "job_id": job_id, "events": events, "distill_usage": usage,
+                "lineage": lineage, "versions": version_rows, "files": removed_files,
+                "artifacts": len(removed_artifact_paths), "bytes": released_bytes}
 
     # ---- artifacts --------------------------------------------------------
 

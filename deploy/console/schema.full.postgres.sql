@@ -1,7 +1,7 @@
 -- =============================================================================
 -- console 数据库 · 完整建表脚本（PostgreSQL）
 -- 来源：由 deploy/console 下 schema.postgres.sql + comments.postgres.sql + 旧 schema.full 内联 spec_json 合并而成
--- 表结构对齐 kev/console/db.py 的 _ddl()（SCHEMA_VERSION = 9，共 26 张表）
+-- 表结构对齐 kev/console/db.py 的 _ddl()（SCHEMA_VERSION = 11，共 26 张表）
 -- 两种后端差异：自增列用 BIGSERIAL，浮点列用 DOUBLE PRECISION。
 -- 本文件包含：① 建表与索引 ② 表/字段注释 ③ 初始化数据（幂等：冲突则忽略；7 个医疗场景内联完整 spec_json）。
 -- 执行顺序：建表 → 注释 → 初始数据，可重复执行（全部 IF NOT EXISTS / ON CONFLICT）。
@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   daemon_id     TEXT,
   template_id   TEXT,
   project_id    TEXT NOT NULL DEFAULT '',
+  bundle_id     TEXT NOT NULL DEFAULT '',
   exit_code     INTEGER,
   error         TEXT,
   created_at    TEXT NOT NULL,
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS jobs_status_idx    ON jobs(status);
 CREATE INDEX IF NOT EXISTS jobs_scenario_idx  ON jobs(scenario, created_at DESC);
 CREATE INDEX IF NOT EXISTS jobs_project_idx   ON jobs(project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS jobs_bundle_idx    ON jobs(bundle_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS artifacts (
   id         TEXT PRIMARY KEY,
@@ -568,6 +570,7 @@ COMMENT ON COLUMN invoices.line_items     IS '账单明细（JSON 文本，默�
 
 -- ---- v9 新增列与数据策展表的注释（与 comments.postgres.sql 一致）----
 COMMENT ON COLUMN jobs.project_id    IS '所属项目 id；空串是具名 legacy 哨兵（D14），永不出现在具体项目列表。';
+COMMENT ON COLUMN jobs.bundle_id     IS '作业在提交那一刻显式声明它为哪个 bundle 而跑（bundles.id，D3）；空串 = 未归属。纯记账：不参与闸门、不参与冻结检查、不选训练数据。';
 
 COMMENT ON COLUMN scenario_domains.spec_dir IS '该域由 docs/domains/<spec_dir>/specs 供数（seed_scenarios 据此认领/新建域行）；空串为手工建域、不参与导入。';
 
@@ -673,9 +676,9 @@ COMMENT ON COLUMN project_releases.created_at        IS '创建时间（UTC ISO8
 
 -- ------------------------------ ③ 初始化数据 --------------------------------
 -- 与 kev/console/db.py 的幂等播种一致：冲突（按主键/唯一键）则忽略，重复执行安全。
--- schema_version 设为 9，与当前代码 SCHEMA_VERSION 一致（全新库无需再走迁移）。
+-- schema_version 设为 11，与当前代码 SCHEMA_VERSION 一致（全新库无需再走迁移）。
 
-INSERT INTO console_meta (key, value) VALUES ('schema_version', '9') ON CONFLICT(key) DO NOTHING;
+INSERT INTO console_meta (key, value) VALUES ('schema_version', '11') ON CONFLICT(key) DO NOTHING;
 
 INSERT INTO scenario_domains (id, slug, label_zh, label_en, sort, spec_dir, created_at) VALUES ('medical', 'medical', '医疗', 'Medical', 0, 'medical', '2026-01-01T00:00:00+00:00') ON CONFLICT(slug) DO NOTHING;
 INSERT INTO scenario_domains (id, slug, label_zh, label_en, sort, spec_dir, created_at) VALUES ('finance', 'finance', '金融', 'Finance', 10, 'finance', '2026-01-01T00:00:00+00:00') ON CONFLICT(slug) DO NOTHING;

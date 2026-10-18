@@ -17,6 +17,22 @@ function loadStages(): Promise<Record<string, StageMeta>> {
   return stagesPromise;
 }
 
+/** kind -> 后端注册表 title（阶段列的悬浮提示）。走同一份模块级缓存，
+ *  取不到就当没有（退回空对象），绝不因解析卡报错而阻塞列表。 */
+export function useStageTitles(): Record<string, string> {
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    loadStages().then((stages) => {
+      if (!cancelled) {
+        setTitles(Object.fromEntries(Object.entries(stages).map(([kind, meta]) => [kind, meta.title])));
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+  return titles;
+}
+
 /**
  * 「提交作业」右栏顶部的只读解析卡：把当前 kind 讲清楚 —— 这一步在做什么、
  * 需要哪些入参、产出哪些产物，以及各产物的去向（被哪道闸门校验、被哪个下游
